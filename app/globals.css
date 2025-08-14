@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import 'tailwindcss';
+
+/* Evolution Combatives Global Styles */
+:root {
+  /* Dark theme by default for tactical interface */
+  --background: 15 23 42; /* neutral-900 */
+  --foreground: 255 255 255; /* neutral-0 */
+}
+
+body {
+  background-color: rgb(var(--background));
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Enable font feature settings for better readability */
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  font-variant-numeric: tabular-nums;
+  
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+}
+
+/* Default text colors for major layout elements */
+.main-content {
+  color: rgb(var(--foreground));
+}
+
+/* Remove default margins and improve box-sizing */
+* {
+  box-sizing: border-box;
+}
+
+/* Improved focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Better text rendering */
+html {
+  text-rendering: optimizeLegibility;
+}
+
+/* Remove the custom button overrides - no longer needed */ 
