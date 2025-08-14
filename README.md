@@ -260,14 +260,6 @@ pnpm type-check   # Run TypeScript type checking
 - `GET /api/video-processing/get-processing` - Check processing status
 - `POST /api/video-processing/sync-all` - Sync with Cloudflare
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ### Development Guidelines
 - Follow TypeScript best practices
 - Write comprehensive tests
