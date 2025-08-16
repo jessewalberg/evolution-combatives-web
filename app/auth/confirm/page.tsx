@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '../../../src/lib/supabase-browser'
 import { Card } from '../../../src/components/ui/card'
 import { H1, H3, Text, Caption } from '../../../src/components/ui/typography'
@@ -16,7 +16,6 @@ interface VerificationState {
 }
 
 export default function AuthConfirmPage() {
-    const router = useRouter()
     const searchParams = useSearchParams()
     const [verificationState, setVerificationState] = useState<VerificationState>({
         status: 'loading',

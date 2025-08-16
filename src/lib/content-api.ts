@@ -3,14 +3,17 @@
  * These functions make secure API calls to server-side endpoints
  */
 
-interface ContentApiResponse<T = any> {
+import { Video } from "../components/video"
+import { Category, Discipline } from "./shared"
+
+interface ContentApiResponse<T = unknown> {
     success: boolean
     data?: T
     error?: string
 }
 
 export class ContentApiClient {
-    private async makeRequest<T>(endpoint: string, action: string, data?: any): Promise<T> {
+    private async makeRequest<T>(endpoint: string, action: string, data?: Record<string, unknown>): Promise<T> {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -60,19 +63,19 @@ export class ContentApiClient {
         return result.data!
     }
 
-    async createVideo(videoData: any): Promise<any> {
+    async createVideo(videoData: Video): Promise<Video> {
         return this.makeRequest('/api/content/videos', 'create', { videoData })
     }
 
-    async updateVideo(id: string, updateData: any): Promise<any> {
+    async updateVideo(id: string, updateData: Partial<Video>): Promise<Video> {
         return this.makeRequest('/api/content/videos', 'update', { id, updateData })
     }
 
-    async fetchCategories(): Promise<any[]> {
+    async fetchCategories(): Promise<Category[]> {
         return this.makeGetRequest('/api/content/categories')
     }
 
-    async fetchDisciplines(): Promise<any[]> {
+    async fetchDisciplines(): Promise<Discipline[]> {
         return this.makeGetRequest('/api/content/disciplines')
     }
 }

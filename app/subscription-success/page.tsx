@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card } from '@/src/components/ui/card';
 import { Button } from '@/src/components/ui/button';
@@ -24,16 +24,7 @@ export default function SubscriptionSuccessPage() {
     const tier = searchParams.get('tier') as SubscriptionTier | null;
     const sessionId = searchParams.get('session_id');
 
-    // Auto-redirect to mobile app after a few seconds
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            redirectToMobileApp();
-        }, 5000); // 5 second delay
-
-        return () => clearTimeout(timer);
-    }, [tier]);
-
-    const redirectToMobileApp = () => {
+    const redirectToMobileApp = useCallback(() => {
         setRedirecting(true);
 
         // Deep link back to mobile app
@@ -47,7 +38,16 @@ export default function SubscriptionSuccessPage() {
         setTimeout(() => {
             setRedirecting(false);
         }, 2000);
-    };
+    }, [tier, sessionId]);
+
+    // Auto-redirect to mobile app after a few seconds
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            redirectToMobileApp();
+        }, 5000); // 5 second delay
+
+        return () => clearTimeout(timer);
+    }, [redirectToMobileApp]);
 
     const displayInfo = tier ? TIER_DISPLAY_INFO[tier] : null;
 
@@ -94,7 +94,7 @@ export default function SubscriptionSuccessPage() {
 
                 {/* What's Next */}
                 <div className="text-left mb-6">
-                    <h3 className="font-semibold text-gray-900 mb-3">What's next?</h3>
+                    <h3 className="font-semibold text-gray-900 mb-3">What&apos;s next?</h3>
                     <ul className="space-y-2 text-sm text-gray-600">
                         <li className="flex items-center">
                             <svg className="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -136,7 +136,7 @@ export default function SubscriptionSuccessPage() {
 
                 {/* Auto-redirect Notice */}
                 <p className="text-xs text-gray-500 mt-4">
-                    You'll be automatically redirected to the app in a few seconds
+                    You&apos;ll be automatically redirected to the app in a few seconds
                 </p>
 
                 {/* Support Link */}

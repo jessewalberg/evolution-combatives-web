@@ -9,6 +9,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -893,9 +894,11 @@ export default function QAManagementPage() {
                                         {question.video ? (
                                             <div className="flex items-center gap-3">
                                                 <div className="relative">
-                                                    <img
+                                                    <Image
                                                         src={question.video.thumbnail_url || '/placeholder-video.jpg'}
                                                         alt={question.video.title}
+                                                        width={64}
+                                                        height={36}
                                                         className="w-16 h-9 object-cover rounded"
                                                     />
                                                     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded">

@@ -354,7 +354,7 @@ export interface UserActionsDropdownProps {
 }
 
 const UserActionsDropdown = React.forwardRef<HTMLDivElement, UserActionsDropdownProps>(
-    ({ user, onViewProfile, onEditProfile, onChangePassword, onLogout, className }, ref) => {
+    ({ user, onViewProfile, onEditProfile, onChangePassword, onLogout, className }) => {
         return (
             <DropdownMenu>
                 <DropdownMenuTrigger className={className}>
@@ -448,7 +448,7 @@ export interface ContentActionsDropdownProps {
 }
 
 const ContentActionsDropdown = React.forwardRef<HTMLDivElement, ContentActionsDropdownProps>(
-    ({ onEdit, onDuplicate, onArchive, onDelete, onViewAnalytics, className, disabled }, ref) => {
+    ({ onEdit, onDuplicate, onArchive, onDelete, onViewAnalytics, className, disabled }) => {
         return (
             <DropdownMenu>
                 <DropdownMenuTrigger
@@ -557,7 +557,7 @@ const SettingsDropdown = React.forwardRef<HTMLDivElement, SettingsDropdownProps>
         onSystemSettings,
         onAuditLog,
         className
-    }, ref) => {
+    }) => {
         return (
             <DropdownMenu>
                 <DropdownMenuTrigger className={className}>
@@ -670,7 +670,7 @@ export interface VideoActionsDropdownProps {
 }
 
 const VideoActionsDropdown = React.forwardRef<HTMLDivElement, VideoActionsDropdownProps>(
-    ({ onPreview, onEdit, onAnalytics, onDownload, onDelete, className, disabled }, _ref) => {
+    ({ onPreview, onEdit, onAnalytics, onDownload, onDelete, className, disabled }) => {
         return (
             <DropdownMenu>
                 <DropdownMenuTrigger

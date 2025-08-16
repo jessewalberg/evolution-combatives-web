@@ -6,7 +6,7 @@
  * @author Evolution Combatives
  */
 
-import type { SupabaseClient, User, Session } from '@supabase/supabase-js'
+import type { SupabaseClient, Session } from '@supabase/supabase-js'
 import type { Database, SubscriptionTier, AdminRole, VideoDifficulty, VideoWithRelations } from './database'
 
 /**
@@ -156,6 +156,7 @@ export interface PaginatedResponse<T> {
 }
 
 // VideoWithRelations imported from database.ts
+export type { VideoWithRelations }
 
 /**
  * User profile with subscription

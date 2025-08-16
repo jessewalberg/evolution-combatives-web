@@ -14,7 +14,7 @@ import { Button } from '@/src/components/ui/button';
 import { Card } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
 import LoadingSpinner from '@/src/components/ui/loading';
-import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO, SUBSCRIPTION_TIERS } from '@/src/lib/shared/constants/subscriptionTiers';
+import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '@/src/lib/shared/constants/subscriptionTiers';
 
 type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced';
 

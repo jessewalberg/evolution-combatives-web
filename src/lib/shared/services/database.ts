@@ -23,10 +23,6 @@ import type {
     VideoAnalytics,
     UserAnalytics,
     SearchResult,
-    QuestionFilters,
-    AnswerTemplate,
-    ContentUploadData,
-    BulkOperationResult,
     NotificationData,
 } from '../types/services'
 import { handleSupabaseError, withRetry, safeQuery } from '../utils/supabase-errors'

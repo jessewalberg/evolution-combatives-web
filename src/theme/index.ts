@@ -58,6 +58,8 @@ export const componentClasses = {
     card: {
         base: 'bg-white rounded-lg shadow-sm border border-gray-200',
         default: 'bg-white rounded-lg shadow-sm border border-gray-200 p-6',
+        elevated: 'bg-white rounded-lg shadow-lg border border-gray-200 p-6',
+        interactive: 'bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer',
         header: 'px-6 py-4 border-b border-gray-200',
         content: 'px-6 py-4',
     },

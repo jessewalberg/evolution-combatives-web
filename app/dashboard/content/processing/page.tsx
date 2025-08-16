@@ -11,6 +11,7 @@
 
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -51,7 +52,7 @@ interface ProcessingJob {
     error?: {
         code?: string
         message: string
-        details?: any
+        details?: Record<string, unknown>
     }
     retryCount: number
     lastRetryAt?: string
@@ -64,7 +65,7 @@ interface ProcessingLog {
     timestamp: string
     level: 'info' | 'warning' | 'error'
     message: string
-    details?: any
+    details?: Record<string, unknown>
 }
 
 interface ProcessingStats {
@@ -173,9 +174,11 @@ function ProcessingJobRow({
                 <div className="flex items-center gap-3">
                     <div className="w-16 h-12 bg-neutral-700 rounded overflow-hidden">
                         {job.video.thumbnail_url ? (
-                            <img
+                            <Image
                                 src={job.video.thumbnail_url}
                                 alt={job.video.title}
+                                width={64}
+                                height={48}
                                 className="w-full h-full object-cover"
                             />
                         ) : (
@@ -383,7 +386,7 @@ export default function ProcessingPage() {
 
                     // Show toast for status changes
                     if (payload.eventType === 'UPDATE') {
-                        const video = payload.new as any
+                        const video = payload.new as { processing_status?: string; title?: string }
                         if (video.processing_status === 'ready') {
                             toast.success(`Video "${video.title}" processing completed`)
                         } else if (video.processing_status === 'error') {
@@ -423,7 +426,7 @@ export default function ProcessingPage() {
             queryClient.invalidateQueries({ queryKey: ['processing-jobs'] })
             toast.success('Processing retry initiated')
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to retry processing: ${error.message}`)
         },
     })
@@ -446,7 +449,7 @@ export default function ProcessingPage() {
             queryClient.invalidateQueries({ queryKey: ['processing-jobs'] })
             toast.success('Processing cancelled')
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to cancel processing: ${error.message}`)
         },
     })

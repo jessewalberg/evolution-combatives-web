@@ -27,7 +27,6 @@ import {
     XMarkIcon,
     PlayIcon,
     ExclamationTriangleIcon,
-    ArrowPathIcon,
     TrashIcon,
 } from '@heroicons/react/24/outline'
 
@@ -176,7 +175,6 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
     ({
         categories = [],
         disciplines = [],
-        onSuccess,
         onError,
         onUploadStart,
         onUploadEnd,
@@ -412,31 +410,25 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                         : u
                 ))
 
-                // Save video metadata to database
-                console.log('Creating video in database...', {
-                    cloudflare_video_id: videoId,
-                    title: upload.metadata.title,
-                    description: upload.metadata.description || '',
-                    slug: upload.metadata.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-                    category_id: upload.metadata.categoryId,
-                    tier_required: upload.metadata.subscriptionTier,
-                    processing_status: 'processing',
-                    duration_seconds: 0,
-                    tags: upload.metadata.tags || [],
-                    is_published: false
-                })
-
                 const createdVideo = await contentApi.createVideo({
-                    cloudflare_video_id: videoId,
+                    id: videoId,
                     title: upload.metadata.title,
                     description: upload.metadata.description || '',
                     slug: upload.metadata.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-                    category_id: upload.metadata.categoryId,
-                    tier_required: upload.metadata.subscriptionTier,
-                    processing_status: 'processing',
-                    duration_seconds: 0,
+                    categoryId: upload.metadata.categoryId,
+                    subscriptionTier: upload.metadata.subscriptionTier,
+                    status: 'processing',
+                    duration: 0,
                     tags: upload.metadata.tags || [],
-                    is_published: false
+                    isPublished: false,
+                    fileSize: upload.file.size,
+                    categoryName: categories.find(c => c.id === upload.metadata?.categoryId)?.name || '',
+                    disciplineId: upload.metadata.disciplineId,
+                    disciplineName: disciplines.find(d => d.id === upload.metadata?.disciplineId)?.name || '',
+                    uploadDate: new Date().toISOString(),
+                    lastModified: new Date().toISOString(),
+                    viewCount: 0,
+                    completionRate: 0,
                 })
 
                 console.log('Video created successfully:', createdVideo)
@@ -474,7 +466,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                 ))
                 onError?.(error instanceof Error ? error.message : 'Upload failed')
             }
-        }, [handleProcessingStart, onError])
+        }, [handleProcessingStart, onError, categories, disciplines, queryClient])
 
         /**
          * Update metadata for upload

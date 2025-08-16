@@ -10,8 +10,6 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type {
     TypedSupabaseClient,
     RealtimeCallback,
-    DatabaseRecord,
-    UserPresenceState,
     BroadcastPayload,
 } from '../types/services'
 import { handleSupabaseError } from '../utils/supabase-errors'
@@ -405,8 +403,11 @@ export class RealtimeService {
     async reconnect(): Promise<void> {
         try {
             // Note: This might vary based on Supabase version
-            if ((this.supabase as any).realtime?.reconnect) {
-                await (this.supabase as any).realtime.reconnect()
+            const supabaseWithRealtime = this.supabase as TypedSupabaseClient & {
+                realtime?: { reconnect?: () => Promise<void> }
+            }
+            if (supabaseWithRealtime.realtime?.reconnect) {
+                await supabaseWithRealtime.realtime.reconnect()
             }
         } catch (error) {
             const processedError = handleSupabaseError(error, 'reconnect')

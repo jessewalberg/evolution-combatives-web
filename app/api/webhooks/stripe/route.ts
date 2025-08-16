@@ -11,6 +11,17 @@ import { validateWebhookSignature } from '@/src/lib/stripe';
 import { createAdminClient } from '@/src/lib/supabase';
 import Stripe from 'stripe';
 
+// Extended interface for Stripe Subscription with period properties
+interface StripeSubscriptionWithPeriod extends Stripe.Subscription {
+    current_period_start: number;
+    current_period_end: number;
+}
+
+// Extended interface for Stripe Invoice with subscription property
+interface StripeInvoiceWithSubscription extends Stripe.Invoice {
+    subscription: string | Stripe.Subscription | null;
+}
+
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 if (!webhookSecret) {
@@ -42,11 +53,11 @@ export async function POST(request: NextRequest) {
                 break;
 
             case 'customer.subscription.created':
-                await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
+                await handleSubscriptionCreated(event.data.object as StripeSubscriptionWithPeriod);
                 break;
 
             case 'customer.subscription.updated':
-                await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+                await handleSubscriptionUpdated(event.data.object as StripeSubscriptionWithPeriod);
                 break;
 
             case 'customer.subscription.deleted':
@@ -54,11 +65,11 @@ export async function POST(request: NextRequest) {
                 break;
 
             case 'invoice.payment_succeeded':
-                await handlePaymentSucceeded(event.data.object as Stripe.Invoice);
+                await handlePaymentSucceeded(event.data.object as StripeInvoiceWithSubscription);
                 break;
 
             case 'invoice.payment_failed':
-                await handlePaymentFailed(event.data.object as Stripe.Invoice);
+                await handlePaymentFailed(event.data.object as StripeInvoiceWithSubscription);
                 break;
 
             default:
@@ -96,7 +107,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 /**
  * Handle subscription creation
  */
-async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
+async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPeriod) {
     const { userId, tier } = subscription.metadata || {};
 
     if (!userId || !tier) {
@@ -112,11 +123,11 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
         .insert({
             user_id: userId,
             tier: tier as 'beginner' | 'intermediate' | 'advanced',
-            status: subscription.status as any,
+            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
             stripe_subscription_id: subscription.id,
             stripe_customer_id: subscription.customer as string,
-            current_period_start: new Date((subscription as any).current_period_start * 1000).toISOString(),
-            current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
             canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
         });
@@ -142,16 +153,16 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
 /**
  * Handle subscription updates
  */
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPeriod) {
     const supabase = createAdminClient();
 
     // Update subscription record
     const { error } = await supabase
         .from('subscriptions')
         .update({
-            status: subscription.status as any,
-            current_period_start: new Date((subscription as any).current_period_start * 1000).toISOString(),
-            current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
+            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
             canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
         })
@@ -221,34 +232,34 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 /**
  * Handle successful payment
  */
-async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
-    if ((invoice as any).subscription) {
+async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription) {
+    if (invoice.subscription) {
         const supabase = createAdminClient();
 
         // Update subscription status to active (in case it was past_due)
         await supabase
             .from('subscriptions')
             .update({ status: 'active' })
-            .eq('stripe_subscription_id', (invoice as any).subscription as string);
+            .eq('stripe_subscription_id', invoice.subscription as string);
 
-        console.log(`Payment succeeded for subscription: ${(invoice as any).subscription}`);
+        console.log(`Payment succeeded for subscription: ${invoice.subscription}`);
     }
 }
 
 /**
  * Handle failed payment
  */
-async function handlePaymentFailed(invoice: Stripe.Invoice) {
-    if ((invoice as any).subscription) {
+async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription) {
+    if (invoice.subscription) {
         const supabase = createAdminClient();
 
         // Update subscription status to past_due
         await supabase
             .from('subscriptions')
             .update({ status: 'past_due' })
-            .eq('stripe_subscription_id', (invoice as any).subscription as string);
+            .eq('stripe_subscription_id', invoice.subscription as string);
 
-        console.log(`Payment failed for subscription: ${(invoice as any).subscription}`);
+        console.log(`Payment failed for subscription: ${invoice.subscription}`);
     }
 }
 

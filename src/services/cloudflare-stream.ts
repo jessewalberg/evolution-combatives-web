@@ -227,7 +227,7 @@ export const uploadFunctions = {
         uploadUrl: string
         videoId: string
     }> {
-        const payload: Record<string, any> = {
+        const payload: Record<string, unknown> = {
             maxDurationSeconds: options.maxDurationSeconds || 3600 // 1 hour default, required field
         }
 

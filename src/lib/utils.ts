@@ -428,7 +428,7 @@ export function debounce<T extends (...args: never[]) => unknown>(
 
     return (...args: Parameters<T>) => {
         clearTimeout(timeoutId)
-        timeoutId = setTimeout(() => func.apply(null, args), delay)
+        timeoutId = setTimeout(() => func(...args), delay)
     }
 }
 

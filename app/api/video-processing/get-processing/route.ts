@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 import { createAdminClient } from '../../../../src/lib/supabase'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
     const authResult = await validateApiAuthWithSession('content.read')
     if ('error' in authResult) {
         return authResult.error

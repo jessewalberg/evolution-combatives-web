@@ -8,10 +8,10 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import React from 'react'
+import Image from 'next/image'
 import { useRouter, useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import { useAuth } from '../../../../../../src/hooks/useAuth'
 import { Button } from '../../../../../../src/components/ui/button'
 import { Card } from '../../../../../../src/components/ui/card'
@@ -86,7 +86,7 @@ export default function VideoPreviewPage() {
         }[status] || { label: status, color: 'secondary' }
 
         return (
-            <Badge variant={statusConfig.color as any}>
+            <Badge variant={statusConfig.color as 'default' | 'secondary' | 'success' | 'warning' | 'error' | 'info'}>
                 {statusConfig.label}
             </Badge>
         )
@@ -101,7 +101,7 @@ export default function VideoPreviewPage() {
         }[tier] || { label: tier, color: 'secondary' }
 
         return (
-            <Badge variant={tierConfig.color as any}>
+            <Badge variant={tierConfig.color as 'default' | 'secondary' | 'success' | 'warning' | 'error' | 'info'}>
                 {tierConfig.label}
             </Badge>
         )
@@ -136,7 +136,7 @@ export default function VideoPreviewPage() {
                             Video Not Found
                         </h1>
                         <p className="text-gray-600 dark:text-gray-400 mb-6">
-                            The video you're looking for doesn't exist or you don't have permission to view it.
+                            The video you&apos;re looking for doesn&apos;t exist or you don&apos;t have permission to view it.
                         </p>
                         <Button onClick={() => router.push('/dashboard/content/videos')}>
                             Back to Videos
@@ -206,10 +206,11 @@ export default function VideoPreviewPage() {
                                     />
                                 ) : video?.thumbnail_url ? (
                                     <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                                        <img
+                                        <Image
                                             src={video.thumbnail_url}
                                             alt={video.title}
-                                            className="max-w-full max-h-full object-contain"
+                                            fill
+                                            className="object-contain"
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center">
                                             <PlayIcon className="h-16 w-16 text-white opacity-80" />

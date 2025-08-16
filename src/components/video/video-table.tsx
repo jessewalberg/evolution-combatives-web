@@ -8,11 +8,10 @@
  */
 
 import * as React from 'react'
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
-import { Input } from '../ui/input'
 import { Badge } from '../ui/badge'
 import { Card } from '../ui/card'
 import {
@@ -43,6 +42,8 @@ type VideoStatus = 'uploading' | 'processing' | 'ready' | 'error' | 'archived'
  */
 interface Video {
     id: string
+    isPublished?: boolean
+    slug?: string
     title: string
     description: string
     thumbnailUrl?: string
@@ -102,6 +103,16 @@ interface VideoTableProps {
     pageSize?: number
 
     /**
+     * Selected video IDs (controlled from parent)
+     */
+    selectedVideos?: Set<string>
+
+    /**
+     * Callback when selection changes
+     */
+    onSelectionChange?: (selectedIds: Set<string>) => void
+
+    /**
      * Video action callbacks
      */
     onEdit?: (video: Video) => void
@@ -144,9 +155,9 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
     ({
         videos,
         loading = false,
-        categories = [],
-        disciplines = [],
         pageSize = 20,
+        selectedVideos = new Set(),
+        onSelectionChange,
         onEdit,
         onDelete,
         onPreview,
@@ -158,7 +169,6 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
     }, ref) => {
         // State management
         const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'uploadDate', direction: 'desc' })
-        const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set())
         const [currentPage, setCurrentPage] = useState(1)
 
 
@@ -213,16 +223,14 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
          * Handle video selection
          */
         const handleVideoSelect = useCallback((videoId: string, selected: boolean) => {
-            setSelectedVideos(prev => {
-                const newSet = new Set(prev)
-                if (selected) {
-                    newSet.add(videoId)
-                } else {
-                    newSet.delete(videoId)
-                }
-                return newSet
-            })
-        }, [])
+            const newSet = new Set(selectedVideos)
+            if (selected) {
+                newSet.add(videoId)
+            } else {
+                newSet.delete(videoId)
+            }
+            onSelectionChange?.(newSet)
+        }, [selectedVideos, onSelectionChange])
 
         /**
          * Handle bulk action
@@ -230,8 +238,8 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
         const handleBulkAction = useCallback((action: string) => {
             const selectedVideoObjects = videos.filter(v => selectedVideos.has(v.id))
             onBulkAction?.(action, selectedVideoObjects)
-            setSelectedVideos(new Set()) // Clear selection after action
-        }, [videos, selectedVideos, onBulkAction])
+            onSelectionChange?.(new Set()) // Clear selection after action
+        }, [videos, selectedVideos, onBulkAction, onSelectionChange])
 
         /**
          * Sort videos (filtering is handled by parent component)
@@ -268,9 +276,9 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
          */
         const handleSelectAll = (selected: boolean) => {
             if (selected) {
-                setSelectedVideos(new Set(sortedVideos.map(v => v.id)))
+                onSelectionChange?.(new Set(sortedVideos.map(v => v.id)))
             } else {
-                setSelectedVideos(new Set())
+                onSelectionChange?.(new Set())
             }
         }
 
