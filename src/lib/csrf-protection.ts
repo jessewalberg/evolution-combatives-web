@@ -3,7 +3,6 @@
  * Provides token generation and validation for state-changing operations
  */
 
-import { createServerComponentClient } from './supabase'
 import { NextRequest } from 'next/server'
 
 const CSRF_TOKEN_HEADER = 'X-CSRF-Token'

@@ -61,7 +61,7 @@ export default function VideoUploadPage() {
                 <Card className="p-8 text-center">
                     <h2 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h2>
                     <p className="text-gray-600 mb-6">
-                        You don't have permission to upload videos.
+                        You don&apos;t have permission to upload videos.
                     </p>
                     <Button 
                         onClick={() => router.push('/dashboard/content/videos')}

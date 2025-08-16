@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '../../../src/lib/supabase-browser'
 import { Card } from '../../../src/components/ui/card'
 import { H1, H3, Text, Caption } from '../../../src/components/ui/typography'
@@ -15,8 +15,7 @@ interface VerificationState {
     redirectUrl?: string
 }
 
-export default function AuthConfirmPage() {
-    const router = useRouter()
+function AuthConfirmContent() {
     const searchParams = useSearchParams()
     const [verificationState, setVerificationState] = useState<VerificationState>({
         status: 'loading',
@@ -286,5 +285,20 @@ export default function AuthConfirmPage() {
                 </Card>
             </div>
         </div>
+    )
+}
+
+export default function AuthConfirmPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+                <div className="text-center">
+                    <Spinner size="lg" showLabel={false} />
+                    <p className="mt-4 text-gray-600">Loading...</p>
+                </div>
+            </div>
+        }>
+            <AuthConfirmContent />
+        </Suspense>
     )
 } 

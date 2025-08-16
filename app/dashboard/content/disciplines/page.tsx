@@ -36,6 +36,7 @@ import {
 // Services & Types
 import { contentQueries, contentMutations } from '../../../../src/services/content'
 import { useAuth } from '../../../../src/hooks/useAuth'
+import type { DisciplineWithRelations, CategoryWithRelations, DisciplineInsert, DisciplineUpdate } from '../../../../src/lib/shared/types/database'
 
 // Loading Spinner Component
 function LoadingSpinner({ size = 'default' }: { size?: 'sm' | 'default' | 'lg' }) {
@@ -111,7 +112,7 @@ export default function DisciplinesPage() {
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
     const [editDialogOpen, setEditDialogOpen] = useState(false)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-    const [selectedDiscipline, setSelectedDiscipline] = useState<any>(null)
+    const [selectedDiscipline, setSelectedDiscipline] = useState<DisciplineWithRelations | null>(null)
     const [formData, setFormData] = useState<{
         name: string
         slug: string
@@ -141,27 +142,27 @@ export default function DisciplinesPage() {
     // Calculate stats
     const disciplines = disciplinesQuery.data || []
     const totalDisciplines = disciplines.length
-    const activeDisciplines = disciplines.filter((d: any) => d.is_active).length
-    const totalCategories = disciplines.reduce((sum: number, d: any) => sum + (d.categories?.length || 0), 0)
-    const totalVideos = disciplines.reduce((sum: number, d: any) =>
-        sum + (d.categories?.reduce((catSum: number, c: any) => catSum + (c.videos?.length || 0), 0) || 0), 0)
+    const activeDisciplines = disciplines.filter((d: DisciplineWithRelations) => d.is_active).length
+    const totalCategories = disciplines.reduce((sum: number, d: DisciplineWithRelations) => sum + (d.categories?.length || 0), 0)
+    const totalVideos = disciplines.reduce((sum: number, d: DisciplineWithRelations) =>
+        sum + (d.categories?.reduce((catSum: number, c: CategoryWithRelations) => catSum + (c.videos?.length || 0), 0) || 0), 0)
 
     // Mutations
     const createMutation = useMutation({
-        mutationFn: (data: any) => contentMutations.createDiscipline(data),
+        mutationFn: (data: DisciplineInsert) => contentMutations.createDiscipline(data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
             toast.success('Discipline created successfully')
             setCreateDialogOpen(false)
             resetForm()
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to create discipline: ${error.message}`)
         },
     })
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string; data: any }) =>
+        mutationFn: ({ id, data }: { id: string; data: DisciplineUpdate }) =>
             contentMutations.updateDiscipline(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
@@ -170,7 +171,7 @@ export default function DisciplinesPage() {
             setSelectedDiscipline(null)
             resetForm()
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to update discipline: ${error.message}`)
         },
     })
@@ -183,7 +184,7 @@ export default function DisciplinesPage() {
             setDeleteDialogOpen(false)
             setSelectedDiscipline(null)
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to delete discipline: ${error.message}`)
         },
     })
@@ -209,7 +210,7 @@ export default function DisciplinesPage() {
         setCreateDialogOpen(true)
     }
 
-    const handleEdit = (discipline: any) => {
+    const handleEdit = (discipline: DisciplineWithRelations) => {
         if (!canManageContent) {
             toast.error('You do not have permission to edit disciplines')
             return
@@ -226,7 +227,7 @@ export default function DisciplinesPage() {
         setEditDialogOpen(true)
     }
 
-    const handleDelete = (discipline: any) => {
+    const handleDelete = (discipline: DisciplineWithRelations) => {
         if (!canManageContent) {
             toast.error('You do not have permission to delete disciplines')
             return
@@ -247,7 +248,12 @@ export default function DisciplinesPage() {
     const onSubmit = async () => {
         try {
             const disciplineData = {
-                ...formData,
+                name: formData.name,
+                slug: formData.slug,
+                description: formData.description,
+                color: formData.color,
+                subscription_tier_required: formData.subscriptionTierRequired,
+                is_active: formData.isActive,
                 sort_order: selectedDiscipline ? selectedDiscipline.sort_order : (disciplines.length || 0) + 1,
             }
 
@@ -403,9 +409,9 @@ export default function DisciplinesPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {disciplines.map((discipline: any) => {
+                                {disciplines.map((discipline: DisciplineWithRelations) => {
                                     const categoryCount = discipline.categories?.length || 0
-                                    const videoCount = discipline.categories?.reduce((sum: number, category: any) => sum + (category.videos?.length || 0), 0) || 0
+                                    const videoCount = discipline.categories?.reduce((sum: number, category: CategoryWithRelations) => sum + (category.videos?.length || 0), 0) || 0
                                     const tierConfig = SUBSCRIPTION_TIERS.find(t => t.value === discipline.subscription_tier_required)
 
                                     return (
@@ -428,7 +434,7 @@ export default function DisciplinesPage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant={tierConfig?.color as any}>
+                                                <Badge variant={tierConfig?.color as 'default' | 'secondary' | 'success' | 'warning' | 'error'}>
                                                     {tierConfig?.label}
                                                 </Badge>
                                             </TableCell>

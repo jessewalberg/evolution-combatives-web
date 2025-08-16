@@ -18,7 +18,7 @@ interface CloudflareStreamEvent {
     eventTimestamp: string
     eventType: 'video.upload.complete' | 'video.processing.started' | 'video.processing.complete' | 'video.processing.failed' | 'video.ready' | 'video.deleted'
     uid: string // Video UID from Cloudflare
-    meta?: Record<string, any>
+    meta?: Record<string, unknown>
     playback?: {
         hls?: string
         dash?: string
@@ -39,8 +39,8 @@ interface CloudflareStreamEvent {
     created?: string
     modified?: string
     size?: number
-    watermark?: any
-    nft?: any
+    watermark?: Record<string, unknown>
+    nft?: unknown
 }
 
 // Database update retry configuration
@@ -127,7 +127,7 @@ async function updateVideoStatus(
     // Determine processing status and video metadata
     let processingStatus: string
     let isPublished = false
-    const metadata: Record<string, any> = {}
+    const metadata: Record<string, unknown> = {}
 
     switch (event.eventType) {
         case 'video.upload.complete':
@@ -178,7 +178,7 @@ async function updateVideoStatus(
     }
 
     // Update video in database
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, unknown> = {
         processing_status: processingStatus,
         is_published: isPublished,
         updated_at: new Date().toISOString()

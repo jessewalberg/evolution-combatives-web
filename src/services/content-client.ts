@@ -12,7 +12,9 @@ import type {
     VideoUpdate,
     BulkOperationResult,
     ContentStats,
-    VideoAnalytics
+    VideoAnalytics,
+    Category,
+    Discipline,
 } from './content'
 
 // CSRF token cache
@@ -61,10 +63,8 @@ async function createSecureHeaders(): Promise<HeadersInit> {
 
 // Client-safe API calls
 export const clientContentService = {
-    /**
-     * Fetch all categories
-     */
-    async fetchCategories(): Promise<any[]> {
+
+    async fetchCategories(): Promise<Category[]> {
         const response = await fetch('/api/content/categories')
         const result = await response.json()
         if (!result.success) {
@@ -72,11 +72,9 @@ export const clientContentService = {
         }
         return result.data
     },
+    
 
-    /**
-     * Fetch all disciplines
-     */
-    async fetchDisciplines(): Promise<any[]> {
+    async fetchDisciplines(): Promise<Discipline[]> {
         const response = await fetch('/api/content/disciplines')
         const result = await response.json()
         if (!result.success) {
@@ -84,18 +82,24 @@ export const clientContentService = {
         }
         return result.data
     },
+    
 
     /**
      * Fetch videos with filtering and pagination
      */
-    async fetchVideos(filters: any = {}, pagination: any = {}): Promise<{
-        data: any[]
+    async fetchVideos(
+        filters: { search?: string; categoryId?: string } = {},
+        pagination: { page?: number; pageSize?: number } = {}
+    ): Promise<{
+        data: Video[]
         totalCount: number
         hasMore: boolean
     }> {
         const searchParams = new URLSearchParams()
         if (filters.search) searchParams.set('search', filters.search)
         if (filters.categoryId) searchParams.set('categoryId', filters.categoryId)
+        if (pagination.page !== undefined) searchParams.set('page', pagination.page.toString())
+        if (pagination.pageSize !== undefined) searchParams.set('pageSize', pagination.pageSize.toString())
         
         const response = await fetch(`/api/content/videos?${searchParams}`)
         const result = await response.json()
@@ -108,7 +112,7 @@ export const clientContentService = {
     /**
      * Fetch single video by ID
      */
-    async fetchVideoById(videoId: string): Promise<any> {
+    async fetchVideoById(videoId: string): Promise<Video> {
         const response = await fetch(`/api/content/videos/${videoId}`)
         const result = await response.json()
         if (!result.success) {

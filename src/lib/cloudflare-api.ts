@@ -3,14 +3,14 @@
  * These functions make secure API calls to server-side endpoints
  */
 
-interface CloudflareApiResponse<T = any> {
+interface CloudflareApiResponse<T = unknown> {
     success: boolean
     data?: T
     error?: string
 }
 
 export class CloudflareApiClient {
-    private async makeRequest<T>(action: string, data?: any): Promise<T> {
+    private async makeRequest<T>(action: string, data?: Record<string, unknown>): Promise<T> {
         const response = await fetch('/api/cloudflare/upload', {
             method: 'POST',
             headers: {
@@ -101,7 +101,7 @@ export class CloudflareApiClient {
         })
     }
 
-    async checkUploadStatus(streamId: string): Promise<any> {
+    async checkUploadStatus(streamId: string): Promise<CloudflareApiResponse> {
         return this.makeRequest('checkUploadStatus', { streamId })
     }
 

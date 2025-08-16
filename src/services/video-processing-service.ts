@@ -6,7 +6,7 @@
  * @author Evolution Combatives
  */
 
-import { cloudflareApi } from '../lib/cloudflare-stream'
+import { cloudflareStreamService } from './cloudflare-stream'
 
 /**
  * Video processing background service
@@ -86,11 +86,12 @@ class VideoProcessingService {
     private async checkSingleVideo(cloudflareVideoId: string) {
         try {
             // Check Cloudflare status
-            const status = await cloudflareApi.checkUploadStatus(cloudflareVideoId)
+            const status = await cloudflareStreamService.upload.checkUploadStatus(cloudflareVideoId)
             
             if (status.status === 'ready') {
-                // Video is ready, update database
-                await this.updateVideoStatus(cloudflareVideoId, 'ready', status.duration)
+                // Video is ready, get video details for duration
+                const videoDetails = await cloudflareStreamService.video.getVideoDetails(cloudflareVideoId)
+                await this.updateVideoStatus(cloudflareVideoId, 'ready', videoDetails.duration)
                 this.removeProcessingVideo(cloudflareVideoId)
                 
                 console.log(`Video ${cloudflareVideoId} processing complete`)
@@ -109,7 +110,7 @@ class VideoProcessingService {
             
             // If we can't check the status multiple times, assume it's an error
             // This prevents videos from being stuck in processing forever
-            if (this.shouldMarkAsError(cloudflareVideoId)) {
+            if (this.shouldMarkAsError()) {
                 await this.updateVideoStatus(cloudflareVideoId, 'error')
                 this.removeProcessingVideo(cloudflareVideoId)
             }
@@ -121,7 +122,13 @@ class VideoProcessingService {
      */
     private async updateVideoStatus(cloudflareVideoId: string, status: 'ready' | 'error', duration?: number) {
         try {
-            const updateData: any = {
+            interface UpdateData {
+                processing_status: 'ready' | 'error';
+                duration_seconds?: number;
+                is_published?: boolean;
+            }
+
+            const updateData: UpdateData = {
                 processing_status: status
             }
 
@@ -158,7 +165,7 @@ class VideoProcessingService {
     /**
      * Check if we should mark a video as error due to repeated failures
      */
-    private shouldMarkAsError(cloudflareVideoId: string): boolean {
+    private shouldMarkAsError(): boolean {
         // For now, keep trying indefinitely
         // In production, you might want to implement retry limits
         return false

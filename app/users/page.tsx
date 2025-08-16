@@ -65,7 +65,7 @@ interface ActivityEvent {
     id: string
     type: 'login' | 'logout' | 'video_watch' | 'subscription_change' | 'profile_update'
     timestamp: string
-    details?: Record<string, any>
+    details?: Record<string, unknown>
 }
 
 interface SubscriptionEvent {

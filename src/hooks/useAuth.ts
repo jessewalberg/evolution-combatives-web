@@ -12,8 +12,6 @@ import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createBrowserClient } from '../lib/supabase-browser'
-import type { User, Session } from '@supabase/supabase-js'
-import type { UserProfileWithSubscription } from 'shared/types/services'
 import type { AdminRole } from 'shared/types/database'
 
 const supabase = createBrowserClient()

@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 import { createAdminClient } from '../../../../src/lib/supabase'
 import { cloudflareApi } from '../../../../src/lib/cloudflare-api'
 
-export async function POST(request: NextRequest) {
+export async function POST() {
     const authResult = await validateApiAuthWithSession('content.write')
     if ('error' in authResult) {
         return authResult.error
@@ -27,11 +27,20 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        type VideoDetail = {
+            videoId: string
+            title: string
+            error?: string
+            oldStatus?: string
+            newStatus?: string
+            cloudflareStatus?: string
+        }
+
         const results = {
             checked: 0,
             updated: 0,
             errors: 0,
-            details: [] as any[]
+            details: [] as VideoDetail[]
         }
 
         // Check each video with Cloudflare
@@ -53,20 +62,28 @@ export async function POST(request: NextRequest) {
                 const cloudflareStatus = await cloudflareApi.checkUploadStatus(video.cloudflare_video_id)
                 
                 let needsUpdate = false
-                const updateData: any = {
+                const updateData: {
+                    updated_at: string
+                    processing_status?: 'ready' | 'error'
+                    is_published?: boolean
+                    duration_seconds?: number
+                } = {
                     updated_at: new Date().toISOString()
                 }
 
-                if (cloudflareStatus.status === 'ready') {
-                    updateData.processing_status = 'ready'
-                    updateData.is_published = true
-                    if (cloudflareStatus.duration) {
-                        updateData.duration_seconds = Math.round(cloudflareStatus.duration)
+                if (cloudflareStatus.success && cloudflareStatus.data) {
+                    const uploadData = cloudflareStatus.data as { status: string; duration?: number }
+                    if (uploadData.status === 'ready') {
+                        updateData.processing_status = 'ready'
+                        updateData.is_published = true
+                        if (uploadData.duration) {
+                            updateData.duration_seconds = Math.round(uploadData.duration)
+                        }
+                        needsUpdate = true
+                    } else if (uploadData.status === 'error') {
+                        updateData.processing_status = 'error'
+                        needsUpdate = true
                     }
-                    needsUpdate = true
-                } else if (cloudflareStatus.status === 'error') {
-                    updateData.processing_status = 'error'
-                    needsUpdate = true
                 }
 
                 if (needsUpdate) {
@@ -89,7 +106,7 @@ export async function POST(request: NextRequest) {
                             title: video.title,
                             oldStatus: 'processing',
                             newStatus: updateData.processing_status,
-                            cloudflareStatus: cloudflareStatus.status
+                            cloudflareStatus: cloudflareStatus.success && cloudflareStatus.data ? (cloudflareStatus.data as { status: string }).status : 'unknown'
                         })
                     }
                 }

@@ -6,7 +6,7 @@
  * @author Evolution Combatives
  */
 
-import type { User, Session, AuthError, Provider } from '@supabase/supabase-js'
+import type { User, Session, Provider } from '@supabase/supabase-js'
 import type {
     TypedSupabaseClient,
     UserRegistrationData,
@@ -371,8 +371,8 @@ export class AuthService {
         updates: {
             email?: string
             password?: string
-            user_metadata?: Record<string, any>
-            app_metadata?: Record<string, any>
+            user_metadata?: Record<string, unknown>
+            app_metadata?: Record<string, unknown>
         }
     ): Promise<ServiceResponse<User>> {
         try {

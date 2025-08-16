@@ -8,17 +8,17 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/src/components/ui/button';
 import { Card } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
 import LoadingSpinner from '@/src/components/ui/loading';
-import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO, SUBSCRIPTION_TIERS } from '@/src/lib/shared/constants/subscriptionTiers';
+import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '@/src/lib/shared/constants/subscriptionTiers';
 
 type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced';
 
-export default function SubscribePage() {
+function SubscribeContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
@@ -216,5 +216,19 @@ export default function SubscribePage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function SubscribePage() {
+    return (
+        <Suspense 
+            fallback={
+                <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                    <LoadingSpinner size="lg" />
+                </div>
+            }
+        >
+            <SubscribeContent />
+        </Suspense>
     );
 }

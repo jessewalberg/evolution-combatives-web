@@ -4,7 +4,7 @@ import { validateApiAuthWithSession } from '../../../../../src/lib/api-auth'
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     const authResult = await validateApiAuthWithSession('content.read')
     if ('error' in authResult) {
@@ -12,7 +12,7 @@ export async function GET(
     }
 
     try {
-        const videoId = params.id
+        const { id: videoId } = await params
         
         if (!videoId) {
             return NextResponse.json(

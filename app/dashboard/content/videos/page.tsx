@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '../../../../src/lib/utils'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -18,7 +18,6 @@ import { StatsCard, StatsCardGrid } from '../../../../src/components/ui/stats-ca
 import { Card } from '../../../../src/components/ui/card'
 import { Button } from '../../../../src/components/ui/button'
 import { Input } from '../../../../src/components/ui/input'
-import { Badge } from '../../../../src/components/ui/badge'
 
 import { Spinner } from '../../../../src/components/ui/loading'
 import { VideoTable } from '../../../../src/components/video/video-table'
@@ -67,7 +66,7 @@ interface BulkAction {
     label: string
     icon: React.ComponentType<{ className?: string }>
     action: (videoIds: string[]) => void
-    variant?: 'default' | 'destructive'
+    variant?: 'destructive' | 'primary' | 'secondary' | 'success' | 'warning' | 'outline' | 'ghost'
     requiresConfirmation?: boolean
 }
 
@@ -215,6 +214,22 @@ export default function VideoLibraryPage() {
         return count
     }, [videosQuery.data?.totalCount, videosData.length])
 
+    // Helper function to get category data for a video
+    const getCategoryData = useCallback((categoryId: string) => {
+        return (categoriesQuery.data as CategoryWithRelations[] || []).find(cat => cat.id === categoryId)
+    }, [categoriesQuery.data])
+
+    // Helper function to get discipline data for a category
+    const getDisciplineData = useCallback((disciplineId: string) => {
+        return (disciplinesQuery.data as DisciplineWithRelations[] || []).find(disc => disc.id === disciplineId)
+    }, [disciplinesQuery.data])
+
+    // Helper function to get discipline name for a video
+    const getDisciplineName = useCallback((categoryId: string) => {
+        const category = getCategoryData(categoryId)
+        return category ? getDisciplineData(category.discipline_id)?.name || '' : ''
+    }, [getCategoryData, getDisciplineData])
+
     // Filter videos based on current filters
     const filteredVideos = useMemo(() => {
         return videosData.filter((video: VideoWithRelations) => {
@@ -223,11 +238,7 @@ export default function VideoLibraryPage() {
                 const searchLower = filters.search.toLowerCase()
                 const matchesSearch =
                     video.title.toLowerCase().includes(searchLower) ||
-                    (video.description && video.description.toLowerCase().includes(searchLower)) ||
-                    (video.instructor && typeof video.instructor === 'object' &&
-                        'name' in video.instructor &&
-                        typeof (video.instructor as { name?: string }).name === 'string' &&
-                        (video.instructor as { name: string }).name.toLowerCase().includes(searchLower))
+                    (video.description && video.description.toLowerCase().includes(searchLower))
 
                 if (!matchesSearch) return false
             }
@@ -274,7 +285,7 @@ export default function VideoLibraryPage() {
 
             return true
         })
-    }, [videosData, filters])
+    }, [videosData, filters, categoriesQuery.data])
 
     // Bulk actions configuration
     const bulkActions: BulkAction[] = [
@@ -363,16 +374,18 @@ export default function VideoLibraryPage() {
 
     // Export videos data
     const handleExport = () => {
-        const csvData = filteredVideos.map((video: VideoWithRelations) => ({
-            title: video.title,
-            category: typeof video.category === 'object' && video.category ? video.category.name : '',
-            instructor: typeof video.instructor === 'object' && video.instructor && 'name' in video.instructor ?
-                (video.instructor as { name?: string }).name || '' : '',
-            status: video.processing_status,
-            tier: video.tier_required,
-            uploadDate: video.created_at,
-            viewCount: video.view_count || 0
-        }))
+        const csvData = filteredVideos.map((video: VideoWithRelations) => {
+            const category = (categoriesQuery.data as CategoryWithRelations[] || []).find(cat => cat.id === video.category_id)
+            return {
+                title: video.title,
+                category: category?.name || '',
+                instructor: '', // Instructor data not available in current schema
+                status: video.processing_status,
+                tier: video.tier_required,
+                uploadDate: video.created_at,
+                viewCount: video.view_count || 0
+            }
+        })
 
         const headers = ['Title', 'Category', 'Instructor', 'Status', 'Tier', 'Upload Date', 'Views']
         const csvContent = [
@@ -602,6 +615,42 @@ export default function VideoLibraryPage() {
                     </div>
                 </Card>
 
+                {/* Bulk Actions Toolbar */}
+                {selectedVideos.size > 0 && (
+                    <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                        <div className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                                        {selectedVideos.size} video{selectedVideos.size === 1 ? '' : 's'} selected
+                                    </span>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setSelectedVideos(new Set())}
+                                        className="text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800"
+                                    >
+                                        Clear Selection
+                                    </Button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {bulkActions.map((action) => (
+                                        <Button
+                                            key={action.id}
+                                            variant={action.variant === 'destructive' ? 'destructive' : 'outline'}
+                                            size="sm"
+                                            onClick={() => handleBulkAction(action)}
+                                            disabled={bulkActionLoading}
+                                            leftIcon={<action.icon className="h-4 w-4" />}
+                                        >
+                                            {action.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                )}
 
                 {/* Video Table */}
                 <VideoTable
@@ -615,11 +664,10 @@ export default function VideoLibraryPage() {
                         status: (video.processing_status || 'ready') as 'uploading' | 'processing' | 'ready' | 'error' | 'archived',
                         subscriptionTier: (video.tier_required || 'beginner') as 'beginner' | 'intermediate' | 'advanced',
                         categoryId: video.category_id,
-                        disciplineId: typeof video.category === 'object' && video.category ? video.category.discipline_id : '',
-                        categoryName: typeof video.category === 'object' && video.category ? video.category.name : '',
-                        disciplineName: typeof video.category === 'object' && video.category && typeof video.category.discipline === 'object' && video.category.discipline ? video.category.discipline.name : '',
-                        instructor: typeof video.instructor === 'object' && video.instructor && 'name' in video.instructor ?
-                            (video.instructor as { name?: string }).name || '' : '',
+                        disciplineId: getCategoryData(video.category_id)?.discipline_id || '',
+                        categoryName: getCategoryData(video.category_id)?.name || '',
+                        disciplineName: getDisciplineName(video.category_id),
+                        instructor: '',
                         uploadDate: video.created_at,
                         lastModified: video.updated_at,
                         viewCount: video.view_count || 0,
@@ -627,6 +675,8 @@ export default function VideoLibraryPage() {
                         tags: video.tags || [],
                         streamId: video.cloudflare_video_id || undefined
                     }))}
+                    selectedVideos={selectedVideos}
+                    onSelectionChange={setSelectedVideos}
                     categories={(categoriesQuery.data as CategoryWithRelations[] || []).map(cat => ({
                         id: cat.id,
                         name: cat.name,

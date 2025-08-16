@@ -7,13 +7,11 @@
  */
 
 import {
-    createServerComponentClient,
     createAdminClient
 } from '../lib/supabase'
 import { createClientComponentClient } from '../lib/supabase-browser'
 import { handleSupabaseError } from '../lib/shared/utils/supabase-errors'
 import { RealtimeService } from '../lib/shared/services/realtime'
-import type { RealtimeCallback } from '../lib/shared/types/services'
 import type {
     Discipline,
     Category,
@@ -32,6 +30,26 @@ import type {
     VideoDifficulty,
     ProcessingStatus
 } from 'shared/types/database'
+
+// Re-export types for client-side usage
+export type {
+    Video,
+    VideoInsert,
+    VideoUpdate,
+    Discipline,
+    Category,
+    Instructor,
+    DisciplineInsert,
+    DisciplineUpdate,
+    CategoryInsert,
+    CategoryUpdate,
+    DisciplineWithRelations,
+    CategoryWithRelations,
+    VideoWithRelations,
+    SubscriptionTier,
+    VideoDifficulty,
+    ProcessingStatus
+}
 
 // Service Types
 export interface ContentFilters {
@@ -941,7 +959,7 @@ export const contentSubscriptions = {
     subscribeToVideoProcessing(callback: (video: Video) => void) {
         return getRealtime().subscribeToTable(
             'videos',
-            (payload: { eventType: string; new?: any; old?: any }) => {
+            (payload: { eventType: string; new?: Partial<Video>; old?: Partial<Video> }) => {
                 if (
                     payload.eventType === 'UPDATE' &&
                     payload.new &&

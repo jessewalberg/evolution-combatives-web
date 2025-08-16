@@ -58,7 +58,7 @@ import {
 // Services & Types
 import { contentQueries, contentMutations } from '../../../../src/services/content'
 import { useAuth } from '../../../../src/hooks/useAuth'
-import type { CategoryWithRelations, DisciplineWithRelations } from 'shared/types/database'
+import type { CategoryWithRelations, DisciplineWithRelations, Video, UserProgress, CategoryInsert, CategoryUpdate } from '../../../../src/lib/shared/types/database'
 
 
 // Loading Spinner Component
@@ -143,8 +143,8 @@ function SortableCategoryRow({ category, discipline, onEdit, onDelete, onMerge, 
     }
 
     const videoCount = category.videos?.length || 0
-    const completedVideos = category.videos?.filter((v: any) =>
-        v.user_progress?.some((p: any) => p.completed)
+    const completedVideos = category.videos?.filter((v: Video & { user_progress?: UserProgress[] }) =>
+        v.user_progress?.some((p: UserProgress) => p.completed)
     ).length || 0
     const completionRate = videoCount > 0 ? Math.round((completedVideos / videoCount) * 100) : 0
 
@@ -263,7 +263,9 @@ export default function CategoriesPage() {
         slug: '',
         description: '',
         disciplineId: '',
-        isActive: true
+        isActive: true,
+        color: '#6B7280',
+        subscription_tier_required: 'beginner' as 'beginner' | 'intermediate' | 'advanced'
     })
 
     // Drag and drop sensors
@@ -313,8 +315,8 @@ export default function CategoriesPage() {
     const avgCompletionRate = allCategories.length > 0
         ? Math.round(allCategories.reduce((sum, c) => {
             const videoCount = c.videos?.length || 0
-            const completedVideos = c.videos?.filter((v: any) =>
-                v.user_progress?.some((p: any) => p.completed)
+            const completedVideos = c.videos?.filter((v: Video & { user_progress?: UserProgress[] }) =>
+                v.user_progress?.some((p: UserProgress) => p.completed)
             ).length || 0
             return sum + (videoCount > 0 ? (completedVideos / videoCount) * 100 : 0)
         }, 0) / allCategories.length)
@@ -329,20 +331,20 @@ export default function CategoriesPage() {
 
     // Mutations
     const createMutation = useMutation({
-        mutationFn: (data: any) => contentMutations.createCategory(data),
+        mutationFn: (data: CategoryInsert) => contentMutations.createCategory(data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Category created successfully')
             setCreateDialogOpen(false)
             resetForm()
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to create category: ${error.message}`)
         },
     })
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string; data: any }) =>
+        mutationFn: ({ id, data }: { id: string; data: CategoryUpdate }) =>
             contentMutations.updateCategory(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
@@ -351,7 +353,7 @@ export default function CategoriesPage() {
             setSelectedCategory(null)
             resetForm()
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to update category: ${error.message}`)
         },
     })
@@ -364,7 +366,7 @@ export default function CategoriesPage() {
             setDeleteDialogOpen(false)
             setSelectedCategory(null)
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to delete category: ${error.message}`)
         },
     })
@@ -376,7 +378,7 @@ export default function CategoriesPage() {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Categories reordered successfully')
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to reorder categories: ${error.message}`)
         },
     })
@@ -390,7 +392,7 @@ export default function CategoriesPage() {
             setMergeDialogOpen(false)
             setSelectedCategories([])
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(`Failed to merge categories: ${error.message}`)
         },
     })
@@ -402,7 +404,9 @@ export default function CategoriesPage() {
             slug: '',
             description: '',
             disciplineId: '',
-            isActive: true
+            isActive: true,
+            color: '#6B7280',
+            subscription_tier_required: 'beginner' as 'beginner' | 'intermediate' | 'advanced'
         })
     }
 
@@ -427,6 +431,8 @@ export default function CategoriesPage() {
             description: category.description || '',
             disciplineId: category.discipline_id,
             isActive: category.is_active,
+            color: category.color || '#6B7280',
+            subscription_tier_required: category.subscription_tier_required || 'beginner'
         })
         setEditDialogOpen(true)
     }
@@ -470,8 +476,13 @@ export default function CategoriesPage() {
     const onSubmit = async () => {
         try {
             const categoryData = {
-                ...formData,
+                name: formData.name,
+                slug: formData.slug,
+                description: formData.description,
                 discipline_id: formData.disciplineId,
+                color: formData.color,
+                subscription_tier_required: formData.subscription_tier_required,
+                is_active: formData.isActive,
                 sort_order: selectedCategory ? selectedCategory.sort_order : (filteredCategories.length || 0) + 1,
             }
 

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         return authResult.error
     }
 
-    const { user, supabase } = authResult
+    const { } = authResult
 
     let videoId: string | undefined;
 
