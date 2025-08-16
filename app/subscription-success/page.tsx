@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card } from '@/src/components/ui/card';
 import { Button } from '@/src/components/ui/button';
@@ -17,7 +17,7 @@ import { TIER_DISPLAY_INFO } from '@/src/lib/shared/constants/subscriptionTiers'
 
 type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced';
 
-export default function SubscriptionSuccessPage() {
+function SubscriptionSuccessContent() {
     const searchParams = useSearchParams();
     const [redirecting, setRedirecting] = useState(false);
 
@@ -153,5 +153,20 @@ export default function SubscriptionSuccessPage() {
                 </div>
             </Card>
         </div>
+    );
+}
+
+export default function SubscriptionSuccessPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading...</p>
+                </div>
+            </div>
+        }>
+            <SubscriptionSuccessContent />
+        </Suspense>
     );
 }
