@@ -29,7 +29,6 @@ import {
     UserIcon,
     PencilIcon,
     EnvelopeIcon,
-    ChartBarIcon,
     MagnifyingGlassIcon,
     FunnelIcon,
     ChevronUpIcon,
@@ -73,7 +72,7 @@ interface ActivityEvent {
  */
 interface SubscriptionEvent {
     id: string
-    tier: 'beginner' | 'intermediate' | 'advanced' | null
+    tier: 'none' | 'tier1' | 'tier2' | 'tier3' | null
     status: 'active' | 'expired' | 'cancelled' | 'pending'
     startDate: string
     endDate?: string
@@ -89,7 +88,7 @@ interface User {
     firstName: string
     lastName: string
     avatarUrl?: string
-    subscriptionTier: 'beginner' | 'intermediate' | 'advanced' | null
+    subscriptionTier: 'none' | 'tier1' | 'tier2' | 'tier3' | null
     adminRole: AdminRole
     status: UserStatus
     activityStatus: ActivityStatus
@@ -159,9 +158,6 @@ interface UserTableProps {
     onViewProfile?: (user: User) => void
     onEditSubscription?: (user: User) => void
     onSendMessage?: (user: User) => void
-    onSuspendUser?: (user: User) => void
-    onActivateUser?: (user: User) => void
-    onViewAnalytics?: (user: User) => void
     onExportUser?: (user: User) => void
     onBulkAction?: (action: string, users: User[]) => void
 
@@ -175,10 +171,10 @@ interface UserTableProps {
  * Subscription tier options
  */
 const SUBSCRIPTION_TIERS = [
-    { value: 'beginner', label: 'Beginner ($9)', color: 'info' },
-    { value: 'intermediate', label: 'Intermediate ($19)', color: 'warning' },
-    { value: 'advanced', label: 'Advanced ($49)', color: 'success' },
-    { value: 'none', label: 'None', color: 'secondary' },
+    { value: 'tier1', label: 'Tier 1 ($9)', color: 'info' },
+    { value: 'tier2', label: 'Tier 2 ($19)', color: 'warning' },
+    { value: 'tier3', label: 'Tier 3 ($49)', color: 'success' },
+    { value: 'none', label: 'Free', color: 'secondary' },
 ] as const
 
 /**
@@ -221,9 +217,6 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
         onViewProfile,
         onEditSubscription,
         onSendMessage,
-        onSuspendUser,
-        onActivateUser,
-        onViewAnalytics,
         onBulkAction,
         className,
         ...props
@@ -812,12 +805,12 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
                                         {renderSortIcon('lastActive')}
                                     </div>
                                 </TableHead>
-                                <TableHead className="w-32">Actions</TableHead>
+                                <TableHead className="w-40">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {paginatedUsers.map((user) => (
-                                <TableRow key={user.id} className="hover:bg-neutral-800/50">
+                                <TableRow key={user.id}>
                                     <TableCell>
                                         <input
                                             type="checkbox"
@@ -883,12 +876,13 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center gap-2 min-w-fit">
                                             {onViewProfile && (
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="outline"
                                                     size="sm"
                                                     onClick={() => onViewProfile(user)}
+                                                    className="h-8 w-8 p-0 border-neutral-400 bg-neutral-800 hover:border-white hover:bg-neutral-700 text-white hover:text-white"
                                                     title="View profile"
                                                 >
                                                     <EyeIcon className="h-4 w-4" />
@@ -896,9 +890,10 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
                                             )}
                                             {onEditSubscription && (
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="outline"
                                                     size="sm"
                                                     onClick={() => onEditSubscription(user)}
+                                                    className="h-8 w-8 p-0 border-neutral-400 bg-neutral-800 hover:border-white hover:bg-neutral-700 text-white hover:text-white"
                                                     title="Edit subscription"
                                                 >
                                                     <PencilIcon className="h-4 w-4" />
@@ -906,44 +901,13 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
                                             )}
                                             {onSendMessage && (
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="outline"
                                                     size="sm"
                                                     onClick={() => onSendMessage(user)}
+                                                    className="h-8 w-8 p-0 border-neutral-400 bg-neutral-800 hover:border-white hover:bg-neutral-700 text-white hover:text-white"
                                                     title="Send message"
                                                 >
                                                     <EnvelopeIcon className="h-4 w-4" />
-                                                </Button>
-                                            )}
-                                            {onViewAnalytics && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => onViewAnalytics(user)}
-                                                    title="View analytics"
-                                                >
-                                                    <ChartBarIcon className="h-4 w-4" />
-                                                </Button>
-                                            )}
-                                            {user.status === 'active' && onSuspendUser && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => onSuspendUser(user)}
-                                                    title="Suspend user"
-                                                    className="text-error-400 hover:text-error-300 hover:bg-error-500/10"
-                                                >
-                                                    <ExclamationTriangleIcon className="h-4 w-4" />
-                                                </Button>
-                                            )}
-                                            {user.status === 'suspended' && onActivateUser && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => onActivateUser(user)}
-                                                    title="Activate user"
-                                                    className="text-success-400 hover:text-success-300 hover:bg-success-500/10"
-                                                >
-                                                    <CheckCircleIcon className="h-4 w-4" />
                                                 </Button>
                                             )}
                                         </div>

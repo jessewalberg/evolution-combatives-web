@@ -11,11 +11,9 @@
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../src/hooks/useAuth'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
 import { StatsCard, StatsCardGrid } from '../../src/components/ui/stats-card'
 import { Card } from '../../src/components/ui/card'
 import { Button } from '../../src/components/ui/button'
-import { Badge } from '../../src/components/ui/badge'
 import { Spinner } from '../../src/components/ui/loading'
 import { cn } from '../../src/lib/utils'
 
@@ -76,94 +74,26 @@ interface QuickAction {
 export default function DashboardPage() {
     const router = useRouter()
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
-    const supabase = createClientComponentClient()
 
     // Dashboard metrics query
     const metricsQuery = useQuery({
         queryKey: ['dashboard', 'metrics'],
         queryFn: async () => {
-            const [
-                usersResult,
-                subscriptionsResult,
-                videosResult,
-                engagementResult
-            ] = await Promise.all([
-                // Users metrics
-                supabase
-                    .from('profiles')
-                    .select('id, created_at')
-                    .order('created_at', { ascending: false }),
+            const response = await fetch('/api/dashboard/metrics', {
+                credentials: 'include'
+            })
 
-                // Subscriptions metrics
-                supabase
-                    .from('subscriptions')
-                    .select('id, tier, status, current_period_end, created_at')
-                    .eq('status', 'active'),
+            if (!response.ok) {
+                throw new Error(`Failed to fetch dashboard metrics: ${response.status}`)
+            }
 
-                // Videos metrics
-                supabase
-                    .from('videos')
-                    .select('id, created_at, processing_status, view_count')
-                    .order('created_at', { ascending: false }),
+            const result = await response.json()
 
-                // Engagement metrics (user progress)
-                supabase
-                    .from('user_progress')
-                    .select('id, watch_time, completed, created_at')
-            ])
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to fetch dashboard metrics')
+            }
 
-            if (usersResult.error) throw usersResult.error
-            if (subscriptionsResult.error) throw subscriptionsResult.error
-            if (videosResult.error) throw videosResult.error
-            if (engagementResult.error) throw engagementResult.error
-
-            const now = new Date()
-            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-            const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
-
-            // Calculate metrics
-            const totalUsers = usersResult.data?.length || 0
-            const usersThisMonth = usersResult.data?.filter(u =>
-                new Date(u.created_at) >= thirtyDaysAgo
-            ).length || 0
-            const usersLastMonth = usersResult.data?.filter(u =>
-                new Date(u.created_at) >= sixtyDaysAgo && new Date(u.created_at) < thirtyDaysAgo
-            ).length || 0
-
-            const activeSubscriptions = subscriptionsResult.data?.length || 0
-            const monthlyRevenue = subscriptionsResult.data?.reduce((sum, sub) => {
-                const tierPrices = { beginner: 9, intermediate: 19, advanced: 49 }
-                return sum + (tierPrices[sub.tier as keyof typeof tierPrices] || 0)
-            }, 0) || 0
-
-            const totalVideos = videosResult.data?.length || 0
-            const videosThisMonth = videosResult.data?.filter(v =>
-                new Date(v.created_at) >= thirtyDaysAgo
-            ).length || 0
-            const processingVideos = videosResult.data?.filter(v =>
-                v.processing_status === 'processing'
-            ).length || 0
-
-            const totalWatchTime = engagementResult.data?.reduce((sum, p) =>
-                sum + (p.watch_time || 0), 0
-            ) || 0
-            const avgEngagementTime = totalUsers > 0 ? totalWatchTime / totalUsers : 0
-
-            return {
-                totalUsers,
-                totalUsersGrowth: usersLastMonth > 0 ?
-                    ((usersThisMonth - usersLastMonth) / usersLastMonth) * 100 : 0,
-                activeSubscriptions,
-                monthlyRevenue,
-                revenueGrowth: 12.5, // Mock data - would calculate from historical data
-                totalVideos,
-                videosThisMonth,
-                avgEngagementTime,
-                engagementGrowth: 8.3, // Mock data
-                processingVideos,
-                pendingQA: 5, // Mock data - would come from Q&A system
-                systemAlerts: 2 // Mock data - would come from monitoring system
-            } as DashboardMetrics
+            return result.data as DashboardMetrics
         },
         staleTime: 30 * 60 * 1000, // 30 minutes - metrics don't change that often
         gcTime: 60 * 60 * 1000, // 1 hour - keep in cache longer
@@ -323,17 +253,17 @@ export default function DashboardPage() {
     const getActivityColor = (type: RecentActivity['type']) => {
         switch (type) {
             case 'user_registration':
-                return 'text-success-400'
+                return 'text-green-600 dark:text-green-400'
             case 'video_upload':
-                return 'text-info-400'
+                return 'text-blue-600 dark:text-blue-400'
             case 'video_processed':
-                return 'text-success-400'
+                return 'text-green-600 dark:text-green-400'
             case 'qa_submission':
-                return 'text-warning-400'
+                return 'text-yellow-600 dark:text-yellow-400'
             case 'system_alert':
-                return 'text-error-400'
+                return 'text-red-600 dark:text-red-400'
             default:
-                return 'text-neutral-400'
+                return 'text-muted-foreground'
         }
     }
 
@@ -351,13 +281,13 @@ export default function DashboardPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                    <h2 className="text-xl font-semibold text-foreground mb-2">
                         Access Denied
                     </h2>
-                    <p className="text-gray-600 dark:text-neutral-400 mb-4">
+                    <p className="text-muted-foreground mb-4">
                         Your account does not have admin permissions.
                     </p>
-                    <p className="text-sm text-gray-500 dark:text-neutral-500">
+                    <p className="text-sm text-muted-foreground/70">
                         Current role: {profile?.admin_role || 'none'} | User: {user.email}
                     </p>
                 </div>
@@ -368,46 +298,46 @@ export default function DashboardPage() {
     return (
         <div className="space-y-8">
             {/* Page Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex-1">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
                         Dashboard Overview
                     </h1>
-                    <p className="text-gray-600 dark:text-neutral-400 mt-2">
+                    <p className="text-muted-foreground mt-2">
                         Welcome back, {profile.full_name || user.email}. Here&apos;s what&apos;s happening with your tactical training platform.
                     </p>
-                    {metricsQuery.dataUpdatedAt && (
-                        <p className="text-xs text-gray-500 dark:text-neutral-500 mt-1">
+                    {metricsQuery.dataUpdatedAt != null && (
+                        <p className="text-xs text-muted-foreground/70 mt-1">
                             Last updated: {new Date(metricsQuery.dataUpdatedAt).toLocaleTimeString()}
                         </p>
                     )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:mt-6">
                     <Button
                         variant="outline"
-                        size="sm"
+                        size="default"
                         onClick={handleRefresh}
                         disabled={isRefreshing}
                         leftIcon={<ArrowPathIcon className={cn("h-4 w-4", isRefreshing && "animate-spin")} />}
+                        className="w-full sm:w-auto"
                     >
                         {isRefreshing ? 'Refreshing...' : 'Refresh'}
                     </Button>
                     <Button
                         onClick={() => router.push('/dashboard/content/videos')}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        variant="primary"
+                        size="default"
+                        leftIcon={<VideoCameraIcon className="h-4 w-4" />}
+                        className="w-full sm:w-auto"
                     >
-                        <VideoCameraIcon className="h-4 w-4 mr-2" />
                         Manage Videos
                     </Button>
-                    <Badge variant="success" className="hidden sm:flex">
-                        {profile.admin_role.replace('_', ' ').toUpperCase()}
-                    </Badge>
                 </div>
             </div>
 
             {/* Key Metrics */}
             <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                <h2 className="text-xl font-semibold text-foreground mb-4">
                     Key Metrics
                 </h2>
                 <StatsCardGrid columns={4}>
@@ -498,21 +428,22 @@ export default function DashboardPage() {
                 {/* Quick Actions */}
                 <Card className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        <h3 className="text-lg font-semibold text-card-foreground">
                             Quick Actions
                         </h3>
-                        <PlusIcon className="h-5 w-5 text-neutral-400" />
+                        <PlusIcon className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div className="space-y-3">
                         {/* Always show video upload button */}
                         <Button
                             onClick={() => router.push('/dashboard/content/videos')}
-                            className="w-full justify-start h-auto p-4 bg-blue-600 hover:bg-blue-700 text-white"
+                            variant="primary"
+                            className="w-full justify-start h-auto p-4"
+                            leftIcon={<VideoCameraIcon className="h-5 w-5" />}
                         >
-                            <VideoCameraIcon className="h-5 w-5 mr-3" />
                             <div className="text-left">
                                 <div className="font-medium">Upload & Manage Videos</div>
-                                <div className="text-sm opacity-75">
+                                <div className="text-sm opacity-90">
                                     Access video library and upload new content
                                 </div>
                             </div>
@@ -522,12 +453,12 @@ export default function DashboardPage() {
                         <Button
                             onClick={() => router.push('/content/categories')}
                             variant="outline"
-                            className="w-full justify-start h-auto p-4 border-gray-300 dark:border-neutral-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-neutral-800"
+                            className="w-full justify-start h-auto p-4"
+                            leftIcon={<DocumentTextIcon className="h-5 w-5" />}
                         >
-                            <DocumentTextIcon className="h-5 w-5 mr-3" />
                             <div className="text-left">
                                 <div className="font-medium">Manage Categories</div>
-                                <div className="text-sm opacity-75">
+                                <div className="text-sm opacity-90">
                                     Organize video content by categories
                                 </div>
                             </div>
@@ -537,12 +468,12 @@ export default function DashboardPage() {
                         <Button
                             onClick={() => router.push('/users')}
                             variant="outline"
-                            className="w-full justify-start h-auto p-4 border-gray-300 dark:border-neutral-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-neutral-800"
+                            className="w-full justify-start h-auto p-4"
+                            leftIcon={<UsersIcon className="h-5 w-5" />}
                         >
-                            <UsersIcon className="h-5 w-5 mr-3" />
                             <div className="text-left">
                                 <div className="font-medium">Manage Users</div>
-                                <div className="text-sm opacity-75">
+                                <div className="text-sm opacity-90">
                                     View and manage user accounts
                                 </div>
                             </div>
@@ -552,12 +483,12 @@ export default function DashboardPage() {
                         <Button
                             onClick={() => router.push('/analytics')}
                             variant="outline"
-                            className="w-full justify-start h-auto p-4 border-gray-300 dark:border-neutral-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-neutral-800"
+                            className="w-full justify-start h-auto p-4"
+                            leftIcon={<ChartBarIcon className="h-5 w-5" />}
                         >
-                            <ChartBarIcon className="h-5 w-5 mr-3" />
                             <div className="text-left">
                                 <div className="font-medium">View Analytics</div>
-                                <div className="text-sm opacity-75">
+                                <div className="text-sm opacity-90">
                                     Check performance metrics and insights
                                 </div>
                             </div>
@@ -569,13 +500,13 @@ export default function DashboardPage() {
                                 <Button
                                     key={action.id}
                                     variant={action.variant || 'outline'}
-                                    className="w-full justify-start h-auto p-4 border-gray-300 dark:border-neutral-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-neutral-800"
+                                    className="w-full justify-start h-auto p-4"
                                     onClick={() => handleQuickAction(action)}
+                                    leftIcon={<Icon className="h-5 w-5" />}
                                 >
-                                    <Icon className="h-5 w-5 mr-3" />
                                     <div className="text-left">
                                         <div className="font-medium">{action.title}</div>
-                                        <div className="text-sm opacity-75">
+                                        <div className="text-sm opacity-90">
                                             {action.description}
                                         </div>
                                     </div>
@@ -588,7 +519,7 @@ export default function DashboardPage() {
                 {/* Recent Activity */}
                 <Card className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        <h3 className="text-lg font-semibold text-card-foreground">
                             Recent Activity
                         </h3>
                         <Button variant="ghost" size="sm">
@@ -601,10 +532,10 @@ export default function DashboardPage() {
                                 {[...Array(5)].map((_, i) => (
                                     <div key={i} className="animate-pulse">
                                         <div className="flex items-start gap-3">
-                                            <div className="w-8 h-8 bg-neutral-700 rounded-full" />
+                                            <div className="w-8 h-8 bg-muted rounded-full" />
                                             <div className="flex-1 space-y-2">
-                                                <div className="h-4 bg-neutral-700 rounded w-3/4" />
-                                                <div className="h-3 bg-neutral-800 rounded w-1/2" />
+                                                <div className="h-4 bg-muted rounded w-3/4" />
+                                                <div className="h-3 bg-muted/60 rounded w-1/2" />
                                             </div>
                                         </div>
                                     </div>
@@ -617,7 +548,7 @@ export default function DashboardPage() {
                                     <div key={activity.id} className="flex items-start gap-3">
                                         <div className={cn(
                                             'w-8 h-8 rounded-full flex items-center justify-center',
-                                            'bg-neutral-800 border border-neutral-700'
+                                            'bg-muted border border-border'
                                         )}>
                                             <Icon className={cn(
                                                 'h-4 w-4',
@@ -626,14 +557,14 @@ export default function DashboardPage() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                                <p className="text-sm font-medium text-card-foreground">
                                                     {activity.title}
                                                 </p>
-                                                <p className="text-xs text-neutral-400">
+                                                <p className="text-xs text-muted-foreground">
                                                     {formatActivityTime(activity.timestamp)}
                                                 </p>
                                             </div>
-                                            <p className="text-sm text-neutral-400 mt-1">
+                                            <p className="text-sm text-muted-foreground mt-1">
                                                 {activity.description}
                                             </p>
                                         </div>

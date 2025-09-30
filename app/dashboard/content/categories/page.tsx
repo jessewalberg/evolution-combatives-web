@@ -50,15 +50,13 @@ import {
     UserGroupIcon,
     VideoCameraIcon,
     Bars3Icon,
-    ArrowsRightLeftIcon,
-    ArrowTopRightOnSquareIcon,
     FolderIcon,
 } from '@heroicons/react/24/outline'
 
 // Services & Types
-import { contentQueries, contentMutations } from '../../../../src/services/content'
+import { clientContentService } from '../../../../src/services/content-client'
 import { useAuth } from '../../../../src/hooks/useAuth'
-import type { CategoryWithRelations, DisciplineWithRelations, Video, UserProgress, CategoryInsert, CategoryUpdate } from '../../../../src/lib/shared/types/database'
+import type { CategoryWithRelations, DisciplineWithRelations, CategoryInsert, CategoryUpdate } from '../../../../src/lib/shared/types/database'
 
 
 // Loading Spinner Component
@@ -119,13 +117,11 @@ function EmptyState({
 }
 
 // Sortable Category Row Component
-function SortableCategoryRow({ category, discipline, onEdit, onDelete, onMerge, onSplit }: {
+function SortableCategoryRow({ category, discipline, onEdit, onDelete }: {
     category: CategoryWithRelations
     discipline: DisciplineWithRelations
     onEdit: (category: CategoryWithRelations) => void
     onDelete: (category: CategoryWithRelations) => void
-    onMerge: (category: CategoryWithRelations) => void
-    onSplit: (category: CategoryWithRelations) => void
 }) {
     const {
         attributes,
@@ -142,11 +138,9 @@ function SortableCategoryRow({ category, discipline, onEdit, onDelete, onMerge, 
         opacity: isDragging ? 0.5 : 1,
     }
 
-    const videoCount = category.videos?.length || 0
-    const completedVideos = category.videos?.filter((v: Video & { user_progress?: UserProgress[] }) =>
-        v.user_progress?.some((p: UserProgress) => p.completed)
-    ).length || 0
-    const completionRate = videoCount > 0 ? Math.round((completedVideos / videoCount) * 100) : 0
+    // TODO: Videos data needs to be fetched separately or included in API response
+    const videoCount = 0 // Temporarily disabled: category.videos?.length || 0
+    const completionRate = 0 // Temporarily disabled until we have video data
 
     return (
         <TableRow ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
@@ -202,41 +196,23 @@ function SortableCategoryRow({ category, discipline, onEdit, onDelete, onMerge, 
                 </Badge>
             </TableCell>
             <TableCell align="right">
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => onEdit(category)}
-                        className="h-8 w-8 p-0"
+                        className="h-8 w-8 p-0 border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     >
-                        <PencilIcon className="h-4 w-4" />
+                        <PencilIcon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                         <span className="sr-only">Edit category</span>
                     </Button>
                     <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onMerge(category)}
-                        className="h-8 w-8 p-0"
-                    >
-                        <ArrowsRightLeftIcon className="h-4 w-4" />
-                        <span className="sr-only">Merge category</span>
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onSplit(category)}
-                        className="h-8 w-8 p-0"
-                    >
-                        <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                        <span className="sr-only">Split category</span>
-                    </Button>
-                    <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => onDelete(category)}
-                        className="h-8 w-8 p-0 text-error-400 hover:text-error-300 hover:bg-error-500/10"
+                        className="h-8 w-8 p-0 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-400 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
                     >
-                        <TrashIcon className="h-4 w-4" />
+                        <TrashIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
                         <span className="sr-only">Delete category</span>
                     </Button>
                 </div>
@@ -254,8 +230,6 @@ export default function CategoriesPage() {
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
     const [editDialogOpen, setEditDialogOpen] = useState(false)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-    const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
-    const [splitDialogOpen, setSplitDialogOpen] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<CategoryWithRelations | null>(null)
     const [selectedCategories, setSelectedCategories] = useState<string[]>([])
     const [formData, setFormData] = useState({
@@ -265,7 +239,7 @@ export default function CategoriesPage() {
         disciplineId: '',
         isActive: true,
         color: '#6B7280',
-        subscription_tier_required: 'beginner' as 'beginner' | 'intermediate' | 'advanced'
+        subscription_tier_required: 'none' as 'none' | 'tier1' | 'tier2' | 'tier3'
     })
 
     // Drag and drop sensors
@@ -282,16 +256,13 @@ export default function CategoriesPage() {
     // Queries
     const disciplinesQuery = useQuery({
         queryKey: ['disciplines', 'list'],
-        queryFn: () => contentQueries.fetchDisciplines(false),
+        queryFn: () => clientContentService.fetchDisciplines(),
         enabled: !!user && !!profile?.admin_role,
     })
 
     const categoriesQuery = useQuery({
         queryKey: ['categories', 'list', selectedDiscipline],
-        queryFn: () => contentQueries.fetchCategories(
-            selectedDiscipline === 'all' ? undefined : selectedDiscipline,
-            true
-        ),
+        queryFn: () => clientContentService.fetchCategories(),
         enabled: !!user && !!profile?.admin_role,
     })
 
@@ -311,16 +282,9 @@ export default function CategoriesPage() {
     const allCategories = categoriesQuery.data || []
     const totalCategories = allCategories.length
     const activeCategories = allCategories.filter(c => c.is_active).length
-    const totalVideos = allCategories.reduce((sum, c) => sum + (c.videos?.length || 0), 0)
-    const avgCompletionRate = allCategories.length > 0
-        ? Math.round(allCategories.reduce((sum, c) => {
-            const videoCount = c.videos?.length || 0
-            const completedVideos = c.videos?.filter((v: Video & { user_progress?: UserProgress[] }) =>
-                v.user_progress?.some((p: UserProgress) => p.completed)
-            ).length || 0
-            return sum + (videoCount > 0 ? (completedVideos / videoCount) * 100 : 0)
-        }, 0) / allCategories.length)
-        : 0
+    // TODO: Videos data needs to be fetched separately or included in API response
+    const totalVideos = 0 // Temporarily disabled: allCategories.reduce((sum, c) => sum + (c.videos?.length || 0), 0)
+    const avgCompletionRate = 0 // Temporarily disabled until we have video data
 
     // Get discipline options for form
     const disciplineOptions = disciplines.map(d => ({
@@ -331,7 +295,7 @@ export default function CategoriesPage() {
 
     // Mutations
     const createMutation = useMutation({
-        mutationFn: (data: CategoryInsert) => contentMutations.createCategory(data),
+        mutationFn: (data: CategoryInsert) => clientContentService.createCategory(data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Category created successfully')
@@ -345,7 +309,7 @@ export default function CategoriesPage() {
 
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: CategoryUpdate }) =>
-            contentMutations.updateCategory(id, data),
+            clientContentService.updateCategory(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Category updated successfully')
@@ -359,7 +323,7 @@ export default function CategoriesPage() {
     })
 
     const deleteMutation = useMutation({
-        mutationFn: (categoryId: string) => contentMutations.deleteCategory(categoryId),
+        mutationFn: (categoryId: string) => clientContentService.deleteCategory(categoryId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Category deleted successfully')
@@ -373,7 +337,7 @@ export default function CategoriesPage() {
 
     const reorderMutation = useMutation({
         mutationFn: (reorderData: Array<{ id: string; sort_order: number }>) =>
-            contentMutations.reorderContent('categories', reorderData),
+            clientContentService.reorderCategories(reorderData),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Categories reordered successfully')
@@ -383,19 +347,6 @@ export default function CategoriesPage() {
         },
     })
 
-    const mergeMutation = useMutation({
-        mutationFn: ({ targetId, sourceIds }: { targetId: string; sourceIds: string[] }) =>
-            contentMutations.mergeCategories(targetId, sourceIds),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] })
-            toast.success('Categories merged successfully')
-            setMergeDialogOpen(false)
-            setSelectedCategories([])
-        },
-        onError: (error: Error) => {
-            toast.error(`Failed to merge categories: ${error.message}`)
-        },
-    })
 
     // Handlers
     const resetForm = () => {
@@ -406,7 +357,7 @@ export default function CategoriesPage() {
             disciplineId: '',
             isActive: true,
             color: '#6B7280',
-            subscription_tier_required: 'beginner' as 'beginner' | 'intermediate' | 'advanced'
+            subscription_tier_required: 'none' as 'none' | 'tier1' | 'tier2' | 'tier3'
         })
     }
 
@@ -432,7 +383,7 @@ export default function CategoriesPage() {
             disciplineId: category.discipline_id,
             isActive: category.is_active,
             color: category.color || '#6B7280',
-            subscription_tier_required: category.subscription_tier_required || 'beginner'
+            subscription_tier_required: category.subscription_tier_required || 'none'
         })
         setEditDialogOpen(true)
     }
@@ -446,23 +397,6 @@ export default function CategoriesPage() {
         setDeleteDialogOpen(true)
     }
 
-    const handleMerge = (category: CategoryWithRelations) => {
-        if (!canManageContent) {
-            toast.error('You do not have permission to merge categories')
-            return
-        }
-        setSelectedCategory(category)
-        setMergeDialogOpen(true)
-    }
-
-    const handleSplit = (category: CategoryWithRelations) => {
-        if (!canManageContent) {
-            toast.error('You do not have permission to split categories')
-            return
-        }
-        setSelectedCategory(category)
-        setSplitDialogOpen(true)
-    }
 
     const generateSlugFromName = (name: string) => {
         return name
@@ -475,7 +409,7 @@ export default function CategoriesPage() {
 
     const onSubmit = async () => {
         try {
-            const categoryData = {
+            const categoryData: CategoryInsert = {
                 name: formData.name,
                 slug: formData.slug,
                 description: formData.description,
@@ -544,18 +478,18 @@ export default function CategoriesPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-neutral-0">Categories</h1>
                     <p className="text-neutral-400">
                         Manage training categories within disciplines
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <select
                         value={selectedDiscipline}
                         onChange={(e) => setSelectedDiscipline(e.target.value)}
-                        className="w-48 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-0 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="w-full sm:w-48 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-neutral-0 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     >
                         <option value="all">All Disciplines</option>
                         {disciplines.map((discipline) => (
@@ -565,7 +499,7 @@ export default function CategoriesPage() {
                         ))}
                     </select>
                     {canManageContent && (
-                        <Button onClick={handleCreate}>
+                        <Button onClick={handleCreate} className="w-full sm:w-auto">
                             <PlusIcon className="h-4 w-4 mr-2" />
                             Create Category
                         </Button>
@@ -696,8 +630,6 @@ export default function CategoriesPage() {
                                                     discipline={discipline}
                                                     onEdit={handleEdit}
                                                     onDelete={handleDelete}
-                                                    onMerge={handleMerge}
-                                                    onSplit={handleSplit}
                                                 />
                                             )
                                         })}
@@ -857,103 +789,6 @@ export default function CategoriesPage() {
                 }}
             />
 
-            {/* Merge Dialog */}
-            <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Merge Categories</DialogTitle>
-                        <DialogDescription>
-                            Select categories to merge into &quot;{selectedCategory?.name}&quot;. All videos from selected categories will be moved to the target category.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-sm font-medium text-neutral-0 mb-2 block">
-                                Categories to merge (select multiple)
-                            </label>
-                            <div className="space-y-2 max-h-48 overflow-y-auto">
-                                {filteredCategories
-                                    .filter(c => c.id !== selectedCategory?.id && c.discipline_id === selectedCategory?.discipline_id)
-                                    .map((category) => (
-                                        <label key={category.id} className="flex items-center space-x-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedCategories.includes(category.id)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setSelectedCategories(prev => [...prev, category.id])
-                                                    } else {
-                                                        setSelectedCategories(prev => prev.filter(id => id !== category.id))
-                                                    }
-                                                }}
-                                                className="h-4 w-4 rounded border-neutral-600 bg-neutral-800 text-primary-600"
-                                            />
-                                            <span className="text-sm text-neutral-0">
-                                                {category.name} ({category.videos?.length || 0} videos)
-                                            </span>
-                                        </label>
-                                    ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setMergeDialogOpen(false)
-                                setSelectedCategories([])
-                            }}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                if (selectedCategory && selectedCategories.length > 0) {
-                                    mergeMutation.mutate({
-                                        targetId: selectedCategory.id,
-                                        sourceIds: selectedCategories
-                                    })
-                                }
-                            }}
-                            disabled={mergeMutation.isPending || selectedCategories.length === 0}
-                        >
-                            {mergeMutation.isPending ? <LoadingSpinner size="sm" /> : null}
-                            Merge Categories
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Split Dialog */}
-            <Dialog open={splitDialogOpen} onOpenChange={setSplitDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Split Category</DialogTitle>
-                        <DialogDescription>
-                            This feature allows you to split &quot;{selectedCategory?.name}&quot; into multiple categories by distributing its videos.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="text-center py-8">
-                        <ArrowTopRightOnSquareIcon className="mx-auto h-12 w-12 text-neutral-400" />
-                        <h3 className="mt-4 text-lg font-medium text-neutral-0">Coming Soon</h3>
-                        <p className="mt-2 text-sm text-neutral-400">
-                            Category splitting functionality will be available in a future update.
-                        </p>
-                    </div>
-
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => setSplitDialogOpen(false)}
-                        >
-                            Close
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     )
 } 

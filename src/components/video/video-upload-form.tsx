@@ -59,7 +59,7 @@ interface VideoMetadata {
     description: string
     categoryId: string
     disciplineId: string
-    subscriptionTier: 'beginner' | 'intermediate' | 'advanced'
+    subscriptionTier: 'none' | 'tier1' | 'tier2' | 'tier3'
     tags: string[]
     customThumbnail?: File
     duration?: number
@@ -70,9 +70,10 @@ interface VideoMetadata {
  * Subscription tier options
  */
 const SUBSCRIPTION_TIERS = [
-    { value: 'beginner', label: 'Beginner ($9)', description: 'Basic tactical content for new practitioners' },
-    { value: 'intermediate', label: 'Intermediate ($19)', description: 'Advanced techniques for experienced practitioners' },
-    { value: 'advanced', label: 'Advanced ($49)', description: 'Elite content for law enforcement professionals' },
+    { value: 'none', label: 'Free Content', description: 'Free content available to all users' },
+    { value: 'tier1', label: 'Tier 1 ($9)', description: 'Basic tactical content for new practitioners' },
+    { value: 'tier2', label: 'Tier 2 ($19)', description: 'Advanced techniques for experienced practitioners' },
+    { value: 'tier3', label: 'Tier 3 ($49)', description: 'Elite content for law enforcement professionals' },
 ] as const
 
 
@@ -175,6 +176,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
     ({
         categories = [],
         disciplines = [],
+        onSuccess,
         onError,
         onUploadStart,
         onUploadEnd,
@@ -194,7 +196,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
         // Prevent navigation during uploads
         React.useEffect(() => {
             const hasActiveUploads = uploads.some(u => u.status === 'uploading' || u.status === 'processing')
-            
+
             if (hasActiveUploads) {
                 const handleBeforeUnload = (e: BeforeUnloadEvent) => {
                     e.preventDefault()
@@ -283,7 +285,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                         description: '',
                         categoryId: '',
                         disciplineId: '',
-                        subscriptionTier: 'beginner',
+                        subscriptionTier: 'none',
                         tags: [],
                     }
                 }
@@ -342,7 +344,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
         const handleProcessingStart = useCallback((uploadId: string, streamId: string) => {
             // Add to background processing service
             videoProcessingService.addProcessingVideo(streamId)
-            
+
             // Mark as processing in local state
             setUploads(prev => prev.map(u =>
                 u.id === uploadId
@@ -381,7 +383,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                         subscriptionTier: upload.metadata.subscriptionTier
                     }
                 })
-                
+
                 const { uploadUrl } = uploadResponse
                 videoId = uploadResponse.videoId
 
@@ -446,6 +448,9 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
 
                 // Start background processing monitoring
                 handleProcessingStart(upload.id, videoId)
+
+                // Call success callback
+                onSuccess?.(videoId)
 
             } catch (error) {
                 console.error('Upload failed:', error)
@@ -637,11 +642,11 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                 {/* Upload Queue */}
                 {uploads.length > 0 && (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 Upload Queue ({uploads.length})
                             </h3>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                                 <Button
                                     variant="outline"
                                     size="default"
@@ -713,9 +718,9 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                                         fileCardVariants.variants[upload.status]
                                     )}
                                 >
-                                    <div className="flex gap-4">
+                                    <div className="flex flex-col sm:flex-row gap-4">
                                         {/* Thumbnail */}
-                                        <div className="flex-shrink-0 w-24 h-16 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                                        <div className="flex-shrink-0 w-full sm:w-24 h-16 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                                             {upload.thumbnailUrl ? (
                                                 <Image
                                                     src={upload.thumbnailUrl}
@@ -796,7 +801,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
 
                                             {/* Metadata Form */}
                                             {(upload.status === 'idle' || upload.status === 'complete' || upload.status === 'error') && (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                     <div className="space-y-4">
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -895,9 +900,9 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                                                                 Subscription Tier & Difficulty *
                                                             </label>
                                                             <select
-                                                                value={upload.metadata?.subscriptionTier || 'beginner'}
+                                                                value={upload.metadata?.subscriptionTier || 'none'}
                                                                 onChange={(e) => updateMetadata(upload.id, {
-                                                                    subscriptionTier: e.target.value as 'beginner' | 'intermediate' | 'advanced'
+                                                                    subscriptionTier: e.target.value as 'none' | 'tier1' | 'tier2' | 'tier3'
                                                                 })}
                                                                 disabled={upload.status === 'complete'}
                                                                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

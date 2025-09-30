@@ -177,9 +177,19 @@ export default function VideoLibraryPage() {
 
     const syncProcessingMutation = useMutation({
         mutationFn: async () => {
+            // Get CSRF token first
+            const csrfResponse = await fetch('/api/csrf-token', {
+                credentials: 'include'
+            })
+            const { csrfToken } = await csrfResponse.json()
+
             const response = await fetch('/api/video-processing/sync-all', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                credentials: 'include'
             })
             const result = await response.json()
             if (!result.success) {
@@ -189,9 +199,17 @@ export default function VideoLibraryPage() {
         },
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
-            toast.success(`Sync completed: ${result.results.updated} videos updated`, {
-                description: `Checked ${result.results.checked} videos, ${result.results.errors} errors`
-            })
+
+            if (result.results.errors > 0) {
+                console.log('Sync errors:', result.results.details.filter((d: { error?: string }) => d.error))
+                toast.warning(`Sync completed with errors: ${result.results.updated} videos updated`, {
+                    description: `Checked ${result.results.checked} videos, ${result.results.errors} errors. Check console for details.`
+                })
+            } else {
+                toast.success(`Sync completed: ${result.results.updated} videos updated`, {
+                    description: `Checked ${result.results.checked} videos successfully`
+                })
+            }
         },
         onError: (error: Error) => {
             toast.error('Failed to sync video processing status', {
@@ -414,44 +432,50 @@ export default function VideoLibraryPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+        <div className="min-h-screen bg-background p-6">
             <div className="max-w-7xl mx-auto space-y-8">
                 {/* Page Header */}
-                <div className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                            Video Library
-                        </h1>
-                        <p className="text-gray-600 dark:text-gray-300 mt-2">
-                            Manage training videos, organize by categories, and track performance
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {canManageContent && (
-                            <>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => syncProcessingMutation.mutate()}
-                                    disabled={syncProcessingMutation.isPending}
-                                    leftIcon={<ArrowPathIcon className={cn("h-4 w-4", syncProcessingMutation.isPending && "animate-spin")} />}
-                                >
-                                    Sync Status
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    onClick={() => router.push('/dashboard/content/videos/upload')}
-                                    leftIcon={<PlusIcon className="h-4 w-4" />}
-                                >
-                                    Upload Video
-                                </Button>
-                            </>
-                        )}
+                <div className="bg-card text-card-foreground rounded-lg shadow-sm border border-border">
+                    <div className="p-6">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                            <div className="flex-1 min-w-0">
+                                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+                                    Video Library
+                                </h1>
+                                <p className="text-muted-foreground mt-2 text-sm sm:text-base">
+                                    Manage training videos, organize by categories, and track performance
+                                </p>
+                            </div>
+                            {canManageContent && (
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                                    <Button
+                                        variant="outline"
+                                        size="default"
+                                        onClick={() => syncProcessingMutation.mutate()}
+                                        disabled={syncProcessingMutation.isPending}
+                                        leftIcon={<ArrowPathIcon className={cn("h-4 w-4", syncProcessingMutation.isPending && "animate-spin")} />}
+                                        className="w-full sm:w-auto"
+                                    >
+                                        <span className="sm:inline">Sync Status</span>
+                                    </Button>
+                                    <Button
+                                        variant="primary"
+                                        size="default"
+                                        onClick={() => router.push('/dashboard/content/videos/upload')}
+                                        leftIcon={<PlusIcon className="h-4 w-4" />}
+                                        className="w-full sm:w-auto"
+                                    >
+                                        <span className="sm:inline">Upload Video</span>
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
                 {/* Stats Overview */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                <div className="bg-card text-card-foreground rounded-lg p-6 shadow-sm border border-border">
+                    <h2 className="text-xl font-semibold text-foreground mb-4">
                         Library Overview
                     </h2>
                     <StatsCardGrid columns={4}>
@@ -493,10 +517,10 @@ export default function VideoLibraryPage() {
                 </div>
 
                 {/* Search and Filters */}
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm">
+                <Card className="shadow-sm">
                     <div className="p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            <h3 className="text-lg font-semibold text-card-foreground">
                                 Search & Filter
                             </h3>
                             <Button variant="outline" onClick={clearFilters}>
@@ -505,12 +529,12 @@ export default function VideoLibraryPage() {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                             <div className="relative">
-                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     placeholder="Search videos..."
                                     value={filters.search}
                                     onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                                    className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                                    className="pl-10"
                                 />
                             </div>
                             <div className="relative">
@@ -520,7 +544,7 @@ export default function VideoLibraryPage() {
                                         ...prev,
                                         category: e.target.value ? [e.target.value] : []
                                     }))}
-                                    className="h-10 w-full px-3 py-2 pr-8 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
+                                    className="h-10 w-full px-3 py-2 pr-8 bg-background border border-input rounded-md text-foreground text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                                 >
                                     <option value="">All Categories</option>
                                     {categoriesQuery.isLoading && <option disabled>Loading...</option>}
@@ -532,7 +556,7 @@ export default function VideoLibraryPage() {
                                     ))}
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </div>
@@ -544,7 +568,7 @@ export default function VideoLibraryPage() {
                                         ...prev,
                                         discipline: e.target.value ? [e.target.value] : []
                                     }))}
-                                    className="h-10 w-full px-3 py-2 pr-8 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
+                                    className="h-10 w-full px-3 py-2 pr-8 bg-background border border-input rounded-md text-foreground text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                                 >
                                     <option value="">All Disciplines</option>
                                     {disciplinesQuery.isLoading && <option disabled>Loading...</option>}
@@ -556,7 +580,7 @@ export default function VideoLibraryPage() {
                                     ))}
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </div>
@@ -568,7 +592,7 @@ export default function VideoLibraryPage() {
                                         ...prev,
                                         status: e.target.value ? [e.target.value] : []
                                     }))}
-                                    className="h-10 w-full px-3 py-2 pr-8 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
+                                    className="h-10 w-full px-3 py-2 pr-8 bg-background border border-input rounded-md text-foreground text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                                 >
                                     <option value="">All Status</option>
                                     <option value="uploading">Uploading</option>
@@ -577,7 +601,7 @@ export default function VideoLibraryPage() {
                                     <option value="error">Error</option>
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </div>
@@ -589,15 +613,16 @@ export default function VideoLibraryPage() {
                                         ...prev,
                                         tier: e.target.value ? [e.target.value] : []
                                     }))}
-                                    className="h-10 w-full px-3 py-2 pr-8 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
+                                    className="h-10 w-full px-3 py-2 pr-8 bg-background border border-input rounded-md text-foreground text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                                 >
                                     <option value="">All Tiers</option>
-                                    <option value="beginner">Beginner</option>
-                                    <option value="intermediate">Intermediate</option>
-                                    <option value="advanced">Advanced</option>
+                                    <option value="none">Free Content</option>
+                                    <option value="tier1">Tier 1 ($9)</option>
+                                    <option value="tier2">Tier 2 ($19)</option>
+                                    <option value="tier3">Tier 3 ($49)</option>
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </div>
@@ -617,18 +642,18 @@ export default function VideoLibraryPage() {
 
                 {/* Bulk Actions Toolbar */}
                 {selectedVideos.size > 0 && (
-                    <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                    <Card className="bg-primary/10 border-primary/20">
                         <div className="p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                                    <span className="text-sm font-medium text-primary">
                                         {selectedVideos.size} video{selectedVideos.size === 1 ? '' : 's'} selected
                                     </span>
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setSelectedVideos(new Set())}
-                                        className="text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800"
+                                        className="text-primary border-primary/30 hover:bg-primary/10"
                                     >
                                         Clear Selection
                                     </Button>
@@ -662,7 +687,7 @@ export default function VideoLibraryPage() {
                         duration: video.duration_seconds || 0,
                         fileSize: 0, // File size not available in current schema
                         status: (video.processing_status || 'ready') as 'uploading' | 'processing' | 'ready' | 'error' | 'archived',
-                        subscriptionTier: (video.tier_required || 'beginner') as 'beginner' | 'intermediate' | 'advanced',
+                        subscriptionTier: (video.tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
                         categoryId: video.category_id,
                         disciplineId: getCategoryData(video.category_id)?.discipline_id || '',
                         categoryName: getCategoryData(video.category_id)?.name || '',

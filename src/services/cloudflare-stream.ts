@@ -19,8 +19,15 @@ const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!
 const CLOUDFLARE_CUSTOMER_SUBDOMAIN = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN || 'customer-235te0s698xfdejs'
 
-if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
-    throw new Error('Missing Cloudflare environment variables')
+// Only validate environment variables on server-side
+if (typeof window === 'undefined') {
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN || !CLOUDFLARE_CUSTOMER_SUBDOMAIN) {
+        const missing = []
+        if (!CLOUDFLARE_ACCOUNT_ID) missing.push('CLOUDFLARE_ACCOUNT_ID')
+        if (!CLOUDFLARE_API_TOKEN) missing.push('CLOUDFLARE_API_TOKEN')
+        if (!CLOUDFLARE_CUSTOMER_SUBDOMAIN) missing.push('CLOUDFLARE_CUSTOMER_SUBDOMAIN')
+        throw new Error(`Missing Cloudflare environment variables: ${missing.join(', ')}`)
+    }
 }
 
 // Cloudflare Stream API Types
@@ -158,13 +165,29 @@ export class CloudflareStreamUploadError extends CloudflareStreamError {
     }
 }
 
-// API Base Configuration
-const STREAM_API_BASE = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream`
-const STREAM_DIRECT_UPLOAD_API = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/direct_upload`
+// API Base Configuration (server-side only)
+const getStreamApiBase = () => {
+    if (typeof window !== 'undefined') {
+        throw new Error('Cloudflare Stream API can only be used on server-side')
+    }
+    return `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream`
+}
 
-const streamHeaders = {
-    'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
-    'Content-Type': 'application/json'
+const getStreamDirectUploadApi = () => {
+    if (typeof window !== 'undefined') {
+        throw new Error('Cloudflare Stream API can only be used on server-side')
+    }
+    return `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/direct_upload`
+}
+
+const getStreamHeaders = () => {
+    if (typeof window !== 'undefined') {
+        throw new Error('Cloudflare Stream API can only be used on server-side')
+    }
+    return {
+        'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/json'
+    }
 }
 
 // Helper Functions
@@ -278,14 +301,14 @@ export const uploadFunctions = {
             console.log('DEBUG: Stringified payload:', JSON.stringify(payload))
 
             console.log('Cloudflare Stream API Request:', {
-                url: STREAM_DIRECT_UPLOAD_API,
-                headers: streamHeaders,
+                url: getStreamDirectUploadApi(),
+                headers: getStreamHeaders(),
                 payload: payload
             })
 
-            const response = await fetch(STREAM_DIRECT_UPLOAD_API, {
+            const response = await fetch(getStreamDirectUploadApi(), {
                 method: 'POST',
-                headers: streamHeaders,
+                headers: getStreamHeaders(),
                 body: JSON.stringify(payload)
             })
 
@@ -401,20 +424,22 @@ export const uploadFunctions = {
      */
     async checkUploadStatus(videoId: string): Promise<UploadProgress> {
         try {
-            const response = await fetch(`${STREAM_API_BASE}/${videoId}`, {
-                headers: streamHeaders
+            const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
+                headers: getStreamHeaders()
             })
 
             const data = await handleStreamResponse<{ result: StreamVideoMetadata }>(response)
             const video = data.result
 
-            return {
+            const result = {
                 uid: video.uid,
                 uploaded: video.status.state !== 'pendingupload',
                 progress: parseInt(video.status.pctComplete) || 0,
                 status: mapStreamStatusToProcessingStatus(video.status.state),
                 error: video.status.errorReasonText
             }
+
+            return result
         } catch (error) {
             throw new CloudflareStreamError(
                 `Failed to check upload status: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -432,8 +457,8 @@ export const videoManagement = {
      */
     async getVideoDetails(videoId: string): Promise<StreamVideoMetadata> {
         try {
-            const response = await fetch(`${STREAM_API_BASE}/${videoId}`, {
-                headers: streamHeaders
+            const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
+                headers: getStreamHeaders()
             })
 
             const data = await handleStreamResponse<{ result: StreamVideoMetadata }>(response)
@@ -452,9 +477,9 @@ export const videoManagement = {
      */
     async updateVideoSettings(videoId: string, settings: { requireSignedURLs?: boolean }): Promise<void> {
         try {
-            const response = await fetch(`${STREAM_API_BASE}/${videoId}`, {
+            const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'POST',
-                headers: streamHeaders,
+                headers: getStreamHeaders(),
                 body: JSON.stringify(settings)
             })
 
@@ -513,13 +538,16 @@ export const videoManagement = {
         let expiration = now + (24 * 60 * 60) // 24 hours default
 
         switch (subscriptionTier) {
-            case 'beginner':
+            case 'none':
+                expiration = now + (30 * 60) // 30 minutes for free content
+                break
+            case 'tier1':
                 expiration = now + (2 * 60 * 60) // 2 hours
                 break
-            case 'intermediate':
+            case 'tier2':
                 expiration = now + (8 * 60 * 60) // 8 hours
                 break
-            case 'advanced':
+            case 'tier3':
                 expiration = now + (24 * 60 * 60) // 24 hours
                 break
         }
@@ -546,9 +574,9 @@ export const videoManagement = {
             // In production, you should use a JWT library like 'jsonwebtoken' with RSA signing
 
             try {
-                const response = await fetch(`${STREAM_API_BASE}/${videoId}/token`, {
+                const response = await fetch(`${getStreamApiBase()}/${videoId}/token`, {
                     method: 'POST',
-                    headers: streamHeaders,
+                    headers: getStreamHeaders(),
                     body: JSON.stringify(payload)
                 })
 
@@ -624,9 +652,9 @@ export const videoManagement = {
             // For Cloudflare Stream, retrying usually means re-triggering processing
             // This can be done by updating the video metadata or re-uploading
             // Since we can't directly retry processing via API, we'll update metadata to trigger a refresh
-            const response = await fetch(`${STREAM_API_BASE}/${videoId}`, {
+            const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'POST',
-                headers: streamHeaders,
+                headers: getStreamHeaders(),
                 body: JSON.stringify({
                     meta: {
                         ...videoDetails.meta,
@@ -653,9 +681,9 @@ export const videoManagement = {
      */
     async deleteVideo(videoId: string): Promise<void> {
         try {
-            const response = await fetch(`${STREAM_API_BASE}/${videoId}`, {
+            const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'DELETE',
-                headers: streamHeaders
+                headers: getStreamHeaders()
             })
 
             await handleStreamResponse<{ result: null }>(response)
@@ -681,9 +709,9 @@ export const videoManagement = {
         }
     ): Promise<StreamVideoMetadata> {
         try {
-            const response = await fetch(`${STREAM_API_BASE}/${videoId}`, {
+            const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'POST',
-                headers: streamHeaders,
+                headers: getStreamHeaders(),
                 body: JSON.stringify({
                     meta: metadata.name ? { name: metadata.name } : undefined,
                     requireSignedURLs: metadata.requireSignedURLs,
@@ -842,7 +870,7 @@ export const securityFunctions = {
      * Generate admin preview URL (no subscription restrictions)
      */
     async generateAdminPreviewUrl(videoId: string): Promise<string> {
-        return videoManagement.generateSignedUrl(videoId, 'advanced', {
+        return videoManagement.generateSignedUrl(videoId, 'tier3', {
             exp: Math.floor(Date.now() / 1000) + (60 * 60), // 1 hour
             downloadable: false
         })
@@ -880,9 +908,10 @@ export const securityFunctions = {
         }
 
         const tierHierarchy: Record<SubscriptionTier, number> = {
-            beginner: 1,
-            intermediate: 2,
-            advanced: 3
+            none: 0,
+            tier1: 1,
+            tier2: 2,
+            tier3: 3
         }
 
         return tierHierarchy[userSubscriptionTier] >= tierHierarchy[requiredTier]

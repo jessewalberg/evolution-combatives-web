@@ -6,7 +6,7 @@
  * @author Evolution Combatives
  */
 
-import { cloudflareStreamService } from './cloudflare-stream'
+// Dynamic import of cloudflareStreamService to avoid environment variable issues
 
 /**
  * Video processing background service
@@ -21,6 +21,12 @@ class VideoProcessingService {
      * Start the background processing service
      */
     start() {
+        // Only run on server-side
+        if (typeof window !== 'undefined') {
+            console.warn('Video processing service should only run on server-side')
+            return
+        }
+
         if (this.intervalId) {
             return // Already running
         }
@@ -49,6 +55,12 @@ class VideoProcessingService {
      * Add a video to the processing queue
      */
     addProcessingVideo(cloudflareVideoId: string) {
+        // Only run on server-side
+        if (typeof window !== 'undefined') {
+            console.log('Video processing service is client-side, skipping processing queue')
+            return
+        }
+
         this.processingVideos.add(cloudflareVideoId)
         console.log(`Added video to processing queue: ${cloudflareVideoId}`)
     }
@@ -65,6 +77,11 @@ class VideoProcessingService {
      * Check all processing videos and update their status
      */
     private async checkProcessingVideos() {
+        // Only run on server-side
+        if (typeof window !== 'undefined') {
+            return
+        }
+
         if (this.processingVideos.size === 0) {
             return
         }
@@ -85,21 +102,24 @@ class VideoProcessingService {
      */
     private async checkSingleVideo(cloudflareVideoId: string) {
         try {
+            // Dynamic import to avoid environment variable issues
+            const { cloudflareStreamService } = await import('./cloudflare-stream')
+
             // Check Cloudflare status
             const status = await cloudflareStreamService.upload.checkUploadStatus(cloudflareVideoId)
-            
+
             if (status.status === 'ready') {
                 // Video is ready, get video details for duration
                 const videoDetails = await cloudflareStreamService.video.getVideoDetails(cloudflareVideoId)
                 await this.updateVideoStatus(cloudflareVideoId, 'ready', videoDetails.duration)
                 this.removeProcessingVideo(cloudflareVideoId)
-                
+
                 console.log(`Video ${cloudflareVideoId} processing complete`)
             } else if (status.status === 'error') {
                 // Video failed processing
                 await this.updateVideoStatus(cloudflareVideoId, 'error')
                 this.removeProcessingVideo(cloudflareVideoId)
-                
+
                 console.error(`Video ${cloudflareVideoId} processing failed:`, status.error)
             } else {
                 // Still processing
@@ -107,7 +127,7 @@ class VideoProcessingService {
             }
         } catch (error) {
             console.error(`Failed to check video ${cloudflareVideoId}:`, error)
-            
+
             // If we can't check the status multiple times, assume it's an error
             // This prevents videos from being stuck in processing forever
             if (this.shouldMarkAsError()) {
@@ -184,17 +204,32 @@ class VideoProcessingService {
      */
     async initializeFromDatabase() {
         try {
-            const response = await fetch('/api/video-processing/get-processing')
+            const response = await fetch('/api/video-processing/get-processing', {
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+
+            // Check if response is JSON before parsing
+            const contentType = response.headers.get('content-type')
+            if (!contentType || !contentType.includes('application/json')) {
+                console.warn('Video processing service: API returned non-JSON response, skipping initialization')
+                return
+            }
+
             if (response.ok) {
                 const { processingVideos } = await response.json()
-                
+
                 for (const video of processingVideos) {
                     if (video.cloudflare_video_id) {
                         this.addProcessingVideo(video.cloudflare_video_id)
                     }
                 }
-                
+
                 console.log(`Initialized ${processingVideos.length} processing videos from database`)
+            } else {
+                console.warn(`Video processing service: API returned ${response.status}, skipping initialization`)
             }
         } catch (error) {
             console.error('Failed to initialize processing videos from database:', error)
@@ -205,19 +240,16 @@ class VideoProcessingService {
 // Create singleton instance
 export const videoProcessingService = new VideoProcessingService()
 
-// Auto-start the service when the module loads (in browser only)
-if (typeof window !== 'undefined') {
-    // Start service after a short delay to allow app to initialize
+// Auto-start the service when the module loads (server-side only)
+// Note: This service should only run on the server-side, not in the browser
+// Client-side components should use API calls to trigger processing updates
+if (typeof window === 'undefined') {
+    // Start after a delay to ensure the environment is initialized
     setTimeout(() => {
         videoProcessingService.initializeFromDatabase().then(() => {
             videoProcessingService.start()
         })
     }, 2000)
-
-    // Stop service when page unloads
-    window.addEventListener('beforeunload', () => {
-        videoProcessingService.stop()
-    })
 }
 
 export default videoProcessingService

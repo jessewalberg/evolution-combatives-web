@@ -425,7 +425,7 @@ export class DatabaseService {
     async getUserSubscription(userId: string): Promise<ServiceResponse<{
         id: string
         user_id: string
-        tier: 'beginner' | 'intermediate' | 'advanced'
+        tier: 'none' | 'tier1' | 'tier2' | 'tier3'
         status: 'active' | 'canceled' | 'past_due' | 'trialing'
         current_period_start: string
         current_period_end: string
@@ -453,7 +453,7 @@ export class DatabaseService {
     ): Promise<ServiceResponse<{
         id: string
         user_id: string
-        tier: 'beginner' | 'intermediate' | 'advanced'
+        tier: 'none' | 'tier1' | 'tier2' | 'tier3'
         status: 'active' | 'canceled' | 'past_due' | 'trialing'
         current_period_start: string
         current_period_end: string
@@ -625,9 +625,10 @@ export class DatabaseService {
      */
     private getSubscriptionTierLevel(tier: string): number {
         switch (tier) {
-            case 'beginner': return 1
-            case 'intermediate': return 2
-            case 'advanced': return 3
+            case 'none': return 0
+            case 'tier1': return 1
+            case 'tier2': return 2
+            case 'tier3': return 3
             default: return 0
         }
     }

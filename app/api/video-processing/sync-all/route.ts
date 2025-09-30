@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 import { createAdminClient } from '../../../../src/lib/supabase'
-import { cloudflareApi } from '../../../../src/lib/cloudflare-api'
 
 export async function POST() {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -11,7 +10,7 @@ export async function POST() {
 
     try {
         const supabase = createAdminClient()
-        
+
         // Get all videos currently in processing status
         const { data: processingVideos, error } = await supabase
             .from('videos')
@@ -57,10 +56,15 @@ export async function POST() {
 
             try {
                 results.checked++
-                
-                // Check status with Cloudflare
-                const cloudflareStatus = await cloudflareApi.checkUploadStatus(video.cloudflare_video_id)
-                
+
+                console.log(`Checking video ${video.title} (${video.id}) with Cloudflare ID: ${video.cloudflare_video_id}`)
+
+                // Import cloudflareStreamService inside the function to avoid environment variable issues
+                const { cloudflareStreamService } = await import('../../../../src/services/cloudflare-stream')
+
+                // Check status with Cloudflare directly
+                const cloudflareStatus = await cloudflareStreamService.upload.checkUploadStatus(video.cloudflare_video_id)
+
                 let needsUpdate = false
                 const updateData: {
                     updated_at: string
@@ -71,19 +75,14 @@ export async function POST() {
                     updated_at: new Date().toISOString()
                 }
 
-                if (cloudflareStatus.success && cloudflareStatus.data) {
-                    const uploadData = cloudflareStatus.data as { status: string; duration?: number }
-                    if (uploadData.status === 'ready') {
-                        updateData.processing_status = 'ready'
-                        updateData.is_published = true
-                        if (uploadData.duration) {
-                            updateData.duration_seconds = Math.round(uploadData.duration)
-                        }
-                        needsUpdate = true
-                    } else if (uploadData.status === 'error') {
-                        updateData.processing_status = 'error'
-                        needsUpdate = true
-                    }
+                // cloudflareStreamService returns UploadProgress directly
+                if (cloudflareStatus.status === 'ready') {
+                    updateData.processing_status = 'ready'
+                    updateData.is_published = true
+                    needsUpdate = true
+                } else if (cloudflareStatus.status === 'error') {
+                    updateData.processing_status = 'error'
+                    needsUpdate = true
                 }
 
                 if (needsUpdate) {
@@ -106,12 +105,13 @@ export async function POST() {
                             title: video.title,
                             oldStatus: 'processing',
                             newStatus: updateData.processing_status,
-                            cloudflareStatus: cloudflareStatus.success && cloudflareStatus.data ? (cloudflareStatus.data as { status: string }).status : 'unknown'
+                            cloudflareStatus: cloudflareStatus.status
                         })
                     }
                 }
 
             } catch (error) {
+                console.error(`Error checking video ${video.title} (${video.id}):`, error)
                 results.errors++
                 results.details.push({
                     videoId: video.id,
@@ -123,6 +123,11 @@ export async function POST() {
 
         console.log(`Sync results: checked ${results.checked}, updated ${results.updated}, errors ${results.errors}`)
 
+        // Log detailed error information
+        if (results.errors > 0) {
+            console.log('Error details:', results.details.filter(d => d.error))
+        }
+
         return NextResponse.json({
             success: true,
             results
@@ -130,9 +135,9 @@ export async function POST() {
     } catch (error) {
         console.error('Video processing sync API error:', error)
         return NextResponse.json(
-            { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
+            {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
             },
             { status: 500 }
         )

@@ -113,6 +113,16 @@ interface PaymentRecord {
     description?: string
 }
 
+interface SubscriptionAction {
+    id: string
+    label: string
+    description: string
+    tier?: SubscriptionTier
+    variant?: 'primary' | 'outline' | 'destructive'
+    action: () => void
+    disabled?: boolean
+}
+
 interface Answer {
     id: string
     content: string
@@ -146,14 +156,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     const { user: currentUser, profile: currentProfile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
     const supabase = createClientComponentClient()
-    
+
     // Await params in Next.js 15
     const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null)
-    
+
     useEffect(() => {
         params.then(setResolvedParams)
     }, [params])
-    
+
     const userId = resolvedParams?.id
 
     // State
@@ -186,82 +196,113 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         queryKey: queryKeys.userDetail(userId || ''),
         enabled: !!userId, // Only run query when userId is available
         queryFn: async (): Promise<UserProfileData> => {
+            console.log('Fetching user profile for ID:', userId)
+
+            // Fetch basic profile data first
             const { data: profile, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
                 .single()
 
-            if (profileError) throw profileError
+            if (profileError) {
+                console.error('Profile error:', profileError)
+                throw profileError
+            }
 
-            // Fetch subscription data
-            const { data: subscriptions, error: subError } = await supabase
-                .from('subscriptions')
-                .select('*')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
+            console.log('Profile data:', profile)
 
-            if (subError) throw subError
+            // Try to fetch subscription data separately
+            let subscriptions = []
+            try {
+                const { data: subData, error: subError } = await supabase
+                    .from('subscriptions')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false })
 
-            // Fetch user progress with video details
-            const { data: progress, error: progressError } = await supabase
-                .from('user_progress')
-                .select(`
-                    *,
-                    videos(
-                        *,
-                        category(
-                            *,
-                            discipline(*)
-                        ),
-                        instructor(*)
-                    )
-                `)
-                .eq('user_id', userId)
-                .order('last_watched_at', { ascending: false })
-                .limit(50)
+                if (subError) {
+                    console.warn('Subscription error:', subError)
+                } else {
+                    subscriptions = subData || []
+                }
+            } catch (error) {
+                console.warn('Subscription fetch failed:', error)
+            }
 
-            if (progressError) throw progressError
+            // Try to fetch user progress separately (simplified)
+            let progress = []
+            try {
+                const { data: progressData, error: progressError } = await supabase
+                    .from('user_progress')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .limit(50)
 
-            // Fetch user questions with answers
-            const { data: questions, error: questionsError } = await supabase
-                .from('questions')
-                .select(`
-                    *,
-                    answers(
-                        *,
-                        admin:profiles!answers_admin_id_fkey(full_name)
-                    )
-                `)
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(20)
+                if (progressError) {
+                    console.warn('Progress error:', progressError)
+                } else {
+                    progress = progressData || []
+                }
+            } catch (error) {
+                console.warn('Progress fetch failed:', error)
+            }
 
-            if (questionsError) throw questionsError
+            // Try to fetch questions separately
+            let questions = []
+            try {
+                const { data: questionsData, error: questionsError } = await supabase
+                    .from('questions')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false })
+                    .limit(20)
 
-            // Fetch support notes
-            const { data: supportNotes, error: supportError } = await supabase
-                .from('support_notes')
-                .select(`
-                    *,
-                    admin:profiles!support_notes_admin_id_fkey(full_name)
-                `)
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
+                if (questionsError) {
+                    console.warn('Questions error:', questionsError)
+                } else {
+                    questions = questionsData || []
+                }
+            } catch (error) {
+                console.warn('Questions fetch failed:', error)
+            }
 
-            // Don't throw error if table doesn't exist yet
-            const notes = supportError ? [] : supportNotes || []
+            // Try to fetch support notes separately
+            let notes = []
+            try {
+                const { data: supportNotes, error: supportError } = await supabase
+                    .from('support_notes')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false })
 
-            // Fetch payment history
-            const { data: paymentHistory, error: paymentError } = await supabase
-                .from('payment_records')
-                .select('*')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(50)
+                if (supportError) {
+                    console.warn('Support notes error:', supportError)
+                } else {
+                    notes = supportNotes || []
+                }
+            } catch (error) {
+                console.warn('Support notes fetch failed:', error)
+            }
 
-            // Don't throw error if table doesn't exist yet
-            const payments = paymentError ? [] : paymentHistory || []
+            // Try to fetch payment history separately
+            let payments = []
+            try {
+                const { data: paymentHistory, error: paymentError } = await supabase
+                    .from('payment_records')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false })
+                    .limit(50)
+
+                if (paymentError) {
+                    console.warn('Payment history error:', paymentError)
+                } else {
+                    payments = paymentHistory || []
+                }
+            } catch (error) {
+                console.warn('Payment history fetch failed:', error)
+            }
 
             return {
                 ...profile,
@@ -300,10 +341,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         // Subscription events
         subscriptions.forEach(sub => {
             events.push({
-                id: `sub_${sub.id}`,
+                id: `sub_${sub.id} `,
                 type: 'subscription_changed',
-                title: `Subscription ${sub.status}`,
-                description: `${sub.tier} tier subscription ${sub.status}`,
+                title: `Subscription ${sub.status} `,
+                description: `${sub.tier} tier subscription ${sub.status} `,
                 timestamp: sub.created_at,
                 metadata: { tier: sub.tier, status: sub.status }
             })
@@ -312,7 +353,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         // Recent video progress
         progress.slice(0, 10).forEach(prog => {
             events.push({
-                id: `progress_${prog.id}`,
+                id: `progress_${prog.id} `,
                 type: 'video_watched',
                 title: 'Video Progress',
                 description: `Watched ${prog.videos?.title || 'Unknown Video'} (${prog.progress_percentage}%)`,
@@ -324,7 +365,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         // Recent questions
         questions.slice(0, 5).forEach(question => {
             events.push({
-                id: `question_${question.id}`,
+                id: `question_${question.id} `,
                 type: 'question_asked',
                 title: 'Question Asked',
                 description: question.title,
@@ -336,9 +377,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         // Support notes
         supportNotes.forEach(note => {
             events.push({
-                id: `note_${note.id}`,
+                id: `note_${note.id} `,
                 type: 'support_note',
-                title: `Support ${note.type}`,
+                title: `Support ${note.type} `,
                 description: note.content.substring(0, 100) + (note.content.length > 100 ? '...' : ''),
                 timestamp: note.created_at,
                 metadata: { noteId: note.id, type: note.type, adminName: note.admin_name }
@@ -348,10 +389,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         // Payment history
         paymentHistory.forEach(payment => {
             events.push({
-                id: `payment_${payment.id}`,
+                id: `payment_${payment.id} `,
                 type: 'payment',
-                title: `Payment ${payment.status}`,
-                description: `$${payment.amount} ${payment.currency.toUpperCase()} - ${payment.payment_method}`,
+                title: `Payment ${payment.status} `,
+                description: `$${payment.amount} ${payment.currency.toUpperCase()} - ${payment.payment_method} `,
                 timestamp: payment.created_at,
                 metadata: { paymentId: payment.id, amount: payment.amount, status: payment.status }
             })
@@ -473,7 +514,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         onSuccess: (token: string) => {
             // Store impersonation token and redirect to mobile app
             localStorage.setItem('impersonation_token', token)
-            window.open(`/impersonate/${token}`, '_blank')
+            window.open(`/ impersonate / ${token} `, '_blank')
             toast.success('Impersonation session created')
         },
         onError: (error: Error) => {
@@ -505,17 +546,17 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             id: 'set_intermediate',
             label: 'Set to Intermediate',
             description: 'Access to advanced training content',
-            tier: 'intermediate',
-            action: () => updateSubscriptionMutation.mutate({ tier: 'intermediate', status: 'active' }),
-            disabled: userData?.subscription?.tier === 'intermediate' || userData?.subscription?.tier === 'advanced'
+            tier: 'tier2',
+            action: () => updateSubscriptionMutation.mutate({ tier: 'tier2', status: 'active' }),
+            disabled: userData?.subscription?.tier === 'tier2' || userData?.subscription?.tier === 'tier3'
         },
         {
             id: 'set_advanced',
             label: 'Set to Advanced',
             description: 'Full access to all premium content',
-            tier: 'advanced',
-            action: () => updateSubscriptionMutation.mutate({ tier: 'advanced', status: 'active' }),
-            disabled: userData?.subscription?.tier === 'advanced'
+            tier: 'tier3',
+            action: () => updateSubscriptionMutation.mutate({ tier: 'tier3', status: 'active' }),
+            disabled: userData?.subscription?.tier === 'tier3'
         },
         {
             id: 'cancel_subscription',
@@ -544,11 +585,15 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     }
 
     const handleSendMessage = () => {
-        router.push(`/dashboard/messaging/compose?to=${userId}`)
+        toast.info('Messaging System Coming Soon', {
+            description: 'Direct messaging functionality will be available in a future update.'
+        })
     }
 
     const handleViewAnalytics = () => {
-        router.push(`/dashboard/analytics/users/${userId}`)
+        toast.info('User Analytics Coming Soon', {
+            description: 'Individual user analytics dashboard will be available in a future update.'
+        })
     }
 
     const handleImpersonateUser = () => {
@@ -605,67 +650,86 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         userData.progress.reduce((sum, p) => sum + p.progress_percentage, 0) / userData.progress.length : 0
     const totalQuestions = userData.questions?.length || 0
 
+
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <Button
                         variant="ghost"
-                        onClick={() => router.push('/dashboard/users')}
-                        className="flex items-center gap-2"
+                        onClick={() => router.push('/users')}
+                        className="flex items-center gap-2 w-fit"
                     >
                         <ArrowLeftIcon className="h-4 w-4" />
-                        Back to Users
+                        <span className="hidden sm:inline">Back to Users</span>
+                        <span className="sm:hidden">Back</span>
                     </Button>
-                    <div>
-                        <h1 className="text-3xl font-bold text-white">
+                    <div className="min-w-0">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-white truncate">
                             {userData.full_name || 'Unnamed User'}
                         </h1>
-                        <p className="text-neutral-400 mt-1">
+                        <p className="text-neutral-400 mt-1 text-sm sm:text-base">
                             User Profile Management
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     {canSendMessages && (
-                        <Button variant="outline" onClick={handleSendMessage}>
+                        <Button
+                            variant="outline"
+                            onClick={handleSendMessage}
+                            className="w-full sm:w-auto opacity-75 hover:opacity-100"
+                            title="Coming Soon - Direct messaging functionality"
+                        >
                             <EnvelopeIcon className="h-4 w-4 mr-2" />
-                            Send Message
+                            <span className="sm:hidden">Message</span>
+                            <span className="hidden sm:inline">Send Message</span>
+                            <span className="ml-1 text-xs text-neutral-400 hidden lg:inline">(Soon)</span>
                         </Button>
                     )}
                     {canViewAnalytics && (
-                        <Button variant="outline" onClick={handleViewAnalytics}>
+                        <Button
+                            variant="outline"
+                            onClick={handleViewAnalytics}
+                            className="w-full sm:w-auto opacity-75 hover:opacity-100"
+                            title="Coming Soon - Individual user analytics"
+                        >
                             <ChartBarIcon className="h-4 w-4 mr-2" />
-                            View Analytics
+                            <span className="sm:hidden">Analytics</span>
+                            <span className="hidden sm:inline">View Analytics</span>
+                            <span className="ml-1 text-xs text-neutral-400 hidden lg:inline">(Soon)</span>
                         </Button>
                     )}
                     {canEditUsers && (
                         <Button
                             onClick={() => setIsEditing(!isEditing)}
                             disabled={updateUserMutation.isPending}
+                            className="w-full sm:w-auto"
                         >
                             <PencilIcon className="h-4 w-4 mr-2" />
-                            {isEditing ? 'Cancel Edit' : 'Edit Profile'}
+                            <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
+                            <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit Profile'}</span>
                         </Button>
                     )}
                 </div>
             </div>
 
             {/* User Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="p-6">
-                    <div className="flex items-center gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                <Card className="p-4 lg:p-6">
+                    <div className="flex items-center gap-3 lg:gap-4">
                         <Avatar
                             src={userData.avatar_url || undefined}
                             alt={userData.full_name || 'User'}
                             size="lg"
+                            className="flex-shrink-0"
                         />
-                        <div>
-                            <h3 className="font-semibold text-white">
+                        <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold text-white truncate">
                                 {userData.full_name || 'Unnamed User'}
                             </h3>
-                            <p className="text-sm text-neutral-400">{userData.email}</p>
+                            <p className="text-sm text-neutral-400 truncate">{userData.email}</p>
                             <div className="flex items-center gap-2 mt-1">
                                 <Badge variant={userData.is_active ? 'success' : 'error'}>
                                     {userData.is_active ? 'Active' : 'Suspended'}
@@ -731,7 +795,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
             {/* Navigation Tabs */}
             <div className="border-b border-neutral-700">
-                <nav className="-mb-px flex space-x-8">
+                <nav className="-mb-px flex flex-wrap sm:flex-nowrap gap-2 sm:gap-4 lg:gap-8 px-1">
                     {[
                         { id: 'overview', label: 'Overview', icon: EyeIcon },
                         { id: 'subscription', label: 'Subscription', icon: CreditCardIcon },
@@ -744,13 +808,22 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                            className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
+                            className={`flex items-center gap-2 py-3 px-3 sm:px-2 lg:px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
                                 ? 'border-blue-500 text-blue-400'
                                 : 'border-transparent text-neutral-400 hover:text-neutral-300 hover:border-neutral-300'
                                 }`}
                         >
-                            <tab.icon className="h-4 w-4" />
-                            {tab.label}
+                            <tab.icon className="h-4 w-4 flex-shrink-0" />
+                            <span className="hidden sm:inline">{tab.label}</span>
+                            <span className="sm:hidden">
+                                {tab.id === 'overview' ? 'Info' :
+                                    tab.id === 'subscription' ? 'Sub' :
+                                        tab.id === 'activity' ? 'Act' :
+                                            tab.id === 'progress' ? 'Prog' :
+                                                tab.id === 'questions' ? 'Q&A' :
+                                                    tab.id === 'support' ? 'Help' :
+                                                        tab.id === 'payments' ? 'Pay' : tab.label}
+                            </span>
                         </button>
                     ))}
                 </nav>
@@ -758,9 +831,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
             {/* Tab Content */}
             {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
                     {/* Profile Information */}
-                    <Card className="p-6">
+                    <Card className="p-4 lg:p-6">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-semibold text-white">Profile Information</h3>
                             {canEditUsers && !isEditing && (
@@ -904,19 +977,23 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                     variant="outline"
                                     onClick={handleSendMessage}
                                     disabled={!canSendMessages}
-                                    className="w-full justify-start"
+                                    className="w-full justify-start opacity-75 hover:opacity-100"
+                                    title="Coming Soon - Direct messaging functionality"
                                 >
                                     <EnvelopeIcon className="h-4 w-4 mr-3" />
                                     Send Direct Message
+                                    <span className="ml-auto text-xs text-neutral-400">(Soon)</span>
                                 </Button>
                                 <Button
                                     variant="outline"
                                     onClick={handleViewAnalytics}
                                     disabled={!canViewAnalytics}
-                                    className="w-full justify-start"
+                                    className="w-full justify-start opacity-75 hover:opacity-100"
+                                    title="Coming Soon - Individual user analytics"
                                 >
                                     <ChartBarIcon className="h-4 w-4 mr-3" />
                                     View User Analytics
+                                    <span className="ml-auto text-xs text-neutral-400">(Soon)</span>
                                 </Button>
                                 {canImpersonateUsers && (
                                     <Button
@@ -955,15 +1032,15 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             )}
 
             {activeTab === 'subscription' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
                     {/* Current Subscription */}
-                    <Card className="p-6">
+                    <Card className="p-4 lg:p-6">
                         <h3 className="text-lg font-semibold text-white mb-4">Current Subscription</h3>
                         {userData.subscription ? (
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <div>
-                                        <p className="text-xl font-bold text-white capitalize">
+                                        <p className="text-lg sm:text-xl font-bold text-white capitalize">
                                             {userData.subscription.tier} Plan
                                         </p>
                                         <Badge
@@ -976,10 +1053,11 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             {userData.subscription.status}
                                         </Badge>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-2xl font-bold text-white">
-                                            ${userData.subscription.tier === 'beginner' ? '9' :
-                                                userData.subscription.tier === 'intermediate' ? '19' : '49'}
+                                    <div className="text-left sm:text-right">
+                                        <p className="text-xl sm:text-2xl font-bold text-white">
+                                            ${userData.subscription.tier === 'tier1' ? '9' :
+                                                userData.subscription.tier === 'tier2' ? '19' :
+                                                    userData.subscription.tier === 'tier3' ? '49' : '0'}
                                         </p>
                                         <p className="text-sm text-neutral-400">/month</p>
                                     </div>
@@ -1101,7 +1179,12 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
             {activeTab === 'activity' && (
                 <Card className="p-6">
-                    <h3 className="text-lg font-semibold text-white mb-4">Activity Timeline</h3>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-white">Activity Timeline</h3>
+                        <Badge variant="warning" className="text-xs">
+                            Enhanced Soon
+                        </Badge>
+                    </div>
                     {userData.activityTimeline && userData.activityTimeline.length > 0 ? (
                         <div className="space-y-4">
                             {userData.activityTimeline.slice(0, 20).map(event => (
@@ -1171,7 +1254,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             <div className="w-24 bg-neutral-700 rounded-full h-2">
                                                 <div
                                                     className="bg-blue-500 h-2 rounded-full"
-                                                    style={{ width: `${progress.progress_percentage}%` }}
+                                                    style={{ width: `${progress.progress_percentage}% ` }}
                                                 />
                                             </div>
                                             <span className="text-sm text-white w-12 text-right">
@@ -1430,11 +1513,11 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                 {userData.paymentHistory.map(payment => (
                                     <div key={payment.id} className="flex items-center justify-between p-4 bg-neutral-800 rounded-lg">
                                         <div className="flex items-center gap-4">
-                                            <div className={`p-2 rounded-full ${payment.status === 'succeeded' ? 'bg-green-500/20 text-green-400' :
+                                            <div className={`p - 2 rounded - full ${payment.status === 'succeeded' ? 'bg-green-500/20 text-green-400' :
                                                 payment.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                                     payment.status === 'refunded' ? 'bg-yellow-500/20 text-yellow-400' :
                                                         'bg-gray-500/20 text-gray-400'
-                                                }`}>
+                                                } `}>
                                                 <BanknotesIcon className="h-4 w-4" />
                                             </div>
                                             <div>

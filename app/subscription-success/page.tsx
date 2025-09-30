@@ -15,7 +15,7 @@ import { Button } from '@/src/components/ui/button';
 import { Badge } from '@/src/components/ui/badge';
 import { TIER_DISPLAY_INFO } from '@/src/lib/shared/constants/subscriptionTiers';
 
-type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced';
+type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 
 function SubscriptionSuccessContent() {
     const searchParams = useSearchParams();
@@ -114,7 +114,7 @@ function SubscriptionSuccessContent() {
                             </svg>
                             Mobile app with offline viewing
                         </li>
-                        {tier === 'intermediate' || tier === 'advanced' ? (
+                        {tier === 'tier2' || tier === 'tier3' ? (
                             <li className="flex items-center">
                                 <svg className="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />

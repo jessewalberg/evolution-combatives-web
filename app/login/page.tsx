@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { createClientComponentClient } from '../../src/lib/supabase-browser'
 import { Input } from '../../src/components/ui/input'
 import { Button } from '../../src/components/ui/button'
+import { ThemeToggle } from '../../src/providers/ThemeProvider'
 
 // Icons
 import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react'
@@ -45,7 +46,7 @@ interface LoginAttempt {
     count: number
 }
 
-const MAX_LOGIN_ATTEMPTS = 5
+const MAX_LOGIN_ATTEMPTS = 20
 const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
 
 function LoginContent() {
@@ -299,49 +300,54 @@ function LoginContent() {
     }, [lockoutTimeRemaining])
 
     return (
-        <div className="min-h-screen bg-neutral-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative">
             {/* Background pattern */}
-            <div className="absolute inset-0 bg-neutral-950">
-                <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 via-neutral-950 to-neutral-900" />
+            <div className="absolute inset-0 bg-background">
+                <div className="absolute inset-0 bg-gradient-to-br from-muted/50 via-background to-muted/30" />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(59,130,246,0.1),transparent_70%)]" />
+            </div>
+
+            {/* Theme toggle */}
+            <div className="absolute top-4 right-4 z-10">
+                <ThemeToggle />
             </div>
 
             <div className="relative sm:mx-auto sm:w-full sm:max-w-md">
                 {/* Logo and branding */}
                 <div className="text-center mb-8">
-                    <div className="mx-auto h-16 w-16 bg-primary-600 rounded-full flex items-center justify-center mb-4">
-                        <Shield className="h-8 w-8 text-white" />
+                    <div className="mx-auto h-16 w-16 bg-primary rounded-full flex items-center justify-center mb-4">
+                        <Shield className="h-8 w-8 text-primary-foreground" />
                     </div>
-                    <h1 className="text-3xl font-bold text-white mb-2">
+                    <h1 className="text-3xl font-bold text-foreground mb-2">
                         Evolution Combatives
                     </h1>
-                    <p className="text-neutral-400 text-lg">
+                    <p className="text-muted-foreground text-lg">
                         Admin Dashboard
                     </p>
-                    <p className="text-neutral-500 text-sm mt-2">
+                    <p className="text-muted-foreground/70 text-sm mt-2">
                         Professional tactical training platform
                     </p>
                 </div>
 
                 {/* Login form */}
-                <div className="bg-neutral-900 border border-neutral-800 py-8 px-4 shadow-xl rounded-lg sm:px-10">
+                <div className="bg-card border border-border py-8 px-4 shadow-xl rounded-lg sm:px-10">
                     <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
                         {/* Form title */}
                         <div className="text-center">
-                            <h2 className="text-2xl font-semibold text-white mb-2">
+                            <h2 className="text-2xl font-semibold text-card-foreground mb-2">
                                 Sign In
                             </h2>
-                            <p className="text-neutral-400 text-sm">
+                            <p className="text-muted-foreground text-sm">
                                 Access your admin dashboard
                             </p>
                         </div>
 
                         {/* Error message */}
                         {errors.root && (
-                            <div className="bg-error-500/10 border border-error-500/20 rounded-md p-4">
+                            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
                                 <div className="flex items-center">
-                                    <AlertTriangle className="h-5 w-5 text-error-500 mr-3" />
-                                    <p className="text-error-400 text-sm">
+                                    <AlertTriangle className="h-5 w-5 text-destructive mr-3" />
+                                    <p className="text-destructive text-sm">
                                         {errors.root.message}
                                     </p>
                                 </div>
@@ -350,14 +356,14 @@ function LoginContent() {
 
                         {/* Rate limit warning */}
                         {isLocked && (
-                            <div className="bg-warning-500/10 border border-warning-500/20 rounded-md p-4">
+                            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md p-4">
                                 <div className="flex items-center">
-                                    <AlertTriangle className="h-5 w-5 text-warning-500 mr-3" />
+                                    <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-3" />
                                     <div>
-                                        <p className="text-warning-400 text-sm font-medium">
+                                        <p className="text-yellow-800 dark:text-yellow-200 text-sm font-medium">
                                             Account temporarily locked
                                         </p>
-                                        <p className="text-warning-300 text-xs mt-1">
+                                        <p className="text-yellow-700 dark:text-yellow-300 text-xs mt-1">
                                             Too many failed attempts. Try again in {lockoutTimeRemaining} minutes.
                                         </p>
                                     </div>
@@ -393,7 +399,7 @@ function LoginContent() {
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="text-neutral-400 hover:text-neutral-300 transition-colors"
+                                        className="text-muted-foreground hover:text-foreground transition-colors"
                                         disabled={isLoading || isLocked}
                                     >
                                         {showPassword ? (
@@ -415,16 +421,16 @@ function LoginContent() {
                                     id="remember-me"
                                     type="checkbox"
                                     disabled={isLoading || isLocked}
-                                    className="h-4 w-4 text-primary-600 bg-neutral-800 border-neutral-600 rounded focus:ring-primary-500 focus:ring-2"
+                                    className="h-4 w-4 text-primary bg-background border-input rounded focus:ring-primary focus:ring-2"
                                 />
-                                <label htmlFor="remember-me" className="ml-2 block text-sm text-neutral-300">
+                                <label htmlFor="remember-me" className="ml-2 block text-sm text-muted-foreground">
                                     Remember me
                                 </label>
                             </div>
 
                             <Link
                                 href="/forgot-password"
-                                className="text-sm text-primary-400 hover:text-primary-300 transition-colors"
+                                className="text-sm text-primary hover:text-primary/80 transition-colors"
                             >
                                 Forgot password?
                             </Link>
@@ -444,8 +450,8 @@ function LoginContent() {
                         </Button>
 
                         {/* Additional security notice */}
-                        <div className="text-center pt-4 border-t border-neutral-800">
-                            <p className="text-xs text-neutral-500">
+                        <div className="text-center pt-4 border-t border-border">
+                            <p className="text-xs text-muted-foreground">
                                 Authorized personnel only. All access is monitored and logged.
                             </p>
                         </div>
@@ -454,7 +460,7 @@ function LoginContent() {
 
                 {/* Footer */}
                 <div className="text-center mt-8">
-                    <p className="text-xs text-neutral-600">
+                    <p className="text-xs text-muted-foreground/60">
                         © 2024 Evolution Combatives. All rights reserved.
                     </p>
                 </div>
@@ -466,10 +472,10 @@ function LoginContent() {
 export default function LoginPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+            <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                    <p className="text-neutral-400">Loading...</p>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Loading...</p>
                 </div>
             </div>
         }>

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
-import { createServerComponentClient } from './supabase'
+import { createServerClient } from './supabase'
+// Updated for Next.js 15 async cookies support - v3
 
 export interface ApiUser {
     userId: string
@@ -15,7 +16,7 @@ const ROLE_PERMISSIONS: Record<string, Set<string>> = {
         'analytics.read', 'analytics.write',
         'support.read', 'support.write'
     ]),
-    content_admin: new Set(['content.read', 'content.write', 'content.delete']),
+    content_admin: new Set(['content.read', 'content.write', 'content.delete', 'users.read']),
     support_admin: new Set(['users.read', 'support.read', 'support.write'])
 }
 
@@ -38,15 +39,15 @@ export function hasPermission(userRole: string, permission: string): boolean {
 
 export async function validateApiAuthWithSession(requiredPermission: string): Promise<{ user: ApiUser } | { error: Response }> {
     try {
-        const supabase = await createServerComponentClient()
-        
+        const supabase = await createServerClient()
+
         // Get user (more secure than getSession)
         const { data: { user }, error: userError } = await supabase.auth.getUser()
-        
+
         if (userError || !user) {
-            return { 
+            return {
                 error: new Response(
-                    JSON.stringify({ success: false, error: 'Authentication required' }), 
+                    JSON.stringify({ success: false, error: 'Authentication required' }),
                     { status: 401, headers: { 'Content-Type': 'application/json' } }
                 )
             }
@@ -60,9 +61,9 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
             .single()
 
         if (profileError || !profile?.admin_role) {
-            return { 
+            return {
                 error: new Response(
-                    JSON.stringify({ success: false, error: 'Admin role required' }), 
+                    JSON.stringify({ success: false, error: 'Admin role required' }),
                     { status: 403, headers: { 'Content-Type': 'application/json' } }
                 )
             }
@@ -70,15 +71,15 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
 
         // Check permissions
         if (!hasPermission(profile.admin_role, requiredPermission)) {
-            return { 
+            return {
                 error: new Response(
-                    JSON.stringify({ success: false, error: 'Insufficient permissions' }), 
+                    JSON.stringify({ success: false, error: 'Insufficient permissions' }),
                     { status: 403, headers: { 'Content-Type': 'application/json' } }
                 )
             }
         }
 
-        return { 
+        return {
             user: {
                 userId: user.id,
                 role: profile.admin_role,
@@ -86,9 +87,9 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
             }
         }
     } catch (error) {
-        return { 
+        return {
             error: new Response(
-                JSON.stringify({ success: false, error: 'Authentication failed' }), 
+                JSON.stringify({ success: false, error: 'Authentication failed' }),
                 { status: 500, headers: { 'Content-Type': 'application/json' } }
             )
         }
@@ -97,20 +98,20 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
 
 export function validateApiAuth(request: NextRequest, requiredPermission: string): { user: ApiUser } | { error: Response } {
     const user = extractUserFromRequest(request)
-    
+
     if (!user) {
-        return { 
+        return {
             error: new Response(
-                JSON.stringify({ success: false, error: 'Authentication required' }), 
+                JSON.stringify({ success: false, error: 'Authentication required' }),
                 { status: 401, headers: { 'Content-Type': 'application/json' } }
             )
         }
     }
 
     if (!hasPermission(user.role, requiredPermission)) {
-        return { 
+        return {
             error: new Response(
-                JSON.stringify({ success: false, error: 'Insufficient permissions' }), 
+                JSON.stringify({ success: false, error: 'Insufficient permissions' }),
                 { status: 403, headers: { 'Content-Type': 'application/json' } }
             )
         }

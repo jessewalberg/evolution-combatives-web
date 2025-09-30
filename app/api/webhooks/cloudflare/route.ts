@@ -116,8 +116,8 @@ async function updateVideoStatus(
     // Find video by Cloudflare UID
     const { data: video, error: fetchError } = await supabase
         .from('videos')
-        .select('id, title, cloudflare_stream_uid')
-        .eq('cloudflare_stream_uid', videoUid)
+        .select('id, title, cloudflare_video_id')
+        .eq('cloudflare_video_id', videoUid)
         .single()
 
     if (fetchError || !video) {
@@ -185,7 +185,7 @@ async function updateVideoStatus(
     }
 
     // Add metadata fields if they exist
-    if (metadata.duration) updateData.duration = metadata.duration
+    if (metadata.duration) updateData.duration_seconds = metadata.duration
     if (metadata.resolution) updateData.resolution = metadata.resolution
     if (metadata.hls_url) updateData.hls_url = metadata.hls_url
     if (metadata.dash_url) updateData.dash_url = metadata.dash_url

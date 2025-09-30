@@ -14,7 +14,11 @@ import type {
     ContentStats,
     VideoAnalytics,
     Category,
+    CategoryInsert,
+    CategoryUpdate,
     Discipline,
+    DisciplineInsert,
+    DisciplineUpdate,
 } from './content'
 
 // CSRF token cache
@@ -32,7 +36,7 @@ async function getCSRFToken(): Promise<string> {
     try {
         const response = await fetch('/api/csrf-token')
         const result = await response.json()
-        
+
         if (!result.success) {
             throw new Error('Failed to get CSRF token')
         }
@@ -72,7 +76,7 @@ export const clientContentService = {
         }
         return result.data
     },
-    
+
 
     async fetchDisciplines(): Promise<Discipline[]> {
         const response = await fetch('/api/content/disciplines')
@@ -82,7 +86,127 @@ export const clientContentService = {
         }
         return result.data
     },
-    
+
+    // Discipline Mutations
+    async createDiscipline(data: DisciplineInsert): Promise<Discipline> {
+        const headers = await createSecureHeaders()
+        const response = await fetch('/api/content/disciplines', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(data)
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async updateDiscipline(id: string, data: DisciplineUpdate): Promise<Discipline> {
+        const headers = await createSecureHeaders()
+        const response = await fetch(`/api/content/disciplines/${id}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(data)
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async deleteDiscipline(id: string): Promise<void> {
+        const headers = await createSecureHeaders()
+        const response = await fetch(`/api/content/disciplines/${id}`, {
+            method: 'DELETE',
+            headers
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+    },
+
+    // Category Mutations
+    async createCategory(data: CategoryInsert): Promise<Category> {
+        const headers = await createSecureHeaders()
+        const response = await fetch('/api/content/categories', {
+            method: 'POST',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async updateCategory(id: string, data: CategoryUpdate): Promise<Category> {
+        const headers = await createSecureHeaders()
+        const response = await fetch(`/api/content/categories/${id}`, {
+            method: 'PUT',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async deleteCategory(id: string): Promise<void> {
+        const headers = await createSecureHeaders()
+        const response = await fetch(`/api/content/categories/${id}`, {
+            method: 'DELETE',
+            headers
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+    },
+
+    async reorderCategories(reorderData: Array<{ id: string; sort_order: number }>): Promise<void> {
+        const headers = await createSecureHeaders()
+        const response = await fetch('/api/content/categories/reorder', {
+            method: 'POST',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ reorderData })
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+    },
+
+    async mergeCategories(targetId: string, sourceIds: string[]): Promise<void> {
+        const headers = await createSecureHeaders()
+        const response = await fetch('/api/content/categories/merge', {
+            method: 'POST',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ targetId, sourceIds })
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+    },
+
 
     /**
      * Fetch videos with filtering and pagination
@@ -100,7 +224,7 @@ export const clientContentService = {
         if (filters.categoryId) searchParams.set('categoryId', filters.categoryId)
         if (pagination.page !== undefined) searchParams.set('page', pagination.page.toString())
         if (pagination.pageSize !== undefined) searchParams.set('pageSize', pagination.pageSize.toString())
-        
+
         const response = await fetch(`/api/content/videos?${searchParams}`)
         const result = await response.json()
         if (!result.success) {

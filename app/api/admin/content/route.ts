@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     try {
         // Authenticate user and check permissions
         const authResult = await validateApiAuthWithSession('content.write')
-        
+
         if ('error' in authResult) {
             return authResult.error
         }
@@ -199,9 +199,10 @@ export async function POST(request: NextRequest) {
                     : 0
 
                 const subscriberTierBreakdown = {
-                    beginner: Math.floor(totalViews * 0.4),
-                    intermediate: Math.floor(totalViews * 0.4),
-                    advanced: Math.floor(totalViews * 0.2)
+                    none: Math.floor(totalViews * 0.1),
+                    tier1: Math.floor(totalViews * 0.3),
+                    tier2: Math.floor(totalViews * 0.4),
+                    tier3: Math.floor(totalViews * 0.2)
                 }
 
                 const monthlyViews = [
@@ -232,9 +233,9 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Admin Content API error:', error)
         return NextResponse.json(
-            { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
+            {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
             },
             { status: 500 }
         )

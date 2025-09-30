@@ -13,7 +13,7 @@ import { twMerge } from 'tailwind-merge'
 /**
  * Subscription tier types from shared package
  */
-export type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced' | 'none'
+export type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
 
 /**
  * Admin role types
@@ -226,11 +226,11 @@ export function formatCurrency(
  */
 export function getTierBadgeColor(tier: SubscriptionTier): BadgeVariant {
     switch (tier) {
-        case 'advanced':
+        case 'tier3':
             return 'warning' // Gold for highest tier
-        case 'intermediate':
+        case 'tier2':
             return 'info' // Blue for mid tier
-        case 'beginner':
+        case 'tier1':
             return 'success' // Green for entry tier
         case 'none':
         default:
@@ -482,12 +482,12 @@ export function getTacticalStatusText(status: VideoStatus): string {
  */
 export function formatTierName(tier: SubscriptionTier): string {
     switch (tier) {
-        case 'advanced':
-            return 'Advanced Professional'
-        case 'intermediate':
-            return 'Intermediate Operator'
-        case 'beginner':
-            return 'Beginner Recruit'
+        case 'tier3':
+            return 'Tier 3 Professional'
+        case 'tier2':
+            return 'Tier 2 Operator'
+        case 'tier1':
+            return 'Tier 1 Recruit'
         case 'none':
         default:
             return 'No Active Subscription'

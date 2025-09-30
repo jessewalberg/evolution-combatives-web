@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { videoManagement } from '../../../../src/services/cloudflare-stream'
 import { createClient } from '@supabase/supabase-js'
 
 // Use exact subscription tiers from .cursorrules
-type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced'
+type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
 
 async function validateMobileAppAuth(request: NextRequest) {
     try {
@@ -83,8 +82,10 @@ export async function POST(request: NextRequest) {
     let videoId: string | undefined;
 
     try {
+        // Import videoManagement inside the function to avoid environment variable issues
+        const { videoManagement } = await import('../../../../src/services/cloudflare-stream')
         const requestBody = await request.json()
-        const { videoId: requestVideoId, subscriptionTier = 'beginner', format = 'hls' } = requestBody
+        const { videoId: requestVideoId, subscriptionTier = 'tier1', format = 'hls' } = requestBody
         videoId = requestVideoId; // Store for error handling
 
         if (!videoId) {
@@ -124,7 +125,12 @@ export async function POST(request: NextRequest) {
             {
                 downloadable: format === 'mp4', // Enable download for MP4 format
                 // Set expiration based on subscription tier
-                exp: Math.floor(Date.now() / 1000) + (subscriptionTier === 'beginner' ? 2 * 60 * 60 : 24 * 60 * 60) // 2 hours for beginner, 24 hours for others
+                exp: Math.floor(Date.now() / 1000) + (
+                    subscriptionTier === 'none' ? 30 * 60 : // 30 minutes for free
+                        subscriptionTier === 'tier1' ? 2 * 60 * 60 : // 2 hours for tier1
+                            subscriptionTier === 'tier2' ? 8 * 60 * 60 : // 8 hours for tier2
+                                24 * 60 * 60 // 24 hours for tier3
+                )
             },
             format as 'hls' | 'mp4' // Pass format to the service
         )
@@ -160,7 +166,7 @@ export async function POST(request: NextRequest) {
                 video_id: videoId,
                 duration: videoDetails.duration || 0,
                 thumbnail_url: videoDetails.thumbnail || null,
-                expires_at: new Date(Date.now() + (subscriptionTier === 'beginner' ? 2 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)).toISOString()
+                expires_at: new Date(Date.now() + (subscriptionTier === 'tier1' ? 2 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)).toISOString()
             }
         })
 

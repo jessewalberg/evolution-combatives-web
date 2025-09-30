@@ -17,6 +17,7 @@ import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Badge } from '../ui/badge'
+import { ThemeToggle } from '../../providers/ThemeProvider'
 import {
     UserActionsDropdown,
     DropdownMenu,
@@ -32,11 +33,9 @@ import {
     UsersIcon,
     ChartBarIcon,
     ChatBubbleLeftRightIcon,
-    Cog6ToothIcon,
     MagnifyingGlassIcon,
     BellIcon,
     ChevronRightIcon,
-    PlusIcon,
     DocumentTextIcon,
     VideoCameraIcon,
     UserGroupIcon,
@@ -44,6 +43,7 @@ import {
     ServerIcon,
     WifiIcon,
 } from '@heroicons/react/24/outline'
+import { PlusIcon } from 'lucide-react'
 
 /**
  * Admin user roles for navigation visibility
@@ -60,6 +60,8 @@ interface NavItem {
     badge?: number
     roles: AdminRole[]
     children?: NavItem[]
+    disabled?: boolean
+    comingSoon?: boolean
 }
 
 /**
@@ -68,13 +70,13 @@ interface NavItem {
 const navigation: NavItem[] = [
     {
         name: 'Dashboard',
-        href: '/admin',
+        href: '/dashboard',
         icon: HomeIcon,
         roles: ['super_admin', 'content_admin', 'support_admin'],
     },
     {
         name: 'Content',
-        href: '/admin/content',
+        href: '#',
         icon: PlayIcon,
         roles: ['super_admin', 'content_admin'],
         children: [
@@ -86,7 +88,13 @@ const navigation: NavItem[] = [
             },
             {
                 name: 'Categories',
-                href: '/admin/content/categories',
+                href: '/dashboard/content/categories',
+                icon: DocumentTextIcon,
+                roles: ['super_admin', 'content_admin'],
+            },
+            {
+                name: 'Disciplines',
+                href: '/dashboard/content/disciplines',
                 icon: DocumentTextIcon,
                 roles: ['super_admin', 'content_admin'],
             },
@@ -94,28 +102,26 @@ const navigation: NavItem[] = [
     },
     {
         name: 'Users',
-        href: '/admin/users',
+        href: '/users',
         icon: UsersIcon,
         roles: ['super_admin', 'support_admin'],
     },
     {
         name: 'Analytics',
-        href: '/admin/analytics',
+        href: '/analytics',
         icon: ChartBarIcon,
         roles: ['super_admin', 'content_admin'],
+        disabled: true,
+        comingSoon: true,
     },
     {
         name: 'Q&A',
-        href: '/admin/qa',
+        href: '/qa',
         icon: ChatBubbleLeftRightIcon,
         badge: 5, // Example notification count
         roles: ['super_admin', 'support_admin'],
-    },
-    {
-        name: 'Settings',
-        href: '/admin/settings',
-        icon: Cog6ToothIcon,
-        roles: ['super_admin'],
+        disabled: true,
+        comingSoon: true,
     },
 ]
 
@@ -161,7 +167,7 @@ interface AdminLayoutProps {
 const sidebarVariants = cva(
     [
         'fixed inset-y-0 left-0 z-50',
-        'flex flex-col bg-neutral-900 border-r border-neutral-700',
+        'flex flex-col bg-slate-900 dark:bg-slate-950 border-r border-slate-700 dark:border-slate-800',
         'transition-all duration-300 ease-in-out',
     ],
     {
@@ -181,7 +187,7 @@ const sidebarVariants = cva(
 /**
  * Main content variants
  */
-const contentVariants = cva('flex-1 flex flex-col min-h-screen bg-neutral-950', {
+const contentVariants = cva('flex-1 flex flex-col min-h-screen bg-background', {
     variants: {
         sidebarState: {
             expanded: 'lg:pl-64',
@@ -202,13 +208,15 @@ interface NavItemComponentProps {
     isActive: boolean
     isCollapsed: boolean
     userRole: AdminRole
+    onLinkClick?: () => void
 }
 
 const NavItemComponent: React.FC<NavItemComponentProps> = ({
     item,
     isActive,
     isCollapsed,
-    userRole
+    userRole,
+    onLinkClick
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(false)
     const hasChildren = item.children && item.children.length > 0
@@ -226,38 +234,102 @@ const NavItemComponent: React.FC<NavItemComponentProps> = ({
 
     return (
         <div>
-            <Link
-                href={item.href}
-                className={cn(
-                    'group flex items-center gap-3 px-3 py-2 mx-2 text-sm font-medium rounded-lg transition-all duration-200',
-                    'hover:bg-neutral-800 hover:text-neutral-0',
-                    isActive || isChildActive
-                        ? 'bg-primary-600 text-white shadow-lg'
-                        : 'text-neutral-300',
-                    isCollapsed && 'justify-center px-2'
-                )}
-                onClick={() => hasChildren && setIsExpanded(!isExpanded)}
-            >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!isCollapsed && (
-                    <>
-                        <span className="flex-1">{item.name}</span>
-                        {item.badge && (
-                            <Badge variant="error" size="sm">
-                                {item.badge}
-                            </Badge>
-                        )}
-                        {hasChildren && (
+            {hasChildren ? (
+                // Parent item with children - just toggle expansion, no navigation
+                <button
+                    className={cn(
+                        'group flex items-center gap-3 px-3 py-2 mx-2 text-sm font-medium rounded-lg transition-all duration-200 w-full',
+                        'hover:bg-accent hover:text-accent-foreground',
+                        isChildActive
+                            ? 'bg-primary text-primary-foreground shadow-lg !text-white'
+                            : 'text-card-foreground hover:text-foreground !text-slate-200 dark:!text-slate-300 hover:!text-white dark:hover:!text-white',
+                        isCollapsed && 'justify-center px-2'
+                    )}
+                    onClick={() => setIsExpanded(!isExpanded)}
+                >
+                    <item.icon className={cn(
+                        "h-5 w-5 flex-shrink-0 transition-colors",
+                        isChildActive
+                            ? "text-primary-foreground !text-white"
+                            : "text-card-foreground group-hover:text-foreground !text-slate-200 dark:!text-slate-300 group-hover:!text-white dark:group-hover:!text-white"
+                    )} />
+                    {!isCollapsed && (
+                        <>
+                            <span className="flex-1 text-left">{item.name}</span>
+                            {item.badge && (
+                                <Badge variant="error" size="sm">
+                                    {item.badge}
+                                </Badge>
+                            )}
                             <ChevronRightIcon
                                 className={cn(
                                     'h-4 w-4 transition-transform duration-200',
                                     isExpanded && 'rotate-90'
                                 )}
                             />
-                        )}
-                    </>
-                )}
-            </Link>
+                        </>
+                    )}
+                </button>
+            ) : item.disabled ? (
+                // Disabled navigation item - show as coming soon
+                <div
+                    className={cn(
+                        'flex items-center gap-3 px-3 py-2 mx-2 text-sm font-medium rounded-lg transition-all duration-200',
+                        'opacity-60 cursor-not-allowed',
+                        'text-card-foreground !text-slate-400 dark:!text-slate-500',
+                        isCollapsed && 'justify-center px-2'
+                    )}
+                    title={item.comingSoon ? `${item.name} - Coming Soon` : `${item.name} - Disabled`}
+                >
+                    <item.icon className="h-5 w-5 flex-shrink-0 text-slate-400 dark:text-slate-500" />
+                    {!isCollapsed && (
+                        <>
+                            <span className="flex-1">{item.name}</span>
+                            {item.comingSoon && (
+                                <Badge variant="warning" size="sm" className="text-xs">
+                                    Soon
+                                </Badge>
+                            )}
+                            {item.badge && !item.comingSoon && (
+                                <Badge variant="error" size="sm">
+                                    {item.badge}
+                                </Badge>
+                            )}
+                        </>
+                    )}
+                </div>
+            ) : (
+                // Regular navigation item - navigate to href
+                <Link
+                    href={item.href}
+                    className={cn(
+                        'group flex items-center gap-3 px-3 py-2 mx-2 text-sm font-medium rounded-lg transition-all duration-200',
+                        'hover:bg-accent hover:text-accent-foreground',
+                        isActive
+                            ? 'bg-primary text-primary-foreground shadow-lg !text-white'
+                            : 'text-card-foreground hover:text-foreground !text-slate-200 dark:!text-slate-300 hover:!text-white dark:hover:!text-white',
+                        isCollapsed && 'justify-center px-2'
+                    )}
+                    onClick={onLinkClick}
+                >
+                    <item.icon className={cn(
+                        "h-5 w-5 flex-shrink-0 transition-colors",
+                        isActive
+                            ? "text-primary-foreground !text-white"
+                            : "text-card-foreground group-hover:text-foreground !text-slate-200 dark:!text-slate-300 group-hover:!text-white dark:group-hover:!text-white"
+                    )} />
+                    {!isCollapsed && (
+                        <>
+                            <span className="flex-1">{item.name}</span>
+                            {item.badge && (
+                                <Badge variant="error" size="sm">
+                                    {item.badge}
+                                </Badge>
+                            )}
+                        </>
+                    )}
+                </Link>
+            )}
 
             {/* Children */}
             {hasChildren && !isCollapsed && isExpanded && (
@@ -269,6 +341,7 @@ const NavItemComponent: React.FC<NavItemComponentProps> = ({
                             isActive={pathname === child.href}
                             isCollapsed={false}
                             userRole={userRole}
+                            onLinkClick={onLinkClick}
                         />
                     ))}
                 </div>
@@ -316,13 +389,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-neutral-700">
+                <div className="flex items-center justify-between p-4 border-b border-slate-700 dark:border-slate-800">
                     {!isCollapsed && (
                         <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                                <ShieldCheckIcon className="h-5 w-5 text-white" />
+                            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                                <ShieldCheckIcon className="h-5 w-5 text-primary-foreground" />
                             </div>
-                            <span className="font-bold text-lg text-neutral-0">
+                            <span className="font-bold text-lg !text-white">
                                 Evolution
                             </span>
                         </div>
@@ -333,7 +406,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         onClick={onToggle}
                         className="hidden lg:flex"
                     >
-                        {isCollapsed ? <Bars3Icon className="h-5 w-5" /> : <XMarkIcon className="h-5 w-5" />}
+                        {isCollapsed ? <Bars3Icon className="h-5 w-5 !text-white" /> : <XMarkIcon className="h-5 w-5 !text-white" />}
                     </Button>
                     <Button
                         variant="ghost"
@@ -341,7 +414,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         onClick={onClose}
                         className="lg:hidden"
                     >
-                        <XMarkIcon className="h-5 w-5" />
+                        <XMarkIcon className="h-5 w-5 !text-white" />
                     </Button>
                 </div>
 
@@ -354,15 +427,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                             isActive={pathname === item.href}
                             isCollapsed={isCollapsed}
                             userRole={userRole}
+                            onLinkClick={onClose}
                         />
                     ))}
                 </nav>
 
                 {/* Quick Actions */}
                 {!isCollapsed && (
-                    <div className="p-4 border-t border-neutral-700">
-                        <Button className="w-full" size="sm">
-                            <PlusIcon className="h-4 w-4 mr-2" />
+                    <div className="p-4 border-t border-slate-700 dark:border-slate-800">
+                        <Button className="w-full" size="sm" variant="outline">
+                            <PlusIcon className="h-4 w-4 mr-2 text-current" />
                             Quick Add
                         </Button>
                     </div>
@@ -385,17 +459,17 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ items }) => {
             {items.map((item, index) => (
                 <React.Fragment key={index}>
                     {index > 0 && (
-                        <ChevronRightIcon className="h-4 w-4 text-neutral-400" />
+                        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
                     )}
                     {item.href ? (
                         <Link
                             href={item.href}
-                            className="text-neutral-400 hover:text-neutral-0 transition-colors"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
                         >
                             {item.name}
                         </Link>
                     ) : (
-                        <span className="text-neutral-0 font-medium">{item.name}</span>
+                        <span className="text-foreground font-medium">{item.name}</span>
                     )}
                 </React.Fragment>
             ))}
@@ -431,18 +505,17 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     return (
-        <header className="bg-neutral-900 border-b border-neutral-700 px-4 py-3">
+        <header className="bg-card border-b border-border px-4 py-3">
             <div className="flex items-center justify-between">
                 {/* Left side */}
                 <div className="flex items-center gap-4">
-                    <Button
-                        variant="ghost"
-                        size="icon"
+                    <button
                         onClick={onMenuToggle}
-                        className="lg:hidden"
+                        className="lg:hidden relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors duration-200"
+                        aria-label="Toggle menu"
                     >
                         <Bars3Icon className="h-5 w-5" />
-                    </Button>
+                    </button>
 
                     {breadcrumbs.length > 0 && (
                         <Breadcrumb items={breadcrumbs} />
@@ -452,7 +525,7 @@ const Header: React.FC<HeaderProps> = ({
                 {/* Center - Search */}
                 <div className="hidden md:block flex-1 max-w-md mx-8">
                     <form onSubmit={handleSearch} className="relative">
-                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             type="text"
                             placeholder="Search content, users, analytics..."
@@ -465,31 +538,52 @@ const Header: React.FC<HeaderProps> = ({
 
                 {/* Right side */}
                 <div className="flex items-center gap-3">
+                    {/* Theme Toggle */}
+                    <ThemeToggle />
+
                     {/* Quick Actions */}
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <button
+                                className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors duration-200"
+                                aria-label="Quick actions"
+                            >
                                 <PlusIcon className="h-5 w-5" />
-                            </Button>
+                            </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="right">
-                            <DropdownMenuItem>
-                                <VideoCameraIcon className="h-4 w-4" />
+                            <DropdownMenuItem
+                                onClick={() => window.location.href = '/dashboard/content/videos/upload'}
+                                className="cursor-pointer"
+                            >
+                                <VideoCameraIcon className="h-4 w-4 text-current mr-3" />
                                 Add Video
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                                <UserGroupIcon className="h-4 w-4" />
-                                Add User
+                            <DropdownMenuItem
+                                onClick={() => {
+                                    // User creation functionality coming soon
+                                    alert('User creation feature coming soon!')
+                                }}
+                                className="cursor-pointer"
+                            >
+                                <UserGroupIcon className="h-4 w-4 text-current opacity-60 mr-3" />
+                                <span className="opacity-60">Add User (Soon)</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                                <DocumentTextIcon className="h-4 w-4" />
+                            <DropdownMenuItem
+                                onClick={() => window.location.href = '/dashboard/content/categories'}
+                                className="cursor-pointer"
+                            >
+                                <DocumentTextIcon className="h-4 w-4 text-current mr-3" />
                                 Create Category
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
 
                     {/* Notifications */}
-                    <Button variant="ghost" size="icon" className="relative">
+                    <button
+                        className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors duration-200"
+                        aria-label="Notifications"
+                    >
                         <BellIcon className="h-5 w-5" />
                         {notificationCount > 0 && (
                             <Badge
@@ -500,7 +594,7 @@ const Header: React.FC<HeaderProps> = ({
                                 {notificationCount > 9 ? '9+' : notificationCount}
                             </Badge>
                         )}
-                    </Button>
+                    </button>
 
                     {/* User Menu */}
                     <UserActionsDropdown
@@ -544,22 +638,22 @@ const Footer: React.FC<FooterProps> = ({ systemStatus }) => {
     }
 
     return (
-        <footer className="bg-neutral-900 border-t border-neutral-700 px-6 py-3">
+        <footer className="bg-card border-t border-border px-6 py-3">
             <div className="flex items-center justify-between text-sm">
-                <div className="text-neutral-400">
+                <div className="text-muted-foreground">
                     © 2024 Evolution Combatives. Professional tactical training platform.
                 </div>
 
                 {systemStatus && (
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1">
-                            <ServerIcon className="h-4 w-4 text-neutral-400" />
+                            <ServerIcon className="h-4 w-4 text-muted-foreground" />
                             <span className={getStatusColor(systemStatus.database)}>
                                 {getStatusIcon(systemStatus.database)} Database
                             </span>
                         </div>
                         <div className="flex items-center gap-1">
-                            <WifiIcon className="h-4 w-4 text-neutral-400" />
+                            <WifiIcon className="h-4 w-4 text-muted-foreground" />
                             <span className={getStatusColor(systemStatus.api)}>
                                 {getStatusIcon(systemStatus.api)} API
                             </span>
@@ -605,7 +699,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
     }
 
     return (
-        <div className="min-h-screen bg-neutral-950">
+        <div className="min-h-screen bg-background">
             {/* Sidebar */}
             <Sidebar
                 isCollapsed={sidebarCollapsed}

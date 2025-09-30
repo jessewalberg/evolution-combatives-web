@@ -26,12 +26,19 @@ const ROUTE_CONFIG = {
         '/subscription-cancel',
         '/health',
         '/api/health',
+        '/api/auth/login',
+        '/api/auth/logout',
+        '/api/csrf-token',
         '/api/subscriptions/create-checkout',
         '/api/webhooks/stripe',
+        '/api/webhooks/cloudflare',
         '/.well-known*',
         '/favicon.ico',
         '/robots.txt',
-        '/sitemap.xml'
+        '/sitemap.xml',
+        '/_next/static*',
+        '/_next/image*',
+        '/public*'
     ],
 
     // Protected routes that require authentication
@@ -44,9 +51,9 @@ const ROUTE_CONFIG = {
         super_admin: [
             '/dashboard',
             '/users',
-            '/content',
             '/analytics',
             '/qa',
+            '/subscribe',
             '/api/admin',
             '/api/content',
             '/api/cloudflare',
@@ -54,7 +61,6 @@ const ROUTE_CONFIG = {
         ],
         content_admin: [
             '/dashboard',
-            '/content',
             '/analytics',
             '/api/content',
             '/api/cloudflare'
@@ -72,15 +78,15 @@ const ROUTE_CONFIG = {
 const RATE_LIMITS = {
     api: {
         windowMs: 15 * 60 * 1000, // 15 minutes
-        maxRequests: 50 // Reduced from 100 to be more restrictive
+        maxRequests: 1000 // Dramatically increased for development
     },
     auth: {
         windowMs: 15 * 60 * 1000, // 15 minutes
-        maxRequests: 5
+        maxRequests: 100 // Dramatically increased
     },
     admin: {
         windowMs: 5 * 60 * 1000, // 5 minutes  
-        maxRequests: 20 // Stricter limits for admin operations
+        maxRequests: 500 // Dramatically increased
     }
 } as const
 
@@ -146,6 +152,11 @@ function isPublicRoute(pathname: string): boolean {
  * Check if user has access to specific route based on role
  */
 function hasRouteAccess(pathname: string, role: AdminRole): boolean {
+    // Super admin has access to everything
+    if (role === 'super_admin') {
+        return true
+    }
+
     const allowedRoutes = ROUTE_CONFIG.roleAccess[role]
 
     return allowedRoutes.some(route => {
@@ -238,10 +249,10 @@ export async function middleware(request: NextRequest) {
         // Rate limiting for API routes
         if (pathname.startsWith('/api/')) {
             // Different rate limits for admin vs regular API routes
-            const rateLimitConfig = pathname.startsWith('/api/admin/') 
-                ? RATE_LIMITS.admin 
+            const rateLimitConfig = pathname.startsWith('/api/admin/')
+                ? RATE_LIMITS.admin
                 : RATE_LIMITS.api
-                
+
             const rateLimit = checkRateLimit(`api:${clientIP}:${pathname.startsWith('/api/admin/') ? 'admin' : 'general'}`, rateLimitConfig)
 
             // Add rate limit headers
@@ -360,8 +371,15 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/login?error=access_denied', request.url))
         }
 
-        // Check role-based route access
-        if (!hasRouteAccess(pathname, profile.admin_role as AdminRole)) {
+        // Check role-based route access (skip for API routes - they handle their own auth)
+        if (!pathname.startsWith('/api/') && !hasRouteAccess(pathname, profile.admin_role as AdminRole)) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Route access denied:', {
+                    pathname,
+                    role: profile.admin_role,
+                    allowedRoutes: ROUTE_CONFIG.roleAccess[profile.admin_role as AdminRole]
+                })
+            }
             return NextResponse.redirect(new URL('/dashboard?error=insufficient_permissions', request.url))
         }
 
@@ -403,7 +421,7 @@ export async function middleware(request: NextRequest) {
         if (profile.last_login_at) {
             const lastLoginTime = new Date(profile.last_login_at).getTime()
             const sessionTimeoutMs = 24 * 60 * 60 * 1000 // 24 hours
-            
+
             if (Date.now() - lastLoginTime > sessionTimeoutMs) {
                 // Session expired - sign out user
                 try {
@@ -414,7 +432,7 @@ export async function middleware(request: NextRequest) {
                         console.error('Failed to sign out expired session:', error)
                     }
                 }
-                
+
                 return NextResponse.redirect(new URL('/login?error=session_expired', request.url))
             }
         }
@@ -444,7 +462,9 @@ export const config = {
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
          * - public files (public folder)
+         * - vercel analytics/speed insights
+         * - external scripts and assets
          */
-        '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+        '/((?!_next/static|_next/image|favicon.ico|public/|_vercel|ingest/).*)',
     ],
 } 

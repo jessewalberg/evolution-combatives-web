@@ -39,35 +39,32 @@ export type TimePeriod = 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year' 
 const statsCardVariants = cva(
     [
         // Base styles - consistent across all variants
-        'relative overflow-hidden rounded-lg border bg-white dark:bg-gray-800',
+        'relative overflow-hidden rounded-lg border bg-card text-card-foreground',
         'transition-all duration-200 ease-in-out',
-        'hover:shadow-lg hover:shadow-gray-500/20 dark:hover:shadow-gray-950/20',
+        'hover:shadow-lg',
     ],
     {
         variants: {
             variant: {
                 // Default - Standard KPI card
                 metric: [
-                    'border-gray-200 dark:border-gray-700',
-                    'hover:border-gray-300 dark:hover:border-gray-600',
+                    'border-border',
+                    'hover:border-border/80',
                 ],
 
                 // Revenue - Financial metrics with green accent
                 revenue: [
-                    'border-gray-200 dark:border-gray-700 hover:border-green-200 dark:hover:border-green-500/30',
-                    'bg-gradient-to-br from-white to-green-50/50 dark:from-gray-800 dark:to-green-950/10',
+                    'border-border hover:border-green-200 dark:hover:border-green-500/30',
                 ],
 
                 // Engagement - User interaction metrics with blue accent
                 engagement: [
-                    'border-gray-200 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-500/30',
-                    'bg-gradient-to-br from-white to-blue-50/50 dark:from-gray-800 dark:to-blue-950/10',
+                    'border-border hover:border-blue-200 dark:hover:border-blue-500/30',
                 ],
 
                 // Growth - Growth metrics with purple accent
                 growth: [
-                    'border-gray-200 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-500/30',
-                    'bg-gradient-to-br from-white to-purple-50/50 dark:from-gray-800 dark:to-purple-950/10',
+                    'border-border hover:border-purple-200 dark:hover:border-purple-500/30',
                 ],
             },
 
@@ -390,24 +387,40 @@ const StatsCard = React.forwardRef<HTMLDivElement, StatsCardProps>(
                 {/* Header */}
                 <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 truncate">
+                        <h3 className="text-sm font-medium text-muted-foreground truncate">
                             {title}
                         </h3>
                         {subtitle && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                            <p className="text-xs text-muted-foreground/80 mt-1 truncate">
                                 {subtitle}
                             </p>
                         )}
                     </div>
                     {Icon && (
                         <div className="flex-shrink-0 ml-3">
-                            <div className={cn(
-                                'p-2 rounded-lg',
-                                variant === 'revenue' && 'bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400',
-                                variant === 'engagement' && 'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400',
-                                variant === 'growth' && 'bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400',
-                                variant === 'metric' && 'bg-gray-100 text-gray-600 dark:bg-gray-700/50 dark:text-gray-300'
-                            )}>
+                            <div
+                                className={cn(
+                                    'p-2 rounded-lg',
+                                    variant === 'revenue' && 'bg-green-100 text-green-600',
+                                    variant === 'engagement' && 'bg-blue-100 text-blue-600',
+                                    variant === 'growth' && 'bg-purple-100 text-purple-600',
+                                    variant === 'metric' && 'bg-muted text-muted-foreground'
+                                )}
+                                style={{
+                                    ...(variant === 'engagement' && {
+                                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                        color: 'rgb(147, 197, 253)'
+                                    }),
+                                    ...(variant === 'growth' && {
+                                        backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                                        color: 'rgb(196, 181, 253)'
+                                    }),
+                                    ...(variant === 'revenue' && {
+                                        backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                        color: 'rgb(134, 239, 172)'
+                                    })
+                                }}
+                            >
                                 <Icon className="h-5 w-5" />
                             </div>
                         </div>
@@ -417,7 +430,7 @@ const StatsCard = React.forwardRef<HTMLDivElement, StatsCardProps>(
                 {/* Main Value */}
                 <div className="mb-4">
                     <div className={cn(
-                        'text-2xl font-bold text-gray-900 dark:text-white leading-tight',
+                        'text-2xl font-bold text-foreground leading-tight',
                         size === 'sm' && 'text-xl',
                         size === 'lg' && 'text-3xl'
                     )}>
@@ -434,7 +447,7 @@ const StatsCard = React.forwardRef<HTMLDivElement, StatsCardProps>(
                                 {Math.abs(calculatedChange).toFixed(1)}%
                             </span>
                         </div>
-                        <span className="text-xs text-neutral-400 truncate">
+                        <span className="text-xs text-muted-foreground truncate">
                             {periodLabel}
                         </span>
                     </div>
@@ -442,7 +455,7 @@ const StatsCard = React.forwardRef<HTMLDivElement, StatsCardProps>(
 
                 {/* Custom trend label */}
                 {showTrend && trendLabel && !calculatedChange && (
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-muted-foreground">
                         {trendLabel}
                     </div>
                 )}

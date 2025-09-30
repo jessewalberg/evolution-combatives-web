@@ -14,7 +14,7 @@ import { z } from 'zod';
 
 // Request validation schema
 const CreateCheckoutSchema = z.object({
-    tier: z.enum(['beginner', 'intermediate', 'advanced']),
+    tier: z.enum(['none', 'tier1', 'tier2', 'tier3']),
     userId: z.string().uuid(),
     userEmail: z.string().email(),
     successUrl: z.string().url().optional(),
