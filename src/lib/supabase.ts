@@ -9,7 +9,6 @@
  */
 
 import { createClientComponentClient, createServerComponentClient as createSupabaseServerClient, createMiddlewareClient as createSupabaseMiddlewareClient } from '@supabase/auth-helpers-nextjs'
-import { createServerClient as createSSRServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import type { NextRequest, NextResponse } from 'next/server'
 
@@ -20,8 +19,7 @@ export const createBrowserClient = () =>
 // Server-side (SSR/API routes)
 export const createServerClient = async () => {
     const { cookies } = await import('next/headers')
-    const cookieStore = await cookies()
-    return createSupabaseServerClient({ cookies: () => cookieStore })
+    return createSupabaseServerClient({ cookies })
 }
 
 // Export for backward compatibility

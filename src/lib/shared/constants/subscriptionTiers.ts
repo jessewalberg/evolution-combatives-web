@@ -137,17 +137,17 @@ export function hasAccessToDiscipline(
  * Check if a user has access to a specific content area based on business rules
  */
 export function hasAccessToContent(
-    userTier: SubscriptionTier, 
-    contentType: 'discipline' | 'category', 
+    userTier: SubscriptionTier,
+    contentType: 'discipline' | 'category',
     contentSlug: string
 ): boolean {
     const accessMapping = CONTENT_ACCESS_BY_TIER[userTier];
-    
+
     if (contentType === 'discipline') {
-        return accessMapping.disciplines.includes(contentSlug as any);
+        return (accessMapping.disciplines as readonly string[]).includes(contentSlug);
     }
-    
-    return accessMapping.categories.includes(contentSlug as any);
+
+    return (accessMapping.categories as readonly string[]).includes(contentSlug);
 }
 
 // Display information for UI

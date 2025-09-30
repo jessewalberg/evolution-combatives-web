@@ -231,7 +231,6 @@ export default function CategoriesPage() {
     const [editDialogOpen, setEditDialogOpen] = useState(false)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<CategoryWithRelations | null>(null)
-    const [selectedCategories, setSelectedCategories] = useState<string[]>([])
     const [formData, setFormData] = useState({
         name: '',
         slug: '',

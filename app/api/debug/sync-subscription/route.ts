@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '../../../../src/lib/stripe'
 import { createAdminClient } from '../../../../src/lib/supabase'
+import Stripe from 'stripe'
 
 /**
  * Debug endpoint to manually sync subscription from Stripe
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        let subscription: any = null
+        let subscription: Stripe.Subscription | null = null
 
         // Find subscription by email or ID
         if (stripeSubscriptionId) {
@@ -57,8 +58,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Get customer details
-        const customer = await stripe.customers.retrieve(subscription.customer as string)
-        const customerEmail = (customer as any).email
+        const customer = await stripe.customers.retrieve(subscription.customer as string) as Stripe.Customer
+        const customerEmail = customer.email
 
         // Extract tier from subscription metadata or price
         let tier = 'tier1' // Default
@@ -96,6 +97,14 @@ export async function POST(request: NextRequest) {
             .eq('stripe_subscription_id', subscription.id)
             .single()
 
+        // Extract period dates - Stripe API v18+ uses Date objects
+        const currentPeriodStart = 'current_period_start' in subscription
+            ? new Date((subscription.current_period_start as number) * 1000).toISOString()
+            : new Date().toISOString()
+        const currentPeriodEnd = 'current_period_end' in subscription
+            ? new Date((subscription.current_period_end as number) * 1000).toISOString()
+            : new Date().toISOString()
+
         if (existingSub) {
             // Update existing subscription
             const { error: updateError } = await supabase
@@ -103,9 +112,9 @@ export async function POST(request: NextRequest) {
                 .update({
                     tier: tier as 'tier1' | 'tier2' | 'tier3',
                     status: subscription.status as 'active' | 'canceled',
-                    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-                    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-                    cancel_at_period_end: subscription.cancel_at_period_end,
+                    current_period_start: currentPeriodStart,
+                    current_period_end: currentPeriodEnd,
+                    cancel_at_period_end: subscription.cancel_at_period_end ?? false,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', existingSub.id)
@@ -123,9 +132,9 @@ export async function POST(request: NextRequest) {
                     status: subscription.status as 'active' | 'canceled',
                     stripe_subscription_id: subscription.id,
                     stripe_customer_id: subscription.customer as string,
-                    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-                    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-                    cancel_at_period_end: subscription.cancel_at_period_end,
+                    current_period_start: currentPeriodStart,
+                    current_period_end: currentPeriodEnd,
+                    cancel_at_period_end: subscription.cancel_at_period_end ?? false,
                     canceled_at: null,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 import { createAdminClient } from '../../../../src/lib/supabase'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
     console.log('Dashboard metrics API called')
 
     const authResult = await validateApiAuthWithSession('analytics.read')

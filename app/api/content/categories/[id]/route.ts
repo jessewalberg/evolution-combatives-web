@@ -5,8 +5,9 @@ import type { CategoryUpdate } from '../../../../../src/lib/shared/types/databas
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
+    const params = await context.params
     const authResult = await validateApiAuthWithSession('content.read')
     if ('error' in authResult) {
         return authResult.error
@@ -39,8 +40,9 @@ export async function GET(
 
 export async function PUT(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
+    const params = await context.params
     const authResult = await validateApiAuthWithSession('content.write')
     if ('error' in authResult) {
         return authResult.error
@@ -80,8 +82,9 @@ export async function PUT(
 
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
+    const params = await context.params
     const authResult = await validateApiAuthWithSession('content.write')
     if ('error' in authResult) {
         return authResult.error

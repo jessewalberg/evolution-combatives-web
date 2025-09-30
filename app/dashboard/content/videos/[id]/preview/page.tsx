@@ -431,13 +431,13 @@ export default function VideoPreviewPage() {
                                 <div>
                                     <span className="text-sm text-muted-foreground">Category</span>
                                     <p className="font-medium text-foreground">
-                                        {(video as any)?.categories?.name || 'Uncategorized'}
+                                        {(video.category && typeof video.category === 'object' && 'name' in video.category) ? (video.category as { name: string }).name : 'Uncategorized'}
                                     </p>
                                 </div>
                                 <div>
                                     <span className="text-sm text-muted-foreground">Discipline</span>
                                     <p className="font-medium text-foreground">
-                                        {(video as any)?.categories?.disciplines?.name || 'N/A'}
+                                        {(video.category && typeof video.category === 'object' && 'disciplines' in video.category && video.category.disciplines && typeof video.category.disciplines === 'object' && 'name' in video.category.disciplines) ? (video.category.disciplines as { name: string }).name : 'N/A'}
                                     </p>
                                 </div>
                                 {video.instructor && (
