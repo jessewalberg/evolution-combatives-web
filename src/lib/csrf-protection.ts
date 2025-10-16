@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server'
 
 const CSRF_TOKEN_HEADER = 'X-CSRF-Token'
-const CSRF_COOKIE_NAME = '__Host-csrf-token'
+const CSRF_COOKIE_NAME = process.env.NODE_ENV === 'production' ? '__Host-csrf-token' : 'csrf-token'
 
 /**
  * Generate a secure CSRF token
@@ -44,9 +44,10 @@ export function needsCSRFProtection(request: NextRequest): boolean {
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
     const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
     const isWebhook = request.nextUrl.pathname.includes('/webhook')
-    
-    // Skip CSRF for webhooks (they have their own verification)
-    return isStateChanging && isApiRoute && !isWebhook
+    const isMobileApi = request.nextUrl.pathname.startsWith('/api/mobile/')
+
+    // Skip CSRF for webhooks (they have their own verification) and mobile API routes (use Bearer auth)
+    return isStateChanging && isApiRoute && !isWebhook && !isMobileApi
 }
 
 /**
@@ -58,7 +59,7 @@ export async function csrfProtection(request: NextRequest): Promise<Response | n
     }
 
     const isValid = await validateCSRFToken(request)
-    
+
     if (!isValid) {
         return new Response(
             JSON.stringify({

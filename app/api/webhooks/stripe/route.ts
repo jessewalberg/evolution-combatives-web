@@ -122,7 +122,7 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         .from('subscriptions')
         .insert({
             user_id: userId,
-            tier: tier as 'beginner' | 'intermediate' | 'advanced',
+            tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
             status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
             stripe_subscription_id: subscription.id,
             stripe_customer_id: subscription.customer as string,

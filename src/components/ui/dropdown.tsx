@@ -22,8 +22,8 @@ const dropdownMenuVariants = cva(
         // Base styles for menu container
         'absolute z-[9999] min-w-48 max-w-64',
         'rounded-md border shadow-lg',
-        'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-        'text-gray-900 dark:text-white text-sm',
+        'bg-card border-border',
+        'text-card-foreground text-sm',
         'py-1 focus:outline-none',
         'origin-top-right',
     ],
@@ -51,15 +51,15 @@ const dropdownMenuItemVariants = cva(
         'group flex w-full items-center gap-3 px-4 py-2.5',
         'text-sm font-medium cursor-pointer select-none',
         'transition-colors duration-150',
-        'focus:outline-none focus:bg-gray-100 dark:focus:bg-gray-700',
+        'focus:outline-none focus:bg-accent',
         'disabled:opacity-50 disabled:cursor-not-allowed',
     ],
     {
         variants: {
             variant: {
                 default: [
-                    'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700',
-                    'hover:text-gray-900 dark:hover:text-white',
+                    'text-card-foreground hover:bg-accent',
+                    'hover:text-accent-foreground',
                 ],
                 destructive: [
                     'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20',
@@ -94,14 +94,14 @@ const dropdownMenuItemVariants = cva(
 /**
  * Dropdown Menu Separator styles
  */
-const dropdownMenuSeparatorStyles = 'my-1 h-px bg-gray-200 dark:bg-gray-700'
+const dropdownMenuSeparatorStyles = 'my-1 h-px bg-border'
 
 /**
  * Dropdown Menu Label styles
  */
 const dropdownMenuLabelStyles = [
     'px-4 py-2 text-xs font-semibold',
-    'text-gray-600 dark:text-gray-400 uppercase tracking-wide',
+    'text-muted-foreground uppercase tracking-wide',
     'select-none'
 ].join(' ')
 
@@ -157,7 +157,7 @@ const DropdownMenuTrigger = React.forwardRef<HTMLButtonElement, DropdownMenuTrig
                 className={cn(
                     'inline-flex items-center justify-center gap-2',
                     'rounded-md px-3 py-2 text-sm font-medium',
-                    'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700',
+                    'text-foreground hover:bg-accent',
                     'focus:outline-none focus:ring-2 focus:ring-blue-500',
                     'transition-colors duration-150',
                     className
@@ -252,7 +252,7 @@ const DropdownMenuItem = React.forwardRef<HTMLButtonElement, DropdownMenuItemPro
                         ref={ref}
                         className={cn(
                             dropdownMenuItemVariants({ variant, size }),
-                            active && !isDisabled && 'bg-gray-100 dark:bg-gray-700',
+                            active && !isDisabled && 'bg-accent text-accent-foreground',
                             isDisabled && 'opacity-50 cursor-not-allowed',
                             className
                         )}
@@ -269,13 +269,13 @@ const DropdownMenuItem = React.forwardRef<HTMLButtonElement, DropdownMenuItemPro
                             <div className="flex items-center justify-between">
                                 <span>{children}</span>
                                 {shortcut && (
-                                    <kbd className="ml-2 px-1.5 py-0.5 text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded">
+                                    <kbd className="ml-2 px-1.5 py-0.5 text-xs font-mono text-muted-foreground bg-muted rounded">
                                         {shortcut}
                                     </kbd>
                                 )}
                             </div>
                             {description && (
-                                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 font-normal">
+                                <p className="mt-0.5 text-xs text-muted-foreground font-normal">
                                     {description}
                                 </p>
                             )}
@@ -354,80 +354,82 @@ export interface UserActionsDropdownProps {
 }
 
 const UserActionsDropdown = React.forwardRef<HTMLDivElement, UserActionsDropdownProps>(
-    ({ user, onViewProfile, onEditProfile, onChangePassword, onLogout, className }) => {
+    ({ user, onViewProfile, onEditProfile, onChangePassword, onLogout, className }, ref) => {
         return (
-            <DropdownMenu>
-                <DropdownMenuTrigger className={className}>
-                    <div className="flex items-center gap-2">
-                        {user.avatar ? (
-                            <div className="relative w-8 h-8 rounded-full overflow-hidden">
-                                <Image
-                                    src={user.avatar}
-                                    alt={user.name}
-                                    fill
-                                    className="object-cover"
-                                    sizes="32px"
-                                />
+            <div ref={ref}>
+                <DropdownMenu>
+                    <DropdownMenuTrigger className={className}>
+                        <div className="flex items-center gap-2">
+                            {user.avatar ? (
+                                <div className="relative w-8 h-8 rounded-full overflow-hidden">
+                                    <Image
+                                        src={user.avatar}
+                                        alt={user.name}
+                                        fill
+                                        className="object-cover"
+                                        sizes="32px"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                                    <span className="text-sm font-medium text-primary-foreground">
+                                        {user.name.charAt(0).toUpperCase()}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="hidden md:block text-left">
+                                <p className="text-sm font-medium text-foreground">{user.name}</p>
+                                <p className="text-xs text-muted-foreground">{user.role}</p>
                             </div>
-                        ) : (
-                            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
-                                <span className="text-sm font-medium text-white">
-                                    {user.name.charAt(0).toUpperCase()}
-                                </span>
-                            </div>
-                        )}
-                        <div className="hidden md:block text-left">
-                            <p className="text-sm font-medium">{user.name}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{user.role}</p>
                         </div>
-                    </div>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <DropdownMenuItem
-                        onClick={onViewProfile}
-                        icon={
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                        }
-                    >
-                        View Profile
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                        onClick={onEditProfile}
-                        icon={
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                        }
-                    >
-                        Edit Profile
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                        onClick={onChangePassword}
-                        icon={
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1721 9z" />
-                            </svg>
-                        }
-                    >
-                        Change Password
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                        variant="destructive"
-                        onClick={onLogout}
-                        icon={
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                            </svg>
-                        }
-                    >
-                        Sign Out
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                        <DropdownMenuItem
+                            onClick={onViewProfile}
+                            icon={
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                            }
+                        >
+                            View Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            onClick={onEditProfile}
+                            icon={
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                            }
+                        >
+                            Edit Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            onClick={onChangePassword}
+                            icon={
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1721 9z" />
+                                </svg>
+                            }
+                        >
+                            Change Password
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                            variant="destructive"
+                            onClick={onLogout}
+                            icon={
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                            }
+                        >
+                            Sign Out
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
         )
     }
 )
@@ -448,87 +450,89 @@ export interface ContentActionsDropdownProps {
 }
 
 const ContentActionsDropdown = React.forwardRef<HTMLDivElement, ContentActionsDropdownProps>(
-    ({ onEdit, onDuplicate, onArchive, onDelete, onViewAnalytics, className, disabled }) => {
+    ({ onEdit, onDuplicate, onArchive, onDelete, onViewAnalytics, className, disabled }, ref) => {
         return (
-            <DropdownMenu>
-                <DropdownMenuTrigger
-                    className={className}
-                    disabled={disabled}
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    {onEdit && (
-                        <DropdownMenuItem
-                            onClick={onEdit}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                            }
-                            shortcut="⌘E"
-                        >
-                            Edit
-                        </DropdownMenuItem>
-                    )}
-                    {onDuplicate && (
-                        <DropdownMenuItem
-                            onClick={onDuplicate}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                            }
-                            shortcut="⌘D"
-                        >
-                            Duplicate
-                        </DropdownMenuItem>
-                    )}
-                    {onViewAnalytics && (
-                        <DropdownMenuItem
-                            onClick={onViewAnalytics}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                </svg>
-                            }
-                        >
-                            View Analytics
-                        </DropdownMenuItem>
-                    )}
-                    {(onArchive || onDelete) && <DropdownMenuSeparator />}
-                    {onArchive && (
-                        <DropdownMenuItem
-                            variant="warning"
-                            onClick={onArchive}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8l4 4 4-4m0 4l-4 4-4-4" />
-                                </svg>
-                            }
-                        >
-                            Archive
-                        </DropdownMenuItem>
-                    )}
-                    {onDelete && (
-                        <DropdownMenuItem
-                            variant="destructive"
-                            onClick={onDelete}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            }
-                            shortcut="⌫"
-                        >
-                            Delete
-                        </DropdownMenuItem>
-                    )}
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <div ref={ref}>
+                <DropdownMenu>
+                    <DropdownMenuTrigger
+                        className={className}
+                        disabled={disabled}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        {onEdit && (
+                            <DropdownMenuItem
+                                onClick={onEdit}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                }
+                                shortcut="⌘E"
+                            >
+                                Edit
+                            </DropdownMenuItem>
+                        )}
+                        {onDuplicate && (
+                            <DropdownMenuItem
+                                onClick={onDuplicate}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                }
+                                shortcut="⌘D"
+                            >
+                                Duplicate
+                            </DropdownMenuItem>
+                        )}
+                        {onViewAnalytics && (
+                            <DropdownMenuItem
+                                onClick={onViewAnalytics}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                }
+                            >
+                                View Analytics
+                            </DropdownMenuItem>
+                        )}
+                        {(onArchive || onDelete) && <DropdownMenuSeparator />}
+                        {onArchive && (
+                            <DropdownMenuItem
+                                variant="warning"
+                                onClick={onArchive}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8l4 4 4-4m0 4l-4 4-4-4" />
+                                    </svg>
+                                }
+                            >
+                                Archive
+                            </DropdownMenuItem>
+                        )}
+                        {onDelete && (
+                            <DropdownMenuItem
+                                variant="destructive"
+                                onClick={onDelete}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                }
+                                shortcut="⌫"
+                            >
+                                Delete
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
         )
     }
 )
@@ -557,99 +561,101 @@ const SettingsDropdown = React.forwardRef<HTMLDivElement, SettingsDropdownProps>
         onSystemSettings,
         onAuditLog,
         className
-    }) => {
+    }, ref) => {
         return (
-            <DropdownMenu>
-                <DropdownMenuTrigger className={className}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    Settings
-                </DropdownMenuTrigger>
-                <DropdownMenuContent size="lg">
-                    <DropdownMenuLabel>System Settings</DropdownMenuLabel>
-                    {onGeneralSettings && (
-                        <DropdownMenuItem
-                            onClick={onGeneralSettings}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
-                                </svg>
-                            }
-                            description="General application settings"
-                        >
-                            General
-                        </DropdownMenuItem>
-                    )}
-                    {onUserManagement && (
-                        <DropdownMenuItem
-                            onClick={onUserManagement}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                                </svg>
-                            }
-                            description="Manage users and permissions"
-                        >
-                            User Management
-                        </DropdownMenuItem>
-                    )}
-                    {onContentSettings && (
-                        <DropdownMenuItem
-                            onClick={onContentSettings}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 0h10a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2z" />
-                                </svg>
-                            }
-                            description="Content and video settings"
-                        >
-                            Content Settings
-                        </DropdownMenuItem>
-                    )}
-                    {onBillingSettings && (
-                        <DropdownMenuItem
-                            onClick={onBillingSettings}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                </svg>
-                            }
-                            description="Billing and subscription settings"
-                        >
-                            Billing Settings
-                        </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    {onSystemSettings && (
-                        <DropdownMenuItem
-                            onClick={onSystemSettings}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-                                </svg>
-                            }
-                            description="Advanced system configuration"
-                        >
-                            System Settings
-                        </DropdownMenuItem>
-                    )}
-                    {onAuditLog && (
-                        <DropdownMenuItem
-                            onClick={onAuditLog}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                            }
-                            description="View system audit logs"
-                        >
-                            Audit Log
-                        </DropdownMenuItem>
-                    )}
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <div ref={ref}>
+                <DropdownMenu>
+                    <DropdownMenuTrigger className={className}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Settings
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent size="lg">
+                        <DropdownMenuLabel>System Settings</DropdownMenuLabel>
+                        {onGeneralSettings && (
+                            <DropdownMenuItem
+                                onClick={onGeneralSettings}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                                    </svg>
+                                }
+                                description="General application settings"
+                            >
+                                General
+                            </DropdownMenuItem>
+                        )}
+                        {onUserManagement && (
+                            <DropdownMenuItem
+                                onClick={onUserManagement}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                                    </svg>
+                                }
+                                description="Manage users and permissions"
+                            >
+                                User Management
+                            </DropdownMenuItem>
+                        )}
+                        {onContentSettings && (
+                            <DropdownMenuItem
+                                onClick={onContentSettings}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 0h10a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                                    </svg>
+                                }
+                                description="Content and video settings"
+                            >
+                                Content Settings
+                            </DropdownMenuItem>
+                        )}
+                        {onBillingSettings && (
+                            <DropdownMenuItem
+                                onClick={onBillingSettings}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                    </svg>
+                                }
+                                description="Billing and subscription settings"
+                            >
+                                Billing Settings
+                            </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        {onSystemSettings && (
+                            <DropdownMenuItem
+                                onClick={onSystemSettings}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                    </svg>
+                                }
+                                description="Advanced system configuration"
+                            >
+                                System Settings
+                            </DropdownMenuItem>
+                        )}
+                        {onAuditLog && (
+                            <DropdownMenuItem
+                                onClick={onAuditLog}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                }
+                                description="View system audit logs"
+                            >
+                                Audit Log
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
         )
     }
 )
@@ -670,87 +676,92 @@ export interface VideoActionsDropdownProps {
 }
 
 const VideoActionsDropdown = React.forwardRef<HTMLDivElement, VideoActionsDropdownProps>(
-    ({ onPreview, onEdit, onAnalytics, onDownload, onDelete, className, disabled }) => {
+    ({ onPreview, onEdit, onAnalytics, onDownload, onDelete, className, disabled }, ref) => {
         return (
-            <DropdownMenu>
-                <DropdownMenuTrigger
-                    className={cn(
-                        'p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
-                        className
-                    )}
-                    disabled={disabled}
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="right">
-                    {onPreview && (
-                        <DropdownMenuItem
-                            onClick={onPreview}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                            }
-                        >
-                            Preview Video
-                        </DropdownMenuItem>
-                    )}
-                    {onEdit && (
-                        <DropdownMenuItem
-                            onClick={onEdit}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                            }
-                        >
-                            Edit Metadata
-                        </DropdownMenuItem>
-                    )}
-                    {onAnalytics && (
-                        <DropdownMenuItem
-                            onClick={onAnalytics}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                </svg>
-                            }
-                        >
-                            View Analytics
-                        </DropdownMenuItem>
-                    )}
-                    {onDownload && (
-                        <DropdownMenuItem
-                            onClick={onDownload}
-                            icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                            }
-                        >
-                            Download Original
-                        </DropdownMenuItem>
-                    )}
-                    {onDelete && (
-                        <>
-                            <DropdownMenuSeparator />
+            <div ref={ref}>
+                <DropdownMenu>
+                    <DropdownMenuTrigger
+                        className={cn(
+                            'p-2 rounded-md border border-border bg-background text-foreground',
+                            'hover:bg-accent hover:text-accent-foreground transition-colors',
+                            'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
+                            'disabled:opacity-50 disabled:cursor-not-allowed',
+                            className
+                        )}
+                        disabled={disabled}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="right">
+                        {onPreview && (
                             <DropdownMenuItem
-                                variant="destructive"
-                                onClick={onDelete}
+                                onClick={onPreview}
                                 icon={
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
                                 }
                             >
-                                Delete Video
+                                Preview Video
                             </DropdownMenuItem>
-                        </>
-                    )}
-                </DropdownMenuContent>
-            </DropdownMenu>
+                        )}
+                        {onEdit && (
+                            <DropdownMenuItem
+                                onClick={onEdit}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                }
+                            >
+                                Edit Metadata
+                            </DropdownMenuItem>
+                        )}
+                        {onAnalytics && (
+                            <DropdownMenuItem
+                                onClick={onAnalytics}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                }
+                            >
+                                View Analytics
+                            </DropdownMenuItem>
+                        )}
+                        {onDownload && (
+                            <DropdownMenuItem
+                                onClick={onDownload}
+                                icon={
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                }
+                            >
+                                Download Original
+                            </DropdownMenuItem>
+                        )}
+                        {onDelete && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={onDelete}
+                                    icon={
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    }
+                                >
+                                    Delete Video
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
         )
     }
 )

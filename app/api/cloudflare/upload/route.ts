@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cloudflareStreamService } from '../../../../src/services/cloudflare-stream'
 import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 
 export async function POST(request: NextRequest) {
@@ -9,29 +8,31 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        // Import cloudflareStreamService inside the function to avoid environment variable issues
+        const { cloudflareStreamService } = await import('../../../../src/services/cloudflare-stream')
         const { action, ...data } = await request.json()
 
         switch (action) {
             case 'getUploadUrl':
                 const uploadUrl = await cloudflareStreamService.upload.getUploadUrl(data)
                 return NextResponse.json({ success: true, data: uploadUrl })
-            
+
             case 'checkUploadStatus':
                 const status = await cloudflareStreamService.upload.checkUploadStatus(data.streamId)
                 return NextResponse.json({ success: true, data: status })
-            
+
             case 'generateAdminPreviewUrl':
                 const previewUrl = await cloudflareStreamService.security.generateAdminPreviewUrl(data.videoId)
                 return NextResponse.json({ success: true, data: { previewUrl } })
-            
+
             case 'generateThumbnailUrl':
                 const thumbnailUrl = await cloudflareStreamService.video.generateThumbnailUrl(data.videoId, data.options)
                 return NextResponse.json({ success: true, data: { thumbnailUrl } })
-            
+
             case 'retryProcessing':
                 await cloudflareStreamService.video.retryProcessing(data.videoId)
                 return NextResponse.json({ success: true })
-            
+
             default:
                 return NextResponse.json(
                     { success: false, error: 'Invalid action' },
@@ -41,9 +42,9 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Cloudflare API error:', error)
         return NextResponse.json(
-            { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
+            {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
             },
             { status: 500 }
         )

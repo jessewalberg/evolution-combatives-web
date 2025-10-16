@@ -16,7 +16,7 @@ import { Badge } from '@/src/components/ui/badge';
 import LoadingSpinner from '@/src/components/ui/loading';
 import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '@/src/lib/shared/constants/subscriptionTiers';
 
-type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced';
+type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 
 function SubscribeContent() {
     const searchParams = useSearchParams();
@@ -96,7 +96,7 @@ function SubscribeContent() {
         }
     };
 
-    const tiers: SubscriptionTier[] = ['beginner', 'intermediate', 'advanced'];
+    const tiers: SubscriptionTier[] = ['tier1', 'tier2', 'tier3'];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900">
@@ -221,7 +221,7 @@ function SubscribeContent() {
 
 export default function SubscribePage() {
     return (
-        <Suspense 
+        <Suspense
             fallback={
                 <div className="min-h-screen flex items-center justify-center bg-gray-50">
                     <LoadingSpinner size="lg" />

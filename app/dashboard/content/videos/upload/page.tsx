@@ -45,7 +45,7 @@ export default function VideoUploadPage() {
     // Handle successful upload
     const handleUploadSuccess = (videoId: string) => {
         toast.success('Video uploaded successfully!')
-        router.push(`/dashboard/content/videos/${videoId}/edit`)
+        router.push(`/dashboard/content/videos/${videoId}/preview`)
     }
 
     // Handle upload error
@@ -63,7 +63,7 @@ export default function VideoUploadPage() {
                     <p className="text-gray-600 mb-6">
                         You don&apos;t have permission to upload videos.
                     </p>
-                    <Button 
+                    <Button
                         onClick={() => router.push('/dashboard/content/videos')}
                         variant="outline"
                     >
@@ -75,58 +75,60 @@ export default function VideoUploadPage() {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8">
-            {/* Breadcrumb Navigation */}
-            <Breadcrumb 
-                className="mb-6"
-                items={[
-                    { label: 'Dashboard', href: '/dashboard' },
-                    { label: 'Content', href: '/dashboard/content' },
-                    { label: 'Videos', href: '/dashboard/content/videos' },
-                    { label: 'Upload', isCurrent: true }
-                ]}
-            />
+        <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
+            <div className="max-w-6xl mx-auto space-y-6">
+                {/* Breadcrumb Navigation */}
+                <Breadcrumb
+                    className="mb-6"
+                    items={[
+                        { label: 'Dashboard', href: '/dashboard' },
+                        { label: 'Content', href: '/dashboard/content' },
+                        { label: 'Videos', href: '/dashboard/content/videos' },
+                        { label: 'Upload', isCurrent: true }
+                    ]}
+                />
 
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-8">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => router.back()}
-                    className="p-2"
-                >
-                    <ArrowLeftIcon className="h-4 w-4" />
-                </Button>
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Upload Video</h1>
-                    <p className="text-gray-600 mt-1">
-                        Add new tactical training content to the platform
-                    </p>
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.back()}
+                        className="p-2 self-start"
+                    >
+                        <ArrowLeftIcon className="h-4 w-4" />
+                    </Button>
+                    <div>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Upload Video</h1>
+                        <p className="text-muted-foreground mt-1">
+                            Add new tactical training content to the platform
+                        </p>
+                    </div>
                 </div>
+
+                {/* Upload Form */}
+                <Card className="w-full">
+                    <div className="p-4 sm:p-6">
+                        <VideoUploadForm
+                            categories={(categoriesQuery.data || []).map(cat => ({
+                                id: cat.id,
+                                name: cat.name,
+                                disciplineId: cat.discipline_id
+                            }))}
+                            disciplines={(disciplinesQuery.data || []).map(disc => ({
+                                id: disc.id,
+                                name: disc.name
+                            }))}
+                            isLoading={categoriesQuery.isLoading || disciplinesQuery.isLoading}
+                            onSuccess={handleUploadSuccess}
+                            onError={handleUploadError}
+                            onUploadStart={() => setIsUploading(true)}
+                            onUploadEnd={() => setIsUploading(false)}
+                            isUploading={isUploading}
+                        />
+                    </div>
+                </Card>
             </div>
-
-            {/* Upload Form */}
-            <Card className="max-w-4xl">
-                <div className="p-6">
-                    <VideoUploadForm
-                        categories={(categoriesQuery.data || []).map(cat => ({
-                            id: cat.id,
-                            name: cat.name,
-                            disciplineId: cat.discipline_id
-                        }))}
-                        disciplines={(disciplinesQuery.data || []).map(disc => ({
-                            id: disc.id,
-                            name: disc.name
-                        }))}
-                        isLoading={categoriesQuery.isLoading || disciplinesQuery.isLoading}
-                        onSuccess={handleUploadSuccess}
-                        onError={handleUploadError}
-                        onUploadStart={() => setIsUploading(true)}
-                        onUploadEnd={() => setIsUploading(false)}
-                        isUploading={isUploading}
-                    />
-                </div>
-            </Card>
         </div>
     )
 }

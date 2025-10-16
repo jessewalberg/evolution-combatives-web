@@ -49,7 +49,7 @@ const videoEditSchema = z.object({
     title: z.string().min(3, 'Title must be at least 3 characters long.').max(100, 'Title must be 100 characters or less.'),
     description: z.string().min(10, 'Description must be at least 10 characters long.').max(1000, 'Description must be 1000 characters or less.'),
     categoryId: z.string().uuid('Please select a valid category.'),
-    subscriptionTierRequired: z.enum(['beginner', 'intermediate', 'advanced']),
+    subscriptionTierRequired: z.enum(['none', 'tier1', 'tier2', 'tier3']),
     isPublished: z.boolean(),
     tags: z.string().optional(),
     customThumbnail: z.instanceof(File).optional(),
@@ -137,7 +137,7 @@ export default function VideoEditPage() {
         defaultValues: {
             title: '',
             description: '',
-            subscriptionTierRequired: 'beginner',
+            subscriptionTierRequired: 'none',
             isPublished: false,
             tags: '',
         },

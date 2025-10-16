@@ -12,7 +12,8 @@ import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createBrowserClient } from '../lib/supabase-browser'
-import type { AdminRole } from 'shared/types/database'
+import { hasAccessToDiscipline } from '../lib/shared/constants/subscriptionTiers'
+import type { AdminRole, SubscriptionTier } from 'shared/types/database'
 
 const supabase = createBrowserClient()
 
@@ -24,7 +25,7 @@ const ROLE_PERMISSIONS: Record<NonNullable<AdminRole>, Set<string>> = {
         'analytics.read', 'analytics.write',
         'support.read', 'support.write'
     ]),
-    content_admin: new Set(['content.read', 'content.write', 'content.delete']),
+    content_admin: new Set(['content.read', 'content.write', 'content.delete', 'users.read']),
     support_admin: new Set(['users.read', 'support.read', 'support.write']),
 }
 
@@ -38,8 +39,10 @@ export function useAuth() {
             const { data: { session } } = await supabase.auth.getSession()
             return session
         },
-        staleTime: 5 * 60 * 1000,
-        refetchOnWindowFocus: true,
+        staleTime: 10 * 60 * 1000, // Increased to 10 minutes
+        refetchOnWindowFocus: false, // Disabled to prevent excessive requests
+        refetchOnMount: false, // Only fetch once per mount
+        retry: 1, // Reduce retry attempts
     })
 
     const { data: profile } = useQuery({
@@ -54,7 +57,32 @@ export function useAuth() {
             return data
         },
         enabled: !!session?.user.id,
+        staleTime: 15 * 60 * 1000, // 15 minutes - profile rarely changes
+        refetchOnWindowFocus: false,
+        retry: 1,
     })
+
+    // Get user's subscription tier (defaults to 'none' if no subscription)
+    const { data: subscription } = useQuery({
+        queryKey: ['auth', 'subscription', session?.user.id],
+        queryFn: async () => {
+            if (!session?.user.id) return null
+            const { data } = await supabase
+                .from('subscriptions')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .eq('status', 'active')
+                .single()
+            return data
+        },
+        enabled: !!session?.user.id,
+        staleTime: 15 * 60 * 1000,
+        refetchOnWindowFocus: false,
+        retry: 1,
+    })
+
+    // Determine user's subscription tier (defaults to 'none' for free access)
+    const userTier = subscription?.tier || 'none'
 
     const loginMutation = useMutation({
         mutationFn: (credentials: { email: string; password: string }) =>
@@ -91,14 +119,24 @@ export function useAuth() {
         const permissions = profile?.admin_role
             ? ROLE_PERMISSIONS[profile.admin_role as NonNullable<AdminRole>] || new Set<string>()
             : new Set<string>()
-        
+
         if (permissions.has('admin.all')) return true
         return permissions.has(permission)
+    }
+
+    // Check if user can access a discipline based on subscription tier
+    const canAccessDiscipline = (disciplineRequiredTier: SubscriptionTier) => {
+        // Super admins can access everything regardless of subscription
+        if (profile?.admin_role === 'super_admin') return true
+        
+        return hasAccessToDiscipline(userTier, disciplineRequiredTier)
     }
 
     return {
         user: session?.user ?? null,
         profile,
+        subscription,
+        userTier,
         session,
         isAuthenticated: !!session?.user,
         isLoading: false,
@@ -111,6 +149,7 @@ export function useAuth() {
         isLoginLoading: loginMutation.isPending,
         isLogoutLoading: logoutMutation.isPending,
         hasPermission,
+        canAccessDiscipline,
     }
 }
 

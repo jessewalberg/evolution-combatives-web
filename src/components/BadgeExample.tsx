@@ -192,9 +192,9 @@ const BadgeExample: React.FC = () => {
                         <h3 className="text-lg font-medium text-neutral-0">Solid Subscription Badges</h3>
                         <div className="flex flex-wrap gap-3">
                             <SubscriptionBadge tier="none" />
-                            <SubscriptionBadge tier="beginner" />
-                            <SubscriptionBadge tier="intermediate" />
-                            <SubscriptionBadge tier="advanced" />
+                            <SubscriptionBadge tier="tier1" />
+                            <SubscriptionBadge tier="tier2" />
+                            <SubscriptionBadge tier="tier3" />
                         </div>
                     </div>
 
@@ -202,9 +202,9 @@ const BadgeExample: React.FC = () => {
                         <h3 className="text-lg font-medium text-neutral-0">Outline Subscription Badges</h3>
                         <div className="flex flex-wrap gap-3">
                             <SubscriptionBadge tier="none" appearance="outline" />
-                            <SubscriptionBadge tier="beginner" appearance="outline" />
-                            <SubscriptionBadge tier="intermediate" appearance="outline" />
-                            <SubscriptionBadge tier="advanced" appearance="outline" />
+                            <SubscriptionBadge tier="tier1" appearance="outline" />
+                            <SubscriptionBadge tier="tier2" appearance="outline" />
+                            <SubscriptionBadge tier="tier3" appearance="outline" />
                         </div>
                     </div>
 
@@ -212,9 +212,9 @@ const BadgeExample: React.FC = () => {
                         <h3 className="text-lg font-medium text-neutral-0">Soft Subscription Badges</h3>
                         <div className="flex flex-wrap gap-3">
                             <SubscriptionBadge tier="none" appearance="soft" />
-                            <SubscriptionBadge tier="beginner" appearance="soft" />
-                            <SubscriptionBadge tier="intermediate" appearance="soft" />
-                            <SubscriptionBadge tier="advanced" appearance="soft" />
+                            <SubscriptionBadge tier="tier1" appearance="soft" />
+                            <SubscriptionBadge tier="tier2" appearance="soft" />
+                            <SubscriptionBadge tier="tier3" appearance="soft" />
                         </div>
                     </div>
                 </CardContent>
@@ -302,7 +302,7 @@ const BadgeExample: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <span className="text-neutral-400 text-sm">john.smith@police.gov</span>
-                                        <SubscriptionBadge tier="advanced" size="xs" />
+                                        <SubscriptionBadge tier="tier3" size="xs" />
                                     </div>
                                 </div>
                             </div>

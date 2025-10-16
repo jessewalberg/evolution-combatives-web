@@ -16,19 +16,19 @@ const inputVariants = cva(
     // Base input styles with better contrast
     [
         'flex w-full rounded-md border px-3 py-2 text-sm',
-        'bg-white dark:bg-gray-900 text-gray-900 dark:text-white',
-        'border-gray-300 dark:border-gray-600',
-        'placeholder:text-gray-500 dark:placeholder:text-gray-400',
-        'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent',
+        'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100',
+        'border-neutral-300 dark:border-neutral-600',
+        'placeholder:text-neutral-500 dark:placeholder:text-neutral-400',
+        'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
         'disabled:cursor-not-allowed disabled:opacity-50'
     ],
     {
         variants: {
             variant: {
                 default: '',
-                error: 'border-red-500 focus:ring-red-500',
-                success: 'border-green-500 focus:ring-green-500',
-                disabled: 'border-gray-300 bg-gray-100 text-gray-500 placeholder:text-gray-400 cursor-not-allowed',
+                error: 'border-error-500 focus:ring-error-500',
+                success: 'border-success-500 focus:ring-success-500',
+                disabled: 'border-neutral-300 bg-neutral-100 dark:bg-neutral-900 text-neutral-500 placeholder:text-neutral-400 cursor-not-allowed',
             },
 
             size: {
@@ -145,9 +145,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 {label && (
                     <label
                         className={cn(
-                            'block text-sm font-medium text-gray-900 dark:text-white mb-2',
-                            required && "after:content-['*'] after:ml-0.5 after:text-red-500",
-                            disabled && 'text-gray-500',
+                            'block text-sm font-medium text-neutral-700 dark:text-neutral-50 mb-2',
+                            required && "after:content-['*'] after:ml-0.5 after:text-error-500",
+                            disabled && 'text-neutral-500',
                             labelClassName
                         )}
                         htmlFor={props.id}
@@ -160,7 +160,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 <div className="relative">
                     {/* Left Icon */}
                     {leftIcon && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
                             {leftIcon}
                         </div>
                     )}
@@ -181,7 +181,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
                     {/* Right Icon */}
                     {rightIcon && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
                             {rightIcon}
                         </div>
                     )}
@@ -189,7 +189,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
                 {/* Error Message */}
                 {error && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-error-600 dark:text-error-400 flex items-center gap-1">
                         <svg className="h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zM9.25 15a.75.75 0 011.5 0v.008a.75.75 0 01-1.5 0V15z" clipRule="evenodd" />
                         </svg>
@@ -199,7 +199,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
                 {/* Helper Text */}
                 {helperText && !error && (
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
                         {helperText}
                     </p>
                 )}
@@ -247,7 +247,7 @@ const InputIcon = React.forwardRef<HTMLDivElement, InputIconProps>(
             <div
                 ref={ref}
                 className={cn(
-                    'absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none',
+                    'absolute top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500 pointer-events-none',
                     position === 'left' ? 'left-3' : 'right-3',
                     className
                 )}
@@ -274,7 +274,7 @@ const InputError = React.forwardRef<HTMLParagraphElement, InputErrorProps>(
             <p
                 ref={ref}
                 className={cn(
-                    'mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1',
+                    'mt-1 text-sm text-error-600 dark:text-error-400 flex items-center gap-1',
                     className
                 )}
                 {...props}
@@ -330,7 +330,7 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
                         <button
                             type="button"
                             onClick={handleClear}
-                            className="text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
+                            className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
                         >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -371,7 +371,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
                         <button
                             type="button"
                             onClick={togglePassword}
-                            className="text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
+                            className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
                         >
                             {showPassword ? (
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

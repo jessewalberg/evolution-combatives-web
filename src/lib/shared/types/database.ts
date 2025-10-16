@@ -54,7 +54,7 @@ export interface Database {
                 Row: {
                     id: string;
                     user_id: string;
-                    tier: 'beginner' | 'intermediate' | 'advanced';
+                    tier: 'none' | 'tier1' | 'tier2' | 'tier3';
                     status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
                     stripe_subscription_id: string | null;
                     stripe_customer_id: string | null;
@@ -68,7 +68,7 @@ export interface Database {
                 Insert: {
                     id?: string;
                     user_id: string;
-                    tier: 'beginner' | 'intermediate' | 'advanced';
+                    tier: 'none' | 'tier1' | 'tier2' | 'tier3';
                     status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
                     stripe_subscription_id?: string | null;
                     stripe_customer_id?: string | null;
@@ -80,7 +80,7 @@ export interface Database {
                 Update: {
                     id?: string;
                     user_id?: string;
-                    tier?: 'beginner' | 'intermediate' | 'advanced';
+                    tier?: 'none' | 'tier1' | 'tier2' | 'tier3';
                     status?: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
                     stripe_subscription_id?: string | null;
                     stripe_customer_id?: string | null;
@@ -99,7 +99,7 @@ export interface Database {
                     description: string | null;
                     color: string;
                     icon: string | null;
-                    subscription_tier_required: 'beginner' | 'intermediate' | 'advanced';
+                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
                     sort_order: number;
                     is_active: boolean;
                     created_at: string;
@@ -112,7 +112,7 @@ export interface Database {
                     description?: string | null;
                     color: string;
                     icon?: string | null;
-                    subscription_tier_required: 'beginner' | 'intermediate' | 'advanced';
+                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
                     sort_order?: number;
                     is_active?: boolean;
                 };
@@ -123,7 +123,7 @@ export interface Database {
                     description?: string | null;
                     color?: string;
                     icon?: string | null;
-                    subscription_tier_required?: 'beginner' | 'intermediate' | 'advanced';
+                    subscription_tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
                     sort_order?: number;
                     is_active?: boolean;
                     updated_at?: string;
@@ -138,7 +138,7 @@ export interface Database {
                     description: string | null;
                     color: string;
                     icon: string | null;
-                    subscription_tier_required: 'beginner' | 'intermediate' | 'advanced';
+                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
                     sort_order: number;
                     is_active: boolean;
                     created_at: string;
@@ -152,7 +152,7 @@ export interface Database {
                     description?: string | null;
                     color: string;
                     icon?: string | null;
-                    subscription_tier_required: 'beginner' | 'intermediate' | 'advanced';
+                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
                     sort_order?: number;
                     is_active?: boolean;
                 };
@@ -164,7 +164,7 @@ export interface Database {
                     description?: string | null;
                     color?: string;
                     icon?: string | null;
-                    subscription_tier_required?: 'beginner' | 'intermediate' | 'advanced';
+                    subscription_tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
                     sort_order?: number;
                     is_active?: boolean;
                     updated_at?: string;
@@ -216,11 +216,10 @@ export interface Database {
                     cloudflare_video_id: string;
                     duration_seconds: number;
                     thumbnail_url: string | null;
-                    tier_required: 'beginner' | 'intermediate' | 'advanced';
+                    tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
                     tags: string[] | null;
                     processing_status: 'uploading' | 'processing' | 'ready' | 'error';
                     is_published: boolean;
-                    published_at: string | null;
                     view_count: number;
                     sort_order: number;
                     created_at: string;
@@ -236,11 +235,10 @@ export interface Database {
                     cloudflare_video_id: string;
                     duration_seconds: number;
                     thumbnail_url?: string | null;
-                    tier_required: 'beginner' | 'intermediate' | 'advanced';
+                    tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
                     tags?: string[] | null;
                     processing_status?: 'uploading' | 'processing' | 'ready' | 'error';
                     is_published?: boolean;
-                    published_at?: string | null;
                     view_count?: number;
                     sort_order?: number;
                 };
@@ -254,11 +252,10 @@ export interface Database {
                     cloudflare_video_id?: string;
                     duration_seconds?: number;
                     thumbnail_url?: string | null;
-                    tier_required?: 'beginner' | 'intermediate' | 'advanced';
+                    tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
                     tags?: string[] | null;
                     processing_status?: 'uploading' | 'processing' | 'ready' | 'error';
                     is_published?: boolean;
-                    published_at?: string | null;
                     view_count?: number;
                     sort_order?: number;
                     updated_at?: string;
@@ -401,10 +398,10 @@ export interface Database {
             [_ in never]: never;
         };
         Enums: {
-            subscription_tier: 'beginner' | 'intermediate' | 'advanced';
+            subscription_tier: 'tier1' | 'tier2' | 'tier3';
             admin_role: 'super_admin' | 'content_admin' | 'support_admin';
             subscription_status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-            video_difficulty: 'beginner' | 'intermediate' | 'advanced';
+            video_difficulty: 'none' | 'tier1' | 'tier2' | 'tier3';
             processing_status: 'uploading' | 'processing' | 'ready' | 'error';
             question_status: 'pending' | 'answered' | 'closed';
             notification_type: 'system' | 'video' | 'question' | 'subscription' | 'achievement';
@@ -420,10 +417,10 @@ export type Tables<T extends keyof Database['public']['Tables']> = Database['pub
 export type Enums<T extends keyof Database['public']['Enums']> = Database['public']['Enums'][T];
 
 // Use database enum for subscription tiers to match the database schema
-export type SubscriptionTier = 'beginner' | 'intermediate' | 'advanced';
+export type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin';
 export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-export type VideoDifficulty = 'beginner' | 'intermediate' | 'advanced';
+export type VideoDifficulty = 'none' | 'tier1' | 'tier2' | 'tier3';
 export type ProcessingStatus = 'uploading' | 'processing' | 'ready' | 'error';
 export type QuestionStatus = 'pending' | 'answered' | 'closed';
 export type NotificationType = 'system' | 'video' | 'question' | 'subscription' | 'achievement';

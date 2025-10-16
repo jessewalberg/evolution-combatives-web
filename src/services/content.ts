@@ -31,6 +31,35 @@ import type {
     ProcessingStatus
 } from 'shared/types/database'
 
+/**
+ * Interface for video data coming from the frontend (camelCase)
+ * This will be transformed to snake_case for database insertion
+ */
+export interface VideoCreateData {
+    id: string
+    title: string
+    description?: string | null
+    slug: string
+    categoryId: string
+    disciplineId?: string // Not used in DB, but may come from frontend
+    instructorId?: string | null
+    duration?: number
+    thumbnailUrl?: string | null
+    subscriptionTier?: SubscriptionTier
+    tags?: string[] | null
+    status?: ProcessingStatus
+    isPublished?: boolean
+    viewCount?: number
+    sortOrder?: number
+    fileSize?: number
+    // Additional frontend-specific fields
+    categoryName?: string
+    disciplineName?: string
+    uploadDate?: string
+    lastModified?: string
+    completionRate?: number
+}
+
 // Re-export types for client-side usage
 export type {
     Video,
@@ -326,7 +355,7 @@ export const contentMutations = {
      * Create new video metadata
      * NOTE: This function requires admin access and should only be called server-side
      */
-    async createVideo(videoData: VideoInsert): Promise<Video> {
+    async createVideo(videoData: VideoCreateData): Promise<Video> {
         // Check if we're in a browser environment
         if (typeof window !== 'undefined') {
             throw new Error('createVideo requires admin access and cannot be used in browser environment - use server-side API routes instead')
@@ -334,13 +363,28 @@ export const contentMutations = {
 
         const supabase = createAdminClient()
 
+        // Transform camelCase to snake_case for database insertion
+        const dbVideoData: VideoInsert = {
+            id: videoData.id,
+            title: videoData.title,
+            description: videoData.description || null,
+            slug: videoData.slug,
+            category_id: videoData.categoryId, // Transform camelCase to snake_case
+            instructor_id: videoData.instructorId || null,
+            cloudflare_video_id: videoData.id, // Use the Cloudflare video ID
+            duration_seconds: videoData.duration || 0,
+            thumbnail_url: videoData.thumbnailUrl || null,
+            tier_required: videoData.subscriptionTier || 'none',
+            tags: videoData.tags || null,
+            processing_status: videoData.status || 'processing',
+            is_published: videoData.isPublished || false,
+            view_count: videoData.viewCount || 0,
+            sort_order: videoData.sortOrder || 0
+        }
+
         const { data, error } = await supabase
             .from('videos')
-            .insert({
-                ...videoData,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            })
+            .insert(dbVideoData)
             .select()
             .single()
 
@@ -873,11 +917,12 @@ export const adminFeatures = {
             : 0
 
         // Subscriber tier breakdown (placeholder - would need proper user data)
-        const subscriberTierBreakdown = {
-            beginner: Math.floor(totalViews * 0.4),
-            intermediate: Math.floor(totalViews * 0.4),
-            advanced: Math.floor(totalViews * 0.2)
-        } as Record<SubscriptionTier, number>
+        const subscriberTierBreakdown: Record<SubscriptionTier, number> = {
+            none: Math.floor(totalViews * 0.1),
+            tier1: Math.floor(totalViews * 0.4),
+            tier2: Math.floor(totalViews * 0.3),
+            tier3: Math.floor(totalViews * 0.2)
+        }
 
         // Monthly views (placeholder - would need proper analytics tracking)
         const monthlyViews = [

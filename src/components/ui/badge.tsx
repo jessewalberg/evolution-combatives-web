@@ -112,42 +112,42 @@ const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
         if (appearance === 'outline') {
             switch (variant) {
                 case 'primary':
-                    appearanceClasses = 'bg-transparent text-primary-400 border-primary-400'
+                    appearanceClasses = 'bg-transparent text-primary border-primary'
                     break
                 case 'success':
-                    appearanceClasses = 'bg-transparent text-success-400 border-success-400'
+                    appearanceClasses = 'bg-transparent text-green-600 dark:text-green-400 border-green-600 dark:border-green-400'
                     break
                 case 'warning':
-                    appearanceClasses = 'bg-transparent text-warning-400 border-warning-400'
+                    appearanceClasses = 'bg-transparent text-yellow-600 dark:text-yellow-400 border-yellow-600 dark:border-yellow-400'
                     break
                 case 'error':
-                    appearanceClasses = 'bg-transparent text-error-400 border-error-400'
+                    appearanceClasses = 'bg-transparent text-destructive border-destructive'
                     break
                 case 'info':
-                    appearanceClasses = 'bg-transparent text-info-400 border-info-400'
+                    appearanceClasses = 'bg-transparent text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400'
                     break
                 default:
-                    appearanceClasses = 'bg-transparent text-neutral-300 border-neutral-600'
+                    appearanceClasses = 'bg-transparent text-muted-foreground border-border'
             }
         } else if (appearance === 'soft') {
             switch (variant) {
                 case 'primary':
-                    appearanceClasses = 'bg-primary-600/20 text-primary-300'
+                    appearanceClasses = 'bg-primary/20 text-primary'
                     break
                 case 'success':
-                    appearanceClasses = 'bg-success-600/20 text-success-300'
+                    appearanceClasses = 'bg-green-600/20 dark:bg-green-700/20 text-green-700 dark:text-green-300'
                     break
                 case 'warning':
-                    appearanceClasses = 'bg-warning-600/20 text-warning-300'
+                    appearanceClasses = 'bg-yellow-600/20 dark:bg-yellow-700/20 text-yellow-700 dark:text-yellow-300'
                     break
                 case 'error':
-                    appearanceClasses = 'bg-error-600/20 text-error-300'
+                    appearanceClasses = 'bg-destructive/20 text-destructive'
                     break
                 case 'info':
-                    appearanceClasses = 'bg-info-600/20 text-info-300'
+                    appearanceClasses = 'bg-blue-600/20 dark:bg-blue-700/20 text-blue-700 dark:text-blue-300'
                     break
                 default:
-                    appearanceClasses = 'bg-neutral-700/20 text-neutral-300'
+                    appearanceClasses = 'bg-muted/20 text-muted-foreground'
             }
         }
 
@@ -257,7 +257,7 @@ const HeroIcons = {
  * Subscription Tier Badge
  */
 export interface SubscriptionBadgeProps extends Omit<BadgeProps, 'variant' | 'icon'> {
-    tier: 'none' | 'beginner' | 'intermediate' | 'advanced'
+    tier: 'none' | 'tier1' | 'tier2' | 'tier3'
 }
 
 const SubscriptionBadge = React.forwardRef<HTMLDivElement, SubscriptionBadgeProps>(
@@ -265,23 +265,23 @@ const SubscriptionBadge = React.forwardRef<HTMLDivElement, SubscriptionBadgeProp
         const config = {
             none: {
                 variant: 'secondary' as const,
-                icon: <HeroIcons.MinusCircle className="h-3 w-3" />,
-                text: 'None'
+                icon: <HeroIcons.MinusCircle className="h-2.5 w-2.5" />,
+                text: 'Free'
             },
-            beginner: {
+            tier1: {
                 variant: 'info' as const,
-                icon: <HeroIcons.Star className="h-3 w-3" />,
-                text: 'Beginner'
+                icon: <HeroIcons.Star className="h-2.5 w-2.5" />,
+                text: 'T1'
             },
-            intermediate: {
+            tier2: {
                 variant: 'primary' as const,
-                icon: <HeroIcons.Trophy className="h-3 w-3" />,
-                text: 'Intermediate'
+                icon: <HeroIcons.Trophy className="h-2.5 w-2.5" />,
+                text: 'T2'
             },
-            advanced: {
+            tier3: {
                 variant: 'gold' as const,
-                icon: <HeroIcons.Trophy className="h-3 w-3" />,
-                text: 'Advanced'
+                icon: <HeroIcons.Trophy className="h-2.5 w-2.5" />,
+                text: 'T3'
             }
         }
 
@@ -361,32 +361,32 @@ const VideoStatusBadge = React.forwardRef<HTMLDivElement, VideoStatusBadgeProps>
         const config = {
             processing: {
                 variant: 'warning' as const,
-                icon: <HeroIcons.Clock className="h-3 w-3" />,
+                icon: <HeroIcons.Clock className="h-2.5 w-2.5" />,
                 text: 'Processing'
             },
             ready: {
                 variant: 'success' as const,
-                icon: <HeroIcons.CheckCircle className="h-3 w-3" />,
+                icon: <HeroIcons.CheckCircle className="h-2.5 w-2.5" />,
                 text: 'Ready'
             },
             error: {
                 variant: 'error' as const,
-                icon: <HeroIcons.XCircle className="h-3 w-3" />,
+                icon: <HeroIcons.XCircle className="h-2.5 w-2.5" />,
                 text: 'Error'
             },
             draft: {
                 variant: 'secondary' as const,
-                icon: <HeroIcons.DocumentText className="h-3 w-3" />,
+                icon: <HeroIcons.DocumentText className="h-2.5 w-2.5" />,
                 text: 'Draft'
             },
             uploaded: {
                 variant: 'info' as const,
-                icon: <HeroIcons.CheckCircle className="h-3 w-3" />,
+                icon: <HeroIcons.CheckCircle className="h-2.5 w-2.5" />,
                 text: 'Uploaded'
             },
             archived: {
                 variant: 'secondary' as const,
-                icon: <HeroIcons.DocumentText className="h-3 w-3" />,
+                icon: <HeroIcons.DocumentText className="h-2.5 w-2.5" />,
                 text: 'Archived'
             }
         }

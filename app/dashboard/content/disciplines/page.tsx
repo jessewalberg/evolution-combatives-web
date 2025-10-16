@@ -34,7 +34,7 @@ import {
 } from '@heroicons/react/24/outline'
 
 // Services & Types
-import { contentQueries, contentMutations } from '../../../../src/services/content'
+import { clientContentService } from '../../../../src/services/content-client'
 import { useAuth } from '../../../../src/hooks/useAuth'
 import type { DisciplineWithRelations, CategoryWithRelations, DisciplineInsert, DisciplineUpdate } from '../../../../src/lib/shared/types/database'
 
@@ -97,9 +97,10 @@ function EmptyState({
 
 // Subscription tier options
 const SUBSCRIPTION_TIERS = [
-    { value: 'beginner', label: 'Beginner ($9)', color: 'info' },
-    { value: 'intermediate', label: 'Intermediate ($19)', color: 'secondary' },
-    { value: 'advanced', label: 'Advanced ($49)', color: 'success' },
+    { value: 'none', label: 'Free', color: 'secondary' },
+    { value: 'tier1', label: 'Tier 1 ($9)', color: 'info' },
+    { value: 'tier2', label: 'Tier 2 ($19)', color: 'secondary' },
+    { value: 'tier3', label: 'Tier 3 ($49)', color: 'success' },
 ] as const
 
 type SubscriptionTier = typeof SUBSCRIPTION_TIERS[number]['value']
@@ -125,7 +126,7 @@ export default function DisciplinesPage() {
         slug: '',
         description: '',
         color: '#3B82F6',
-        subscriptionTierRequired: 'beginner',
+        subscriptionTierRequired: 'none',
         isActive: true
     })
 
@@ -135,7 +136,7 @@ export default function DisciplinesPage() {
     // Queries
     const disciplinesQuery = useQuery({
         queryKey: ['disciplines', 'list'],
-        queryFn: () => contentQueries.fetchDisciplines(true), // Include categories for counts
+        queryFn: () => clientContentService.fetchDisciplines(),
         enabled: !!user && !!profile?.admin_role,
     })
 
@@ -144,12 +145,11 @@ export default function DisciplinesPage() {
     const totalDisciplines = disciplines.length
     const activeDisciplines = disciplines.filter((d: DisciplineWithRelations) => d.is_active).length
     const totalCategories = disciplines.reduce((sum: number, d: DisciplineWithRelations) => sum + (d.categories?.length || 0), 0)
-    const totalVideos = disciplines.reduce((sum: number, d: DisciplineWithRelations) =>
-        sum + (d.categories?.reduce((catSum: number, c: CategoryWithRelations) => catSum + (c.videos?.length || 0), 0) || 0), 0)
+    const disciplinesNeedingCategories = disciplines.filter((d: DisciplineWithRelations) => !d.categories || d.categories.length === 0).length
 
     // Mutations
     const createMutation = useMutation({
-        mutationFn: (data: DisciplineInsert) => contentMutations.createDiscipline(data),
+        mutationFn: (data: DisciplineInsert) => clientContentService.createDiscipline(data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
             toast.success('Discipline created successfully')
@@ -163,7 +163,7 @@ export default function DisciplinesPage() {
 
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: DisciplineUpdate }) =>
-            contentMutations.updateDiscipline(id, data),
+            clientContentService.updateDiscipline(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
             toast.success('Discipline updated successfully')
@@ -177,7 +177,7 @@ export default function DisciplinesPage() {
     })
 
     const deleteMutation = useMutation({
-        mutationFn: (disciplineId: string) => contentMutations.deleteDiscipline(disciplineId),
+        mutationFn: (disciplineId: string) => clientContentService.deleteDiscipline(disciplineId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
             toast.success('Discipline deleted successfully')
@@ -196,7 +196,7 @@ export default function DisciplinesPage() {
             slug: '',
             description: '',
             color: '#3B82F6',
-            subscriptionTierRequired: 'beginner',
+            subscriptionTierRequired: 'none',
             isActive: true
         })
     }
@@ -361,14 +361,14 @@ export default function DisciplinesPage() {
                 <Card>
                     <CardContent className="p-6">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-info-500/10 rounded-lg">
-                                <VideoCameraIcon className="h-6 w-6 text-info-400" />
+                            <div className="p-3 bg-warning-500/10 rounded-lg">
+                                <DocumentDuplicateIcon className="h-6 w-6 text-warning-400" />
                             </div>
                             <div>
                                 <p className="text-2xl font-bold text-neutral-0">
-                                    {totalVideos}
+                                    {disciplinesNeedingCategories}
                                 </p>
-                                <p className="text-sm text-neutral-400">Total Videos</p>
+                                <p className="text-sm text-neutral-400">Need Categories</p>
                             </div>
                         </div>
                     </CardContent>
@@ -458,21 +458,21 @@ export default function DisciplinesPage() {
                                             <TableCell align="right">
                                                 <div className="flex items-center gap-2">
                                                     <Button
-                                                        variant="ghost"
+                                                        variant="outline"
                                                         size="sm"
                                                         onClick={() => handleEdit(discipline)}
-                                                        className="h-8 w-8 p-0"
+                                                        className="h-8 w-8 p-0 border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                                                     >
-                                                        <PencilIcon className="h-4 w-4" />
+                                                        <PencilIcon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                                                         <span className="sr-only">Edit discipline</span>
                                                     </Button>
                                                     <Button
-                                                        variant="ghost"
+                                                        variant="outline"
                                                         size="sm"
                                                         onClick={() => handleDelete(discipline)}
-                                                        className="h-8 w-8 p-0 text-error-400 hover:text-error-300 hover:bg-error-500/10"
+                                                        className="h-8 w-8 p-0 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-400 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
                                                     >
-                                                        <TrashIcon className="h-4 w-4" />
+                                                        <TrashIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
                                                         <span className="sr-only">Delete discipline</span>
                                                     </Button>
                                                 </div>
@@ -605,6 +605,7 @@ export default function DisciplinesPage() {
                                 Active (visible to users)
                             </label>
                         </div>
+
                     </div>
 
                     <DialogFooter>

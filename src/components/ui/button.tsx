@@ -45,7 +45,7 @@ const LoadingSpinner = ({ className }: { className?: string }) => (
 const buttonVariants = cva(
     // Base styles - consistent across all variants
     [
-        'inline-flex items-center justify-center gap-2',
+        'inline-flex flex-row items-center justify-center gap-2',
         'rounded-md text-sm font-semibold',
         'transition-all duration-fast',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
@@ -58,65 +58,65 @@ const buttonVariants = cva(
             variant: {
                 // Primary - Main brand blue for primary actions
                 primary: [
-                    'bg-blue-600 text-white border border-blue-600',
-                    'hover:bg-blue-700 hover:border-blue-700',
+                    'bg-primary text-primary-foreground border border-primary',
+                    'hover:bg-primary/90 hover:border-primary/90',
                     'hover:shadow-lg hover:-translate-y-0.5',
-                    'active:bg-blue-800 active:translate-y-0',
-                    'disabled:bg-gray-400 disabled:border-gray-400'
+                    'active:bg-primary/80 active:translate-y-0',
+                    'disabled:bg-muted disabled:border-muted disabled:text-muted-foreground'
                 ],
 
                 // Secondary - Neutral gray for secondary actions
                 secondary: [
-                    'bg-gray-600 text-white border border-gray-600',
-                    'hover:bg-gray-700 hover:border-gray-700',
+                    'bg-secondary text-secondary-foreground border border-secondary',
+                    'hover:bg-secondary/90 hover:border-secondary/90',
                     'hover:shadow-lg hover:-translate-y-0.5',
-                    'active:bg-gray-800 active:translate-y-0',
-                    'disabled:bg-gray-400 disabled:border-gray-400'
+                    'active:bg-secondary/80 active:translate-y-0',
+                    'disabled:bg-muted disabled:border-muted disabled:text-muted-foreground'
                 ],
 
                 // Outline - Border only with hover fill
                 outline: [
-                    'bg-transparent text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600',
-                    'hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500',
+                    'bg-transparent text-foreground border border-border',
+                    'hover:bg-accent hover:text-accent-foreground hover:border-border',
                     'hover:shadow-sm hover:-translate-y-0.5',
-                    'active:bg-gray-100 dark:active:bg-gray-800 active:translate-y-0',
-                    'disabled:text-gray-400 disabled:border-gray-300'
+                    'active:bg-accent/80 active:translate-y-0',
+                    'disabled:text-muted-foreground disabled:border-muted'
                 ],
 
                 // Ghost - Minimal styling with hover background
                 ghost: [
-                    'bg-transparent text-gray-900 dark:text-white border border-transparent',
-                    'hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white',
+                    'bg-transparent text-foreground border border-transparent',
+                    'hover:bg-accent hover:text-accent-foreground',
                     'hover:shadow-sm',
-                    'active:bg-gray-200 dark:active:bg-gray-700',
-                    'disabled:text-gray-400'
+                    'active:bg-accent/80',
+                    'disabled:text-muted-foreground'
                 ],
 
                 // Destructive - Red for dangerous actions
                 destructive: [
-                    'bg-red-600 text-white border border-red-600',
-                    'hover:bg-red-700 hover:border-red-700',
+                    'bg-destructive text-destructive-foreground border border-destructive',
+                    'hover:bg-destructive/90 hover:border-destructive/90',
                     'hover:shadow-lg hover:-translate-y-0.5',
-                    'active:bg-red-800 active:translate-y-0',
-                    'disabled:bg-gray-400 disabled:border-gray-400'
+                    'active:bg-destructive/80 active:translate-y-0',
+                    'disabled:bg-muted disabled:border-muted disabled:text-muted-foreground'
                 ],
 
                 // Success - Green for positive actions
                 success: [
-                    'bg-green-600 text-white border border-green-600',
-                    'hover:bg-green-700 hover:border-green-700',
+                    'bg-green-600 dark:bg-green-700 text-white border border-green-600 dark:border-green-700',
+                    'hover:bg-green-700 dark:hover:bg-green-800 hover:border-green-700 dark:hover:border-green-800',
                     'hover:shadow-lg hover:-translate-y-0.5',
-                    'active:bg-green-800 active:translate-y-0',
-                    'disabled:bg-gray-400 disabled:border-gray-400'
+                    'active:bg-green-800 dark:active:bg-green-900 active:translate-y-0',
+                    'disabled:bg-muted disabled:border-muted disabled:text-muted-foreground'
                 ],
 
                 // Warning - Orange for warning actions
                 warning: [
-                    'bg-yellow-600 text-white border border-yellow-600',
-                    'hover:bg-yellow-700 hover:border-yellow-700',
+                    'bg-yellow-600 dark:bg-yellow-700 text-white border border-yellow-600 dark:border-yellow-700',
+                    'hover:bg-yellow-700 dark:hover:bg-yellow-800 hover:border-yellow-700 dark:hover:border-yellow-800',
                     'hover:shadow-lg hover:-translate-y-0.5',
-                    'active:bg-yellow-800 active:translate-y-0',
-                    'disabled:bg-gray-400 disabled:border-gray-400'
+                    'active:bg-yellow-800 dark:active:bg-yellow-900 active:translate-y-0',
+                    'disabled:bg-muted disabled:border-muted disabled:text-muted-foreground'
                 ]
             },
 

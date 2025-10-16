@@ -4,13 +4,90 @@
 
 /* Evolution Combatives Global Styles */
 :root {
-  /* Dark theme by default for tactical interface */
-  --background: 15 23 42; /* neutral-900 */
-  --foreground: 255 255 255; /* neutral-0 */
+  /* CSS Variables for theme switching - Light mode default */
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+  --popover: 255 255 255;
+  --popover-foreground: 15 23 42;
+  --primary: 37 130 246;
+  --primary-foreground: 255 255 255;
+  --secondary: 241 245 249;
+  --secondary-foreground: 15 23 42;
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
+  --accent: 241 245 249;
+  --accent-foreground: 15 23 42;
+  --destructive: 239 68 68;
+  --destructive-foreground: 248 250 252;
+  --border: 226 232 240;
+  --input: 226 232 240;
+  --ring: 37 130 246;
+  
+  /* Transition for smooth theme switching */
+  --transition-theme: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+
+/* Dark theme overrides - Applied when .dark class is present */
+.dark {
+  --background: 15 23 42;
+  --foreground: 248 250 252;
+  --card: 30 41 59;
+  --card-foreground: 248 250 252;
+  --popover: 30 41 59;
+  --popover-foreground: 248 250 252;
+  --primary: 37 130 246;
+  --primary-foreground: 255 255 255;
+  --secondary: 51 65 85;
+  --secondary-foreground: 248 250 252;
+  --muted: 51 65 85;
+  --muted-foreground: 148 163 184;
+  --accent: 51 65 85;
+  --accent-foreground: 248 250 252;
+  --destructive: 239 68 68;
+  --destructive-foreground: 248 250 252;
+  --border: 71 85 105;
+  --input: 71 85 105;
+  --ring: 37 130 246;
+  
+  color-scheme: dark;
+}
+
+/* Alternative selector for data-theme attribute */
+[data-theme="dark"] {
+  --background: 15 23 42;
+  --foreground: 248 250 252;
+  --card: 30 41 59;
+  --card-foreground: 248 250 252;
+  --popover: 30 41 59;
+  --popover-foreground: 248 250 252;
+  --primary: 37 130 246;
+  --primary-foreground: 255 255 255;
+  --secondary: 51 65 85;
+  --secondary-foreground: 248 250 252;
+  --muted: 51 65 85;
+  --muted-foreground: 148 163 184;
+  --accent: 51 65 85;
+  --accent-foreground: 248 250 252;
+  --destructive: 239 68 68;
+  --destructive-foreground: 248 250 252;
+  --border: 71 85 105;
+  --input: 71 85 105;
+  --ring: 37 130 246;
+  
+  color-scheme: dark;
+}
+
+html {
+  /* Smooth theme transitions */
+  transition: var(--transition-theme);
+  text-rendering: optimizeLegibility;
 }
 
 body {
   background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -19,13 +96,9 @@ body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   font-variant-numeric: tabular-nums;
   
-  /* Smooth scrolling */
+  /* Smooth scrolling and transitions */
   scroll-behavior: smooth;
-}
-
-/* Default text colors for major layout elements */
-.main-content {
-  color: rgb(var(--foreground));
+  transition: var(--transition-theme);
 }
 
 /* Remove default margins and improve box-sizing */
@@ -35,13 +108,115 @@ body {
 
 /* Improved focus styles for accessibility */
 *:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid rgb(var(--primary));
   outline-offset: 2px;
 }
 
-/* Better text rendering */
-html {
-  text-rendering: optimizeLegibility;
+/* Utility classes for theme-aware styling */
+.bg-background {
+  background-color: rgb(var(--background));
 }
 
-/* Remove the custom button overrides - no longer needed */ 
+.bg-card {
+  background-color: rgb(var(--card));
+}
+
+.bg-popover {
+  background-color: rgb(var(--popover));
+}
+
+.bg-primary {
+  background-color: rgb(var(--primary));
+}
+
+.bg-secondary {
+  background-color: rgb(var(--secondary));
+}
+
+.bg-muted {
+  background-color: rgb(var(--muted));
+}
+
+.bg-accent {
+  background-color: rgb(var(--accent));
+}
+
+.bg-destructive {
+  background-color: rgb(var(--destructive));
+}
+
+.text-foreground {
+  color: rgb(var(--foreground));
+}
+
+.text-card-foreground {
+  color: rgb(var(--card-foreground));
+}
+
+.text-popover-foreground {
+  color: rgb(var(--popover-foreground));
+}
+
+.text-primary-foreground {
+  color: rgb(var(--primary-foreground));
+}
+
+.text-secondary-foreground {
+  color: rgb(var(--secondary-foreground));
+}
+
+.text-muted-foreground {
+  color: rgb(var(--muted-foreground));
+}
+
+.text-accent-foreground {
+  color: rgb(var(--accent-foreground));
+}
+
+.text-destructive-foreground {
+  color: rgb(var(--destructive-foreground));
+}
+
+.border-border {
+  border-color: rgb(var(--border));
+}
+
+.border-input {
+  border-color: rgb(var(--input));
+}
+
+/* Smooth transitions for all interactive elements */
+button, input, textarea, select {
+  transition: var(--transition-theme);
+}
+
+/* Force proper contrast for common elements */
+h1, h2, h3, h4, h5, h6 {
+  color: rgb(var(--foreground));
+}
+
+p, span, div {
+  color: inherit;
+}
+
+/* Ensure buttons have proper contrast */
+button:not([class*="bg-"]) {
+  background-color: rgb(var(--primary));
+  color: rgb(var(--primary-foreground));
+}
+
+/* Fix any white text on light backgrounds */
+.dark .text-white {
+  color: rgb(var(--foreground)) !important;
+}
+
+.light .text-gray-900 {
+  color: rgb(var(--foreground)) !important;
+}
+
+/* Debug styles - remove after testing */
+.debug-theme {
+  border: 2px solid red !important;
+  background: yellow !important;
+  color: black !important;
+} 

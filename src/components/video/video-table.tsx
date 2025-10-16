@@ -50,7 +50,7 @@ interface Video {
     duration: number // in seconds
     fileSize: number // in bytes
     status: VideoStatus
-    subscriptionTier: 'beginner' | 'intermediate' | 'advanced'
+    subscriptionTier: 'none' | 'tier1' | 'tier2' | 'tier3'
     categoryId: string
     categoryName: string
     disciplineId: string
@@ -132,9 +132,10 @@ interface VideoTableProps {
  * Subscription tier options
  */
 const SUBSCRIPTION_TIERS = [
-    { value: 'beginner', label: 'Beginner ($9)', color: 'info' },
-    { value: 'intermediate', label: 'Intermediate ($19)', color: 'warning' },
-    { value: 'advanced', label: 'Advanced ($49)', color: 'success' },
+    { value: 'none', label: 'Free', color: 'secondary' },
+    { value: 'tier1', label: 'T1', color: 'info' },
+    { value: 'tier2', label: 'T2', color: 'warning' },
+    { value: 'tier3', label: 'T3', color: 'success' },
 ] as const
 
 /**
@@ -301,11 +302,11 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
          */
         const renderSortIcon = (key: keyof Video) => {
             if (sortConfig.key !== key) {
-                return <ChevronUpIcon className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                return <ChevronUpIcon className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             }
             return sortConfig.direction === 'asc'
-                ? <ChevronUpIcon className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-                : <ChevronDownIcon className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                ? <ChevronUpIcon className="h-4 w-4 text-primary" />
+                : <ChevronDownIcon className="h-4 w-4 text-primary" />
         }
 
         /**
@@ -354,7 +355,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
         return (
             <div ref={ref} className={cn('space-y-4', className)} {...props}>
                 {/* Results Summary */}
-                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>
                         Showing {paginatedVideos.length} of {sortedVideos.length} videos
                     </span>
@@ -364,26 +365,23 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                             {onBulkAction && (
                                 <div className="flex items-center gap-2">
                                     <Button
-                                        variant="outline"
+                                        variant="success"
                                         size="sm"
                                         onClick={() => handleBulkAction('publish')}
-                                        className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-900/20"
                                     >
                                         Publish
                                     </Button>
                                     <Button
-                                        variant="outline"
+                                        variant="warning"
                                         size="sm"
                                         onClick={() => handleBulkAction('archive')}
-                                        className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:text-yellow-300 dark:hover:bg-yellow-900/20"
                                     >
                                         Archive
                                     </Button>
                                     <Button
-                                        variant="outline"
+                                        variant="destructive"
                                         size="sm"
                                         onClick={() => handleBulkAction('delete')}
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
                                     >
                                         Delete
                                     </Button>
@@ -394,7 +392,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                 </div>
 
                 {/* Table */}
-                <Card className="overflow-x-auto overflow-y-visible bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                <Card className="overflow-x-auto overflow-y-visible">
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -403,11 +401,11 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                         type="checkbox"
                                         checked={selectedVideos.size === paginatedVideos.length && paginatedVideos.length > 0}
                                         onChange={(e) => handleSelectAll(e.target.checked)}
-                                        className="rounded border-gray-300 bg-white text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-blue-400 dark:focus:ring-blue-400"
+                                        className="rounded border-input bg-background text-primary focus:ring-primary"
                                     />
                                 </TableHead>
                                 <TableHead
-                                    className="cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    className="cursor-pointer group hover:bg-accent/50 transition-colors"
                                     onClick={() => handleSort('title')}
                                 >
                                     <div className="flex items-center gap-2">
@@ -416,7 +414,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     </div>
                                 </TableHead>
                                 <TableHead
-                                    className="cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    className="cursor-pointer group hover:bg-accent/50 transition-colors"
                                     onClick={() => handleSort('status')}
                                 >
                                     <div className="flex items-center gap-2">
@@ -425,7 +423,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     </div>
                                 </TableHead>
                                 <TableHead
-                                    className="cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    className="cursor-pointer group hover:bg-accent/50 transition-colors w-16"
                                     onClick={() => handleSort('subscriptionTier')}
                                 >
                                     <div className="flex items-center gap-2">
@@ -434,7 +432,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     </div>
                                 </TableHead>
                                 <TableHead
-                                    className="cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    className="cursor-pointer group hover:bg-accent/50 transition-colors"
                                     onClick={() => handleSort('uploadDate')}
                                 >
                                     <div className="flex items-center gap-2">
@@ -443,7 +441,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     </div>
                                 </TableHead>
                                 <TableHead
-                                    className="cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    className="cursor-pointer group hover:bg-accent/50 transition-colors"
                                     onClick={() => handleSort('viewCount')}
                                 >
                                     <div className="flex items-center gap-2">
@@ -456,19 +454,19 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                         </TableHeader>
                         <TableBody>
                             {paginatedVideos.map((video) => (
-                                <TableRow key={video.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <TableRow key={video.id} className="hover:bg-accent/50">
                                     <TableCell>
                                         <input
                                             type="checkbox"
                                             checked={selectedVideos.has(video.id)}
                                             onChange={(e) => handleVideoSelect(video.id, e.target.checked)}
-                                            className="rounded border-gray-300 bg-white text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-blue-400 dark:focus:ring-blue-400"
+                                            className="rounded border-input bg-background text-primary focus:ring-primary"
                                         />
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-3">
                                             {/* Thumbnail */}
-                                            <div className="relative w-16 h-12 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">
+                                            <div className="relative w-16 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0">
                                                 {video.thumbnailUrl ? (
                                                     <Image
                                                         src={video.thumbnailUrl}
@@ -478,7 +476,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                                         className="w-full h-full object-cover"
                                                     />
                                                 ) : (
-                                                    <PlayIcon className="h-6 w-6 text-gray-400" />
+                                                    <PlayIcon className="h-6 w-6 text-muted-foreground" />
                                                 )}
                                                 {/* Duration overlay */}
                                                 <div className="absolute bottom-1 right-1 px-1 py-0.5 bg-black/80 text-xs text-white rounded">
@@ -488,13 +486,13 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
 
                                             {/* Video info */}
                                             <div className="min-w-0 flex-1">
-                                                <h4 className="font-medium text-gray-900 dark:text-white truncate">
+                                                <h4 className="font-medium text-foreground truncate">
                                                     {video.title}
                                                 </h4>
-                                                <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                                                <p className="text-sm text-muted-foreground truncate">
                                                     {video.disciplineName} • {video.categoryName}
                                                 </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-500">
+                                                <p className="text-xs text-muted-foreground">
                                                     {formatFileSize(video.fileSize)}
                                                     {video.instructor && ` • ${video.instructor}`}
                                                 </p>
@@ -504,21 +502,23 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     <TableCell>
                                         {renderStatusBadge(video.status)}
                                     </TableCell>
-                                    <TableCell>
-                                        {renderTierBadge(video.subscriptionTier)}
+                                    <TableCell className="w-16">
+                                        <div className="flex justify-start">
+                                            {renderTierBadge(video.subscriptionTier)}
+                                        </div>
                                     </TableCell>
                                     <TableCell>
                                         <div className="text-sm">
-                                            <div className="text-gray-900 dark:text-white">{formatDate(video.uploadDate)}</div>
-                                            <div className="text-gray-500 dark:text-gray-500 text-xs">
+                                            <div className="text-foreground">{formatDate(video.uploadDate)}</div>
+                                            <div className="text-muted-foreground text-xs">
                                                 Modified {formatDate(video.lastModified)}
                                             </div>
                                         </div>
                                     </TableCell>
                                     <TableCell>
                                         <div className="text-sm">
-                                            <div className="text-gray-900 dark:text-white">{video.viewCount.toLocaleString()} views</div>
-                                            <div className="text-gray-500 dark:text-gray-500 text-xs">
+                                            <div className="text-foreground">{video.viewCount.toLocaleString()} views</div>
+                                            <div className="text-muted-foreground text-xs">
                                                 {video.completionRate}% completion
                                             </div>
                                         </div>
