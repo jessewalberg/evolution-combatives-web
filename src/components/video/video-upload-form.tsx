@@ -471,7 +471,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                 ))
                 onError?.(error instanceof Error ? error.message : 'Upload failed')
             }
-        }, [handleProcessingStart, onError, categories, disciplines, queryClient])
+        }, [handleProcessingStart, onError, onSuccess, categories, disciplines, queryClient])
 
         /**
          * Update metadata for upload

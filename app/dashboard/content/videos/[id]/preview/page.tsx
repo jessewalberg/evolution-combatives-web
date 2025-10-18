@@ -120,7 +120,7 @@ export default function VideoPreviewPage() {
                 clearInterval(intervalTimer)
             }
         }
-    }, [video?.processing_status])
+    }, [video?.processing_status, syncVideoMutation])
 
 
 
