@@ -18,6 +18,7 @@ const ROUTE_CONFIG = {
     public: [
         '/',
         '/login',
+        '/sign-up',
         '/forgot-password',
         '/reset-password',
         '/auth/confirm',
@@ -27,6 +28,7 @@ const ROUTE_CONFIG = {
         '/health',
         '/api/health',
         '/api/auth/login',
+        '/api/auth/sign-up',
         '/api/auth/logout',
         '/api/csrf-token',
         '/api/subscriptions/create-checkout',
