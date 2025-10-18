@@ -449,8 +449,21 @@ function LoginContent() {
                             {isLoading ? 'Signing In...' : 'Sign In'}
                         </Button>
 
-                        {/* Additional security notice */}
+                        {/* Sign up link */}
                         <div className="text-center pt-4 border-t border-border">
+                            <p className="text-sm text-muted-foreground">
+                                Don't have an account?{' '}
+                                <Link
+                                    href="/sign-up"
+                                    className="text-primary hover:text-primary/80 transition-colors font-medium"
+                                >
+                                    Sign up
+                                </Link>
+                            </p>
+                        </div>
+
+                        {/* Additional security notice */}
+                        <div className="text-center">
                             <p className="text-xs text-muted-foreground">
                                 Authorized personnel only. All access is monitored and logged.
                             </p>
