@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { createBrowserClient } from '../../../src/lib/supabase-browser'
 import { Card } from '../../../src/components/ui/card'
-import { H1, H3, Text, Caption } from '../../../src/components/ui/typography'
+import { Button } from '../../../src/components/ui/button'
+import { Shield, CheckCircle, AlertCircle, Info } from 'lucide-react'
 import { Spinner } from '../../../src/components/ui/loading'
 
 type VerificationStatus = 'loading' | 'success' | 'error' | 'already_verified'
@@ -13,10 +14,12 @@ interface VerificationState {
     status: VerificationStatus
     message: string
     redirectUrl?: string
+    debugInfo?: string
 }
 
 function AuthConfirmContent() {
     const searchParams = useSearchParams()
+    const router = useRouter()
     const [verificationState, setVerificationState] = useState<VerificationState>({
         status: 'loading',
         message: 'Verifying your email...'
@@ -35,28 +38,66 @@ function AuthConfirmContent() {
                 // Parse hash fragment (after #)
                 const hashParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.hash.slice(1) : '')
 
-                // Two possible flows:
+                // Debug info
+                const debugInfo = {
+                    queryParams: Object.fromEntries(searchParams.entries()),
+                    hashParams: Object.fromEntries(hashParams.entries()),
+                    fullUrl: typeof window !== 'undefined' ? window.location.href : ''
+                }
+                console.log('Email verification params:', debugInfo)
+
+                // Three possible flows:
                 // 1. OTP verification -> token_hash & type in query string
-                // 2. Email confirmation for sign-up -> access_token / refresh_token etc. in hash fragment
+                // 2. Email confirmation for sign-up -> access_token / refresh_token in hash fragment  
+                // 3. New signup flow -> code in hash fragment
                 const token_hash = searchParams.get('token_hash')
                 const type = searchParams.get('type') || hashParams.get('type')
                 const access_token = hashParams.get('access_token')
                 const refresh_token = hashParams.get('refresh_token')
+                const code = searchParams.get('code')
 
                 // Handle error from Supabase
                 if (error) {
                     setVerificationState({
                         status: 'error',
-                        message: error_description || error || 'An error occurred during verification'
+                        message: error_description || error || 'An error occurred during verification',
+                        debugInfo: JSON.stringify(debugInfo, null, 2)
                     })
                     return
                 }
 
-                // ========== FLOW 1: OTP verification (token_hash) ==========
+                // ========== FLOW 1: PKCE flow with code ==========
+                if (code) {
+                    const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+
+                    if (exchangeError) {
+                        setVerificationState({
+                            status: 'error',
+                            message: exchangeError.message || 'Failed to verify email',
+                            debugInfo: JSON.stringify(debugInfo, null, 2)
+                        })
+                        return
+                    }
+
+                    if (data.session) {
+                        setVerificationState({
+                            status: 'success',
+                            message: 'Email verified successfully! Redirecting to dashboard...'
+                        })
+
+                        // Redirect to dashboard after brief delay
+                        setTimeout(() => {
+                            router.push('/dashboard')
+                        }, 2000)
+                    }
+                    return
+                }
+
+                // ========== FLOW 2: OTP verification (token_hash) ==========
                 if (token_hash && type) {
                     const { data, error: verifyError } = await supabase.auth.verifyOtp({
                         token_hash,
-                        type: type as 'email' | 'recovery'
+                        type: type as 'email' | 'signup' | 'recovery'
                     })
 
                     if (verifyError) {
@@ -65,41 +106,41 @@ function AuthConfirmContent() {
                             verifyError.message?.includes('expired')) {
                             setVerificationState({
                                 status: 'already_verified',
-                                message: 'Your email has already been verified. You can now sign in to the app.',
-                                redirectUrl: redirect_to || undefined
+                                message: 'Your email has already been verified. You can now sign in.',
+                                redirectUrl: redirect_to || '/login'
                             })
                         } else {
                             setVerificationState({
                                 status: 'error',
-                                message: verifyError.message || 'Email verification failed'
+                                message: verifyError.message || 'Email verification failed',
+                                debugInfo: JSON.stringify(debugInfo, null, 2)
                             })
                         }
                         return
                     }
 
-                    if (data.user) {
+                    if (data.session) {
                         setVerificationState({
                             status: 'success',
-                            message: 'Email verified successfully! You can now sign in to Evolution Combatives.',
-                            redirectUrl: redirect_to || undefined
+                            message: 'Email verified successfully! Redirecting to dashboard...'
                         })
 
-                        // Auto-redirect to mobile app after 3 seconds
-                        if (redirect_to) {
-                            setTimeout(() => {
-                                window.location.href = redirect_to
-                            }, 3000)
-                        }
+                        // Redirect to dashboard
+                        setTimeout(() => {
+                            router.push('/dashboard')
+                        }, 2000)
                     } else {
                         setVerificationState({
                             status: 'error',
-                            message: 'Verification failed - no user data received'
+                            message: 'Verification failed - no session created',
+                            debugInfo: JSON.stringify(debugInfo, null, 2)
                         })
                     }
+                    return
                 }
 
-                // ========== FLOW 2: Email signup confirmation (access_token) ==========
-                else if (access_token && refresh_token) {
+                // ========== FLOW 3: Email signup confirmation (access_token) ==========
+                if (access_token && refresh_token) {
                     const { data, error: sessionErr } = await supabase.auth.setSession({
                         access_token,
                         refresh_token,
@@ -109,35 +150,38 @@ function AuthConfirmContent() {
                         setVerificationState({
                             status: 'error',
                             message: sessionErr.message || 'Failed to create session from verification link',
+                            debugInfo: JSON.stringify(debugInfo, null, 2)
                         })
                         return
                     }
 
-                    if (data.user) {
+                    if (data.session) {
                         setVerificationState({
                             status: 'success',
-                            message: 'Email verified successfully! You can now sign in to Evolution Combatives.',
-                            redirectUrl: redirect_to || undefined,
+                            message: 'Email verified successfully! Redirecting to dashboard...'
                         })
 
-                        if (redirect_to) {
-                            setTimeout(() => {
-                                window.location.href = redirect_to
-                            }, 3000)
-                        }
+                        // Redirect to dashboard
+                        setTimeout(() => {
+                            router.push('/dashboard')
+                        }, 2000)
                     } else {
                         setVerificationState({
                             status: 'error',
-                            message: 'Verification failed - no user data received',
+                            message: 'Verification failed - no session created',
+                            debugInfo: JSON.stringify(debugInfo, null, 2)
                         })
                     }
-
-                } else {
-                    setVerificationState({
-                        status: 'error',
-                        message: 'Invalid verification link - missing required parameters',
-                    })
+                    return
                 }
+
+                // No valid parameters found
+                setVerificationState({
+                    status: 'error',
+                    message: 'Invalid verification link - missing required parameters',
+                    debugInfo: JSON.stringify(debugInfo, null, 2)
+                })
+
             } catch (error) {
                 console.error('Email verification error:', error)
                 setVerificationState({
@@ -148,139 +192,130 @@ function AuthConfirmContent() {
         }
 
         handleEmailVerification()
-    }, [searchParams])
-
-    const getStatusIcon = () => {
-        switch (verificationState.status) {
-            case 'loading':
-                return <Spinner size="lg" showLabel={false} />
-            case 'success':
-                return (
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                )
-            case 'already_verified':
-                return (
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-                )
-            case 'error':
-                return (
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </div>
-                )
-        }
-    }
-
-    const getStatusColor = () => {
-        switch (verificationState.status) {
-            case 'success':
-                return 'text-green-800'
-            case 'already_verified':
-                return 'text-blue-800'
-            case 'error':
-                return 'text-red-800'
-            default:
-                return 'text-gray-800'
-        }
-    }
-
-    const getBackgroundColor = () => {
-        switch (verificationState.status) {
-            case 'success':
-                return 'bg-green-50 border-green-200'
-            case 'already_verified':
-                return 'bg-blue-50 border-blue-200'
-            case 'error':
-                return 'bg-red-50 border-red-200'
-            default:
-                return 'bg-gray-50 border-gray-200'
-        }
-    }
+    }, [searchParams, router])
 
     return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-            <div className="max-w-md w-full">
-                <Card className={`p-8 text-center ${getBackgroundColor()}`}>
+        <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+            {/* Background pattern */}
+            <div className="absolute inset-0 bg-background">
+                <div className="absolute inset-0 bg-gradient-to-br from-muted/50 via-background to-muted/30" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(59,130,246,0.1),transparent_70%)]" />
+            </div>
+
+            <div className="relative max-w-md w-full">
+                <Card className="p-8 text-center border-border">
                     {/* Logo/Brand */}
                     <div className="mb-6">
-                        <H1 className="text-2xl font-bold text-gray-900 mb-2">
+                        <div className="mx-auto h-16 w-16 bg-primary rounded-full flex items-center justify-center mb-4">
+                            <Shield className="h-8 w-8 text-primary-foreground" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-foreground mb-2">
                             Evolution Combatives
-                        </H1>
-                        <Text className="text-gray-600">
+                        </h1>
+                        <p className="text-muted-foreground">
                             Email Verification
-                        </Text>
+                        </p>
                     </div>
 
                     {/* Status Icon */}
-                    {getStatusIcon()}
+                    <div className="mb-6">
+                        {verificationState.status === 'loading' && (
+                            <Spinner size="lg" showLabel={false} />
+                        )}
+                        {verificationState.status === 'success' && (
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
+                                <CheckCircle className="w-8 h-8 text-green-500" />
+                            </div>
+                        )}
+                        {verificationState.status === 'already_verified' && (
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Info className="w-8 h-8 text-primary" />
+                            </div>
+                        )}
+                        {verificationState.status === 'error' && (
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
+                                <AlertCircle className="w-8 h-8 text-destructive" />
+                            </div>
+                        )}
+                    </div>
 
                     {/* Status Message */}
-                    <H3 className={`text-lg font-semibold mb-4 ${getStatusColor()}`}>
+                    <h3 className={`text-lg font-semibold mb-4 ${verificationState.status === 'success' ? 'text-green-500' :
+                        verificationState.status === 'already_verified' ? 'text-primary' :
+                            verificationState.status === 'error' ? 'text-destructive' :
+                                'text-foreground'
+                        }`}>
                         {verificationState.status === 'loading' ? 'Verifying...' :
                             verificationState.status === 'success' ? 'Email Verified!' :
                                 verificationState.status === 'already_verified' ? 'Already Verified' :
                                     'Verification Failed'}
-                    </H3>
+                    </h3>
 
-                    <Text className={`mb-6 ${getStatusColor()}`}>
+                    <p className="text-muted-foreground mb-6">
                         {verificationState.message}
-                    </Text>
+                    </p>
+
+                    {/* Debug info in development */}
+                    {process.env.NODE_ENV === 'development' && verificationState.debugInfo && (
+                        <details className="mb-6 text-left">
+                            <summary className="text-xs text-muted-foreground cursor-pointer mb-2">
+                                Debug Information
+                            </summary>
+                            <pre className="text-xs bg-muted p-3 rounded overflow-auto max-h-40">
+                                {verificationState.debugInfo}
+                            </pre>
+                        </details>
+                    )}
 
                     {/* Actions */}
                     <div className="space-y-3">
-                        {verificationState.status === 'success' && verificationState.redirectUrl && (
-                            <>
-                                <Caption className="text-gray-600 block">
-                                    Redirecting to the app in 3 seconds...
-                                </Caption>
-                                <button
-                                    onClick={() => window.location.href = verificationState.redirectUrl!}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
-                                >
-                                    Open Evolution Combatives App
-                                </button>
-                            </>
+                        {verificationState.status === 'success' && (
+                            <p className="text-sm text-muted-foreground">
+                                Redirecting to dashboard...
+                            </p>
                         )}
 
                         {verificationState.status === 'already_verified' && verificationState.redirectUrl && (
-                            <button
-                                onClick={() => window.location.href = verificationState.redirectUrl!}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+                            <Button
+                                onClick={() => router.push(verificationState.redirectUrl!)}
+                                variant="primary"
+                                size="lg"
+                                className="w-full"
                             >
-                                Open Evolution Combatives App
-                            </button>
+                                Go to {verificationState.redirectUrl.includes('dashboard') ? 'Dashboard' : 'App'}
+                            </Button>
                         )}
 
                         {verificationState.status === 'error' && (
-                            <div className="space-y-2">
-                                <button
+                            <div className="space-y-3">
+                                <Button
                                     onClick={() => window.location.reload()}
-                                    className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+                                    variant="secondary"
+                                    size="lg"
+                                    className="w-full"
                                 >
                                     Try Again
-                                </button>
-                                <Caption className="text-gray-600 block">
+                                </Button>
+                                <Button
+                                    onClick={() => router.push('/login')}
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full"
+                                >
+                                    Go to Login
+                                </Button>
+                                <p className="text-xs text-muted-foreground">
                                     If the problem persists, please contact support
-                                </Caption>
+                                </p>
                             </div>
                         )}
                     </div>
 
                     {/* Footer */}
-                    <div className="mt-8 pt-6 border-t border-gray-200">
-                        <Caption className="text-gray-500">
+                    <div className="mt-8 pt-6 border-t border-border">
+                        <p className="text-xs text-muted-foreground/60">
                             © 2024 Evolution Combatives. All rights reserved.
-                        </Caption>
+                        </p>
                     </div>
                 </Card>
             </div>
@@ -291,10 +326,16 @@ function AuthConfirmContent() {
 export default function AuthConfirmPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-                <div className="text-center">
+            <div className="min-h-screen bg-background flex items-center justify-center relative">
+                {/* Background pattern */}
+                <div className="absolute inset-0 bg-background">
+                    <div className="absolute inset-0 bg-gradient-to-br from-muted/50 via-background to-muted/30" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(59,130,246,0.1),transparent_70%)]" />
+                </div>
+
+                <div className="relative text-center">
                     <Spinner size="lg" showLabel={false} />
-                    <p className="mt-4 text-gray-600">Loading...</p>
+                    <p className="mt-4 text-muted-foreground">Loading...</p>
                 </div>
             </div>
         }>
