@@ -8,8 +8,8 @@
 
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useAuth } from '../../src/hooks/useAuth'
+import ROUTES from '../../src/lib/routes'
 import AdminLayout from '../../src/components/layout/admin-layout'
 import { toast } from 'sonner'
 import { Spinner } from '../../src/components/ui/loading'
@@ -19,7 +19,6 @@ interface UsersLayoutProps {
 }
 
 export default function UsersLayout({ children }: UsersLayoutProps) {
-    const router = useRouter()
     const { user, profile, isLoading, logout } = useAuth()
 
     const handleLogout = async () => {
@@ -128,7 +127,8 @@ export default function UsersLayout({ children }: UsersLayoutProps) {
                 avatar: profile.avatar_url || undefined
             }}
             breadcrumbs={[
-                { name: 'Users', href: '/users' }
+                { name: 'Dashboard', href: ROUTES.DASHBOARD.HOME },
+                { name: 'Users' }
             ]}
             systemStatus={{
                 database: 'online',

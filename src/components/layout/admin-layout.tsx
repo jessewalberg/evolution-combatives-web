@@ -685,7 +685,23 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
     onUserAction,
 }) => {
     const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false)
-    const [sidebarHidden, setSidebarHidden] = React.useState(true)
+    // Sidebar should be visible on desktop (lg+), hidden on mobile
+    const [sidebarHidden, setSidebarHidden] = React.useState(false)
+
+    // Check screen size and set initial sidebar state
+    React.useEffect(() => {
+        const checkScreenSize = () => {
+            // Hide sidebar on mobile (<1024px), show on desktop
+            setSidebarHidden(window.innerWidth < 1024)
+        }
+
+        // Set initial state
+        checkScreenSize()
+
+        // Listen for window resize
+        window.addEventListener('resize', checkScreenSize)
+        return () => window.removeEventListener('resize', checkScreenSize)
+    }, [])
 
     const handleSidebarToggle = () => {
         setSidebarCollapsed(!sidebarCollapsed)
@@ -696,7 +712,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
     }
 
     const handleSidebarClose = () => {
-        setSidebarHidden(true)
+        // Only auto-close on mobile
+        if (window.innerWidth < 1024) {
+            setSidebarHidden(true)
+        }
     }
 
     return (
