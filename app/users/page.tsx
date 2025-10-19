@@ -608,8 +608,13 @@ export default function UsersPage() {
                 <div className="flex items-center gap-3">
                     {canManageUsers && (
                         <Button
-                            onClick={() => router.push('/dashboard/users/invite')}
+                            onClick={() => {
+                                toast.info('Invite User coming soon', {
+                                    description: 'User invitation feature is under development.'
+                                })
+                            }}
                             className="flex items-center gap-2"
+                            disabled
                         >
                             <PlusIcon className="h-4 w-4" />
                             Invite User

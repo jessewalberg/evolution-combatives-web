@@ -357,7 +357,10 @@ export default function VideoLibraryPage() {
     }
 
     const handleVideoAnalytics = (video: VideoWithRelations) => {
-        router.push(`/dashboard/analytics/videos/${video.id}`)
+        // Analytics coming soon
+        toast.info('Analytics coming soon', {
+            description: `Video analytics for "${video.title}" is under development.`
+        })
     }
 
     const handleVideoDownload = (video: VideoWithRelations) => {

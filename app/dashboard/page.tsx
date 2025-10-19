@@ -11,6 +11,7 @@
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../src/hooks/useAuth'
+import ROUTES from '../../src/lib/routes'
 import { StatsCard, StatsCardGrid } from '../../src/components/ui/stats-card'
 import { Card } from '../../src/components/ui/card'
 import { Button } from '../../src/components/ui/button'
@@ -436,7 +437,7 @@ export default function DashboardPage() {
                     <div className="space-y-3">
                         {/* Always show video upload button */}
                         <Button
-                            onClick={() => router.push('/dashboard/content/videos')}
+                            onClick={() => router.push(ROUTES.DASHBOARD.CONTENT.VIDEOS)}
                             variant="primary"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<VideoCameraIcon className="h-5 w-5" />}
@@ -451,7 +452,7 @@ export default function DashboardPage() {
 
                         {/* Content Management */}
                         <Button
-                            onClick={() => router.push('/content/categories')}
+                            onClick={() => router.push(ROUTES.DASHBOARD.CONTENT.CATEGORIES)}
                             variant="outline"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<DocumentTextIcon className="h-5 w-5" />}
@@ -466,7 +467,7 @@ export default function DashboardPage() {
 
                         {/* User Management */}
                         <Button
-                            onClick={() => router.push('/users')}
+                            onClick={() => router.push(ROUTES.USERS.LIST)}
                             variant="outline"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<UsersIcon className="h-5 w-5" />}
@@ -481,7 +482,7 @@ export default function DashboardPage() {
 
                         {/* Analytics */}
                         <Button
-                            onClick={() => router.push('/analytics')}
+                            onClick={() => router.push(ROUTES.ANALYTICS.HOME)}
                             variant="outline"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<ChartBarIcon className="h-5 w-5" />}

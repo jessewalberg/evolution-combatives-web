@@ -47,13 +47,19 @@ export default function UsersLayout({ children }: UsersLayoutProps) {
                 handleLogout()
                 break
             case 'profile':
-                router.push('/users/profile')
+                toast.info('Profile page coming soon', {
+                    description: 'This feature is currently under development.'
+                })
                 break
             case 'edit':
-                router.push('/users/profile/edit')
+                toast.info('Edit profile coming soon', {
+                    description: 'This feature is currently under development.'
+                })
                 break
             case 'password':
-                router.push('/users/profile/change-password')
+                toast.info('Change password coming soon', {
+                    description: 'This feature is currently under development.'
+                })
                 break
             default:
                 console.log('Unhandled user action:', action)
@@ -62,7 +68,9 @@ export default function UsersLayout({ children }: UsersLayoutProps) {
 
     const handleSearch = (query: string) => {
         if (query.trim()) {
-            router.push(`/search?q=${encodeURIComponent(query)}`)
+            toast.info('Search coming soon', {
+                description: `Searching for: "${query.slice(0, 50)}..."`
+            })
         }
     }
 

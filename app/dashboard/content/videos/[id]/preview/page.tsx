@@ -12,6 +12,7 @@ import React from 'react'
 import Image from 'next/image'
 import { useRouter, useParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useAuth } from '../../../../../../src/hooks/useAuth'
 import { Button } from '../../../../../../src/components/ui/button'
 import { Card } from '../../../../../../src/components/ui/card'
@@ -277,9 +278,14 @@ export default function VideoPreviewPage() {
                         {canViewAnalytics && (
                             <Button
                                 variant="secondary"
-                                onClick={() => router.push(`/dashboard/analytics/videos/${video.id}`)}
+                                onClick={() => {
+                                    toast.info('Analytics coming soon', {
+                                        description: 'Video analytics feature is under development.'
+                                    })
+                                }}
                                 leftIcon={<ChartBarIcon className="h-4 w-4" />}
                                 className="flex-shrink-0"
+                                disabled
                             >
                                 Analytics
                             </Button>
