@@ -71,11 +71,20 @@ function AuthConfirmContent() {
                     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
                     if (exchangeError) {
-                        setVerificationState({
-                            status: 'error',
-                            message: exchangeError.message || 'Failed to verify email',
-                            debugInfo: JSON.stringify(debugInfo, null, 2)
-                        })
+                        // Handle missing code verifier error specifically
+                        if (exchangeError.message?.includes('code verifier')) {
+                            setVerificationState({
+                                status: 'error',
+                                message: 'Please open this verification link in the same browser where you signed up. The security code is stored in your browser and cannot be transferred.',
+                                debugInfo: JSON.stringify(debugInfo, null, 2)
+                            })
+                        } else {
+                            setVerificationState({
+                                status: 'error',
+                                message: exchangeError.message || 'Failed to verify email',
+                                debugInfo: JSON.stringify(debugInfo, null, 2)
+                            })
+                        }
                         return
                     }
 
@@ -288,22 +297,55 @@ function AuthConfirmContent() {
 
                         {verificationState.status === 'error' && (
                             <div className="space-y-3">
-                                <Button
-                                    onClick={() => window.location.reload()}
-                                    variant="secondary"
-                                    size="lg"
-                                    className="w-full"
-                                >
-                                    Try Again
-                                </Button>
-                                <Button
-                                    onClick={() => router.push('/login')}
-                                    variant="outline"
-                                    size="lg"
-                                    className="w-full"
-                                >
-                                    Go to Login
-                                </Button>
+                                {verificationState.message?.includes('same browser') ? (
+                                    <>
+                                        <div className="bg-muted/50 border border-border rounded-lg p-4 text-left">
+                                            <p className="text-sm text-foreground font-medium mb-2">
+                                                To fix this issue:
+                                            </p>
+                                            <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                                                <li>Open this link in the browser where you signed up</li>
+                                                <li>Or, sign up again from this browser</li>
+                                                <li>Check your email and click the link</li>
+                                            </ol>
+                                        </div>
+                                        <Button
+                                            onClick={() => router.push('/sign-up')}
+                                            variant="primary"
+                                            size="lg"
+                                            className="w-full"
+                                        >
+                                            Sign Up Again
+                                        </Button>
+                                        <Button
+                                            onClick={() => router.push('/login')}
+                                            variant="outline"
+                                            size="lg"
+                                            className="w-full"
+                                        >
+                                            Go to Login
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Button
+                                            onClick={() => window.location.reload()}
+                                            variant="secondary"
+                                            size="lg"
+                                            className="w-full"
+                                        >
+                                            Try Again
+                                        </Button>
+                                        <Button
+                                            onClick={() => router.push('/login')}
+                                            variant="outline"
+                                            size="lg"
+                                            className="w-full"
+                                        >
+                                            Go to Login
+                                        </Button>
+                                    </>
+                                )}
                                 <p className="text-xs text-muted-foreground">
                                     If the problem persists, please contact support
                                 </p>
