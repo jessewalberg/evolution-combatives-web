@@ -8,7 +8,6 @@
 
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useAuth } from '../../src/hooks/useAuth'
 import AdminLayout from '../../src/components/layout/admin-layout'
 import { toast } from 'sonner'
@@ -19,7 +18,6 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-    const router = useRouter()
     const { user, profile, isLoading, logout } = useAuth()
 
     const handleLogout = async () => {
