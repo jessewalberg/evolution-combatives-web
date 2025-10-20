@@ -8,7 +8,6 @@
 
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useAuth } from '../../src/hooks/useAuth'
 import AdminLayout from '../../src/components/layout/admin-layout'
 import { toast } from 'sonner'
@@ -19,7 +18,6 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-    const router = useRouter()
     const { user, profile, isLoading, logout } = useAuth()
 
     const handleLogout = async () => {
@@ -47,13 +45,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 handleLogout()
                 break
             case 'profile':
-                router.push('/dashboard/profile')
+                // Profile page coming soon
+                toast.info('Profile page coming soon', {
+                    description: 'This feature is currently under development.'
+                })
                 break
             case 'edit':
-                router.push('/dashboard/profile/edit')
+                // Edit profile coming soon
+                toast.info('Edit profile coming soon', {
+                    description: 'This feature is currently under development.'
+                })
                 break
             case 'password':
-                router.push('/dashboard/profile/change-password')
+                // Change password coming soon
+                toast.info('Change password coming soon', {
+                    description: 'This feature is currently under development.'
+                })
                 break
             default:
                 console.log('Unhandled user action:', action)
@@ -62,7 +69,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     const handleSearch = (query: string) => {
         if (query.trim()) {
-            router.push(`/dashboard/search?q=${encodeURIComponent(query)}`)
+            // Search functionality coming soon
+            toast.info('Search coming soon', {
+                description: `Searching for: "${query.slice(0, 50)}..."`
+            })
         }
     }
 

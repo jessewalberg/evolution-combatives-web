@@ -634,7 +634,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-white mb-2">User Not Found</h1>
                     <p className="text-neutral-400 mb-4">The requested user profile could not be found.</p>
-                    <Button onClick={() => router.push('/dashboard/users')}>
+                    <Button onClick={() => router.push('/users')}>
                         <ArrowLeftIcon className="h-4 w-4 mr-2" />
                         Back to Users
                     </Button>

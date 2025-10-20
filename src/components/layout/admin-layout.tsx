@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
+import ROUTES from '../../lib/routes'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Badge } from '../ui/badge'
@@ -70,31 +71,31 @@ interface NavItem {
 const navigation: NavItem[] = [
     {
         name: 'Dashboard',
-        href: '/dashboard',
+        href: ROUTES.DASHBOARD.HOME,
         icon: HomeIcon,
         roles: ['super_admin', 'content_admin', 'support_admin'],
     },
     {
         name: 'Content',
-        href: '#',
+        href: ROUTES.DASHBOARD.CONTENT.VIDEOS,
         icon: PlayIcon,
         roles: ['super_admin', 'content_admin'],
         children: [
             {
                 name: 'Videos',
-                href: '/dashboard/content/videos',
+                href: ROUTES.DASHBOARD.CONTENT.VIDEOS,
                 icon: VideoCameraIcon,
                 roles: ['super_admin', 'content_admin'],
             },
             {
                 name: 'Categories',
-                href: '/dashboard/content/categories',
+                href: ROUTES.DASHBOARD.CONTENT.CATEGORIES,
                 icon: DocumentTextIcon,
                 roles: ['super_admin', 'content_admin'],
             },
             {
                 name: 'Disciplines',
-                href: '/dashboard/content/disciplines',
+                href: ROUTES.DASHBOARD.CONTENT.DISCIPLINES,
                 icon: DocumentTextIcon,
                 roles: ['super_admin', 'content_admin'],
             },
@@ -102,13 +103,13 @@ const navigation: NavItem[] = [
     },
     {
         name: 'Users',
-        href: '/users',
+        href: ROUTES.USERS.LIST,
         icon: UsersIcon,
         roles: ['super_admin', 'support_admin'],
     },
     {
         name: 'Analytics',
-        href: '/analytics',
+        href: ROUTES.ANALYTICS.HOME,
         icon: ChartBarIcon,
         roles: ['super_admin', 'content_admin'],
         disabled: true,
@@ -116,7 +117,7 @@ const navigation: NavItem[] = [
     },
     {
         name: 'Q&A',
-        href: '/qa',
+        href: ROUTES.QA.LIST,
         icon: ChatBubbleLeftRightIcon,
         badge: 5, // Example notification count
         roles: ['super_admin', 'support_admin'],
@@ -187,12 +188,12 @@ const sidebarVariants = cva(
 /**
  * Main content variants
  */
-const contentVariants = cva('flex-1 flex flex-col min-h-screen bg-background', {
+const contentVariants = cva('flex-1 flex flex-col min-h-screen bg-background transition-all duration-300', {
     variants: {
         sidebarState: {
-            expanded: 'lg:pl-64',
-            collapsed: 'lg:pl-16',
-            hidden: 'lg:pl-0',
+            expanded: 'pl-0 lg:pl-64',
+            collapsed: 'pl-0 lg:pl-16',
+            hidden: 'pl-0',
         },
     },
     defaultVariants: {
@@ -553,7 +554,7 @@ const Header: React.FC<HeaderProps> = ({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="right">
                             <DropdownMenuItem
-                                onClick={() => window.location.href = '/dashboard/content/videos/upload'}
+                                onClick={() => window.location.href = ROUTES.DASHBOARD.CONTENT.VIDEO_UPLOAD}
                                 className="cursor-pointer"
                             >
                                 <VideoCameraIcon className="h-4 w-4 text-current mr-3" />
@@ -570,7 +571,7 @@ const Header: React.FC<HeaderProps> = ({
                                 <span className="opacity-60">Add User (Soon)</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                                onClick={() => window.location.href = '/dashboard/content/categories'}
+                                onClick={() => window.location.href = ROUTES.DASHBOARD.CONTENT.CATEGORIES}
                                 className="cursor-pointer"
                             >
                                 <DocumentTextIcon className="h-4 w-4 text-current mr-3" />
@@ -684,7 +685,23 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
     onUserAction,
 }) => {
     const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false)
-    const [sidebarHidden, setSidebarHidden] = React.useState(true)
+    // Sidebar should be visible on desktop (lg+), hidden on mobile
+    const [sidebarHidden, setSidebarHidden] = React.useState(false)
+
+    // Check screen size and set initial sidebar state
+    React.useEffect(() => {
+        const checkScreenSize = () => {
+            // Hide sidebar on mobile (<1024px), show on desktop
+            setSidebarHidden(window.innerWidth < 1024)
+        }
+
+        // Set initial state
+        checkScreenSize()
+
+        // Listen for window resize
+        window.addEventListener('resize', checkScreenSize)
+        return () => window.removeEventListener('resize', checkScreenSize)
+    }, [])
 
     const handleSidebarToggle = () => {
         setSidebarCollapsed(!sidebarCollapsed)
@@ -695,7 +712,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
     }
 
     const handleSidebarClose = () => {
-        setSidebarHidden(true)
+        // Only auto-close on mobile
+        if (window.innerWidth < 1024) {
+            setSidebarHidden(true)
+        }
     }
 
     return (

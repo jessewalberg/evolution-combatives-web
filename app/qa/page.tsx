@@ -574,7 +574,12 @@ export default function QAManagementPage() {
                     {canViewAnalytics && (
                         <Button
                             variant="outline"
-                            onClick={() => router.push('/dashboard/analytics/qa')}
+                            onClick={() => {
+                                toast.info('Q&A Analytics coming soon', {
+                                    description: 'This feature is under development.'
+                                })
+                            }}
+                            disabled
                         >
                             View Analytics
                         </Button>
@@ -969,7 +974,7 @@ export default function QAManagementPage() {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => router.push(`/dashboard/qa/${question.id}`)}
+                                                onClick={() => router.push(`/qa/${question.id}`)}
                                             >
                                                 <EyeIcon className="h-4 w-4" />
                                             </Button>

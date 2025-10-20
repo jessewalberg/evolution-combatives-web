@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '../../src/hooks/useAuth'
+import ROUTES from '../../src/lib/routes'
 import { StatsCard, StatsCardGrid } from '../../src/components/ui/stats-card'
 import { Card } from '../../src/components/ui/card'
 import { Button } from '../../src/components/ui/button'
@@ -582,7 +583,7 @@ export default function UsersPage() {
                     <Button
                         variant="outline"
                         className="mt-4"
-                        onClick={() => router.push('/dashboard')}
+                        onClick={() => router.push(ROUTES.DASHBOARD.HOME)}
                     >
                         Back to Dashboard
                     </Button>
@@ -608,8 +609,13 @@ export default function UsersPage() {
                 <div className="flex items-center gap-3">
                     {canManageUsers && (
                         <Button
-                            onClick={() => router.push('/dashboard/users/invite')}
+                            onClick={() => {
+                                toast.info('Invite User coming soon', {
+                                    description: 'User invitation feature is under development.'
+                                })
+                            }}
                             className="flex items-center gap-2"
+                            disabled
                         >
                             <PlusIcon className="h-4 w-4" />
                             Invite User
