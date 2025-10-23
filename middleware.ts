@@ -32,15 +32,31 @@ const ROUTE_CONFIG = {
         '/api/auth/logout',
         '/api/csrf-token',
         '/api/subscriptions/create-checkout',
+        '/api/mobile*', // Mobile API routes handle their own auth
         '/api/webhooks/stripe',
         '/api/webhooks/cloudflare',
+        '/api/debug*', // Debug routes
         '/.well-known*',
         '/favicon.ico',
         '/robots.txt',
         '/sitemap.xml',
         '/_next/static*',
         '/_next/image*',
-        '/public*'
+        '/_vercel*',
+        '/public*',
+        '*.js',
+        '*.css',
+        '*.json',
+        '*.png',
+        '*.jpg',
+        '*.jpeg',
+        '*.gif',
+        '*.svg',
+        '*.ico',
+        '*.woff',
+        '*.woff2',
+        '*.ttf',
+        '*.eot'
     ],
 
     // Protected routes that require authentication
@@ -229,7 +245,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 /**
- * Main middleware function
+ * Main middleware function - OPTIMIZED FOR PERFORMANCE
  */
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl
@@ -242,7 +258,12 @@ export async function middleware(request: NextRequest) {
         // Add security headers to all responses
         response = addSecurityHeaders(response)
 
-        // CSRF protection for state-changing API requests
+        // Skip auth check for public routes early
+        if (isPublicRoute(pathname)) {
+            return response
+        }
+
+        // CSRF protection for state-changing API requests (lightweight check)
         const csrfError = await csrfProtection(request)
         if (csrfError) {
             return csrfError
@@ -277,6 +298,24 @@ export async function middleware(request: NextRequest) {
                     }
                 )
             }
+
+            // For API routes, let them handle authentication themselves
+            // Only validate session exists, not profile/role
+            const supabase = createMiddlewareClient(request, response)
+            const { data: { session } } = await supabase.auth.getSession()
+
+            if (!session) {
+                return new NextResponse(
+                    JSON.stringify({ error: 'Unauthorized' }),
+                    { status: 401, headers: { 'Content-Type': 'application/json' } }
+                )
+            }
+
+            // Add minimal user info to headers
+            response.headers.set('X-User-ID', session.user.id)
+            response.headers.set('X-User-Email', session.user.email || '')
+
+            return response
         }
 
         // Rate limiting for auth routes
@@ -290,91 +329,66 @@ export async function middleware(request: NextRequest) {
             }
         }
 
-        // Skip auth check for public routes
-        if (isPublicRoute(pathname)) {
-            return response
-        }
-
-        // Create Supabase client for middleware
+        // For page routes, perform full auth check
         const supabase = createMiddlewareClient(request, response)
 
-        // Get session with automatic token refresh
+        // Get session with timeout protection
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Session check timeout')), 3000)
+        )
+
         const {
             data: { session },
             error: sessionError
-        } = await supabase.auth.getSession()
+        } = await Promise.race([sessionPromise, timeoutPromise]) as Awaited<typeof sessionPromise>
 
         if (sessionError) {
             if (process.env.NODE_ENV === 'development') {
                 // eslint-disable-next-line no-console
                 console.error('Middleware session error:', sessionError)
             }
-
-            // For API routes, let them handle authentication themselves
-            if (pathname.startsWith('/api/')) {
-                return response
-            }
-
             return NextResponse.redirect(new URL('/login?error=session_error', request.url))
         }
 
-        // Handle missing session differently for API routes vs page routes
+        // Handle missing session
         if (!session) {
-            // For API routes, let them handle authentication themselves
-            if (pathname.startsWith('/api/')) {
-                return response
-            }
-
-            // For page routes, redirect to login
             const loginUrl = new URL('/login', request.url)
             loginUrl.searchParams.set('redirectTo', pathname)
             return NextResponse.redirect(loginUrl)
         }
 
-        // Get user profile with admin role (with caching)
-        const cacheKey = `profile:${session.user.id}`
-        type ProfileData = { admin_role: string; full_name: string; last_login_at: string }
-        let profile: ProfileData | null = null
+        // Get user profile with timeout protection - ONLY for page routes
+        const profilePromise = supabase
+            .from('profiles')
+            .select('admin_role')
+            .eq('id', session.user.id)
+            .single()
 
-        // Simple in-memory cache (in production, use Redis)
-        const profileCache = new Map<string, { data: ProfileData; expires: number }>()
-        const cached = profileCache.get(cacheKey)
+        const profileTimeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Profile check timeout')), 3000)
+        )
 
-        if (cached && Date.now() < cached.expires) {
-            profile = cached.data
-        } else {
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('admin_role, full_name, last_login_at')
-                .eq('id', session.user.id)
-                .single()
+        const { data: profile, error: profileError } = await Promise.race([
+            profilePromise,
+            profileTimeoutPromise
+        ]) as Awaited<typeof profilePromise>
 
-            if (profileError || !profileData) {
-                if (process.env.NODE_ENV === 'development') {
-                    // eslint-disable-next-line no-console
-                    console.error('Middleware profile error:', profileError)
-                }
-                return NextResponse.redirect(new URL('/login?error=profile_error', request.url))
+        if (profileError || !profile) {
+            if (process.env.NODE_ENV === 'development') {
+                // eslint-disable-next-line no-console
+                console.error('Middleware profile error:', profileError)
             }
-
-            profile = profileData
-
-
-            // Cache for 5 minutes
-            profileCache.set(cacheKey, {
-                data: profile,
-                expires: Date.now() + 5 * 60 * 1000
-            })
+            return NextResponse.redirect(new URL('/login?error=profile_error', request.url))
         }
-
 
         // Check if user has admin role
         if (!profile.admin_role) {
             return NextResponse.redirect(new URL('/login?error=access_denied', request.url))
         }
 
-        // Check role-based route access (skip for API routes - they handle their own auth)
-        if (!pathname.startsWith('/api/') && !hasRouteAccess(pathname, profile.admin_role as AdminRole)) {
+        // Check role-based route access
+        if (!hasRouteAccess(pathname, profile.admin_role as AdminRole)) {
             if (process.env.NODE_ENV === 'development') {
                 console.log('Route access denied:', {
                     pathname,
@@ -385,59 +399,10 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/dashboard?error=insufficient_permissions', request.url))
         }
 
-        // Add user info to request headers for pages/API routes
+        // Add user info to request headers
         response.headers.set('X-User-ID', session.user.id)
         response.headers.set('X-User-Role', profile.admin_role)
         response.headers.set('X-User-Email', session.user.email || '')
-
-        // Update last activity timestamp (throttled to prevent too many updates)
-        const lastActivityKey = `activity:${session.user.id}`
-        const lastActivity = profileCache.get(lastActivityKey)
-
-        if (!lastActivity || Date.now() - lastActivity.expires > 5 * 60 * 1000) {
-            // Update in background (don't await)
-            const updateActivity = async () => {
-                try {
-                    await supabase
-                        .from('profiles')
-                        .update({ last_activity_at: new Date().toISOString() })
-                        .eq('id', session.user.id)
-
-                    profileCache.set(lastActivityKey, {
-                        data: profile,
-                        expires: Date.now() + 5 * 60 * 1000
-                    })
-                } catch (error) {
-                    if (process.env.NODE_ENV === 'development') {
-                        // eslint-disable-next-line no-console
-                        console.error('Failed to update last activity:', error)
-                    }
-                }
-            }
-
-            // Execute in background
-            updateActivity()
-        }
-
-        // Check for session timeout based on last activity
-        if (profile.last_login_at) {
-            const lastLoginTime = new Date(profile.last_login_at).getTime()
-            const sessionTimeoutMs = 24 * 60 * 60 * 1000 // 24 hours
-
-            if (Date.now() - lastLoginTime > sessionTimeoutMs) {
-                // Session expired - sign out user
-                try {
-                    await supabase.auth.signOut()
-                } catch (error) {
-                    if (process.env.NODE_ENV === 'development') {
-                        // eslint-disable-next-line no-console
-                        console.error('Failed to sign out expired session:', error)
-                    }
-                }
-
-                return NextResponse.redirect(new URL('/login?error=session_expired', request.url))
-            }
-        }
 
         return response
 
@@ -466,7 +431,8 @@ export const config = {
          * - public files (public folder)
          * - vercel analytics/speed insights
          * - external scripts and assets
+         * - static file extensions
          */
-        '/((?!_next/static|_next/image|favicon.ico|public/|_vercel|ingest/).*)',
+        '/((?!_next/static|_next/image|_next/data|favicon.ico|public/|_vercel|ingest/|.*\\.(?:css|js|jpg|jpeg|gif|png|svg|ico|woff|woff2|ttf|eot|json|webp|avif|map)).*)',
     ],
 } 
