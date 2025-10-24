@@ -79,3 +79,5 @@ CLAUDE_DEVELOPMENT_RULES.md
 
 .next
 tsconfig.tsbuildinfo
+.vercel
+.env*.local

@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { createBrowserClient } from '../../../src/lib/supabase-browser'
 import { Card } from '../../../src/components/ui/card'
 import { Button } from '../../../src/components/ui/button'
-import { Shield, CheckCircle, AlertCircle, Info } from 'lucide-react'
+import { Shield, CheckCircle, AlertCircle } from 'lucide-react'
 import { Spinner } from '../../../src/components/ui/loading'
 
 type VerificationStatus = 'loading' | 'success' | 'error' | 'already_verified'
@@ -72,11 +72,18 @@ function AuthConfirmContent() {
 
                     if (exchangeError) {
                         // Handle missing code verifier error specifically
-                        if (exchangeError.message?.includes('code verifier')) {
+                        if (exchangeError.message?.includes('code verifier') || exchangeError.message?.includes('pkce')) {
+                            // IMPORTANT: Email is already verified at this point!
+                            // The PKCE flow failed, but the email verification succeeded
                             setVerificationState({
-                                status: 'error',
-                                message: 'Please open this verification link in the same browser where you signed up. The security code is stored in your browser and cannot be transferred.',
-                                debugInfo: JSON.stringify(debugInfo, null, 2)
+                                status: 'already_verified',
+                                message: 'Your email has been verified! You can now sign in to your account.',
+                                redirectUrl: '/login',
+                                debugInfo: JSON.stringify({
+                                    ...debugInfo,
+                                    note: 'Email verification succeeded, but session creation failed due to PKCE. User should login manually.',
+                                    error: exchangeError.message
+                                }, null, 2)
                             })
                         } else {
                             setVerificationState({
@@ -237,8 +244,8 @@ function AuthConfirmContent() {
                             </div>
                         )}
                         {verificationState.status === 'already_verified' && (
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                                <Info className="w-8 h-8 text-primary" />
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
+                                <CheckCircle className="w-8 h-8 text-green-500" />
                             </div>
                         )}
                         {verificationState.status === 'error' && (
@@ -250,13 +257,13 @@ function AuthConfirmContent() {
 
                     {/* Status Message */}
                     <h3 className={`text-lg font-semibold mb-4 ${verificationState.status === 'success' ? 'text-green-500' :
-                        verificationState.status === 'already_verified' ? 'text-primary' :
+                        verificationState.status === 'already_verified' ? 'text-green-500' :
                             verificationState.status === 'error' ? 'text-destructive' :
                                 'text-foreground'
                         }`}>
                         {verificationState.status === 'loading' ? 'Verifying...' :
                             verificationState.status === 'success' ? 'Email Verified!' :
-                                verificationState.status === 'already_verified' ? 'Already Verified' :
+                                verificationState.status === 'already_verified' ? 'Email Verified!' :
                                     'Verification Failed'}
                     </h3>
 
@@ -291,7 +298,8 @@ function AuthConfirmContent() {
                                 size="lg"
                                 className="w-full"
                             >
-                                Go to {verificationState.redirectUrl.includes('dashboard') ? 'Dashboard' : 'App'}
+                                {verificationState.redirectUrl.includes('login') ? 'Go to Login' :
+                                    verificationState.redirectUrl.includes('dashboard') ? 'Go to Dashboard' : 'Continue'}
                             </Button>
                         )}
 
