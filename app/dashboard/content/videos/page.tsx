@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '../../../../src/lib/utils'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -232,24 +232,8 @@ export default function VideoLibraryPage() {
         return count
     }, [videosQuery.data?.totalCount, videosData.length])
 
-    // Helper function to get category data for a video
-    const getCategoryData = useCallback((categoryId: string) => {
-        return (categoriesQuery.data as CategoryWithRelations[] || []).find(cat => cat.id === categoryId)
-    }, [categoriesQuery.data])
-
-    // Helper function to get discipline data for a category
-    const getDisciplineData = useCallback((disciplineId: string) => {
-        return (disciplinesQuery.data as DisciplineWithRelations[] || []).find(disc => disc.id === disciplineId)
-    }, [disciplinesQuery.data])
-
-    // Helper function to get discipline name for a video
-    const getDisciplineName = useCallback((categoryId: string) => {
-        const category = getCategoryData(categoryId)
-        return category ? getDisciplineData(category.discipline_id)?.name || '' : ''
-    }, [getCategoryData, getDisciplineData])
-
     // Filter videos based on current filters
-    const filteredVideos = useMemo(() => {
+    const filteredVideos: VideoWithRelations[] = useMemo(() => {
         return videosData.filter((video: VideoWithRelations) => {
             // Search filter
             if (filters.search) {
@@ -268,12 +252,7 @@ export default function VideoLibraryPage() {
 
             // Discipline filter
             if (filters.discipline.length > 0) {
-                // Get discipline ID by looking up the video's category in the categories data
-                const videoCategory = (categoriesQuery.data as CategoryWithRelations[] || []).find(
-                    cat => cat.id === video.category_id
-                )
-
-                const videoDisciplineId = videoCategory?.discipline_id || ''
+                const videoDisciplineId = video.category?.discipline_id || ''
 
                 if (!videoDisciplineId || !filters.discipline.includes(videoDisciplineId)) {
                     return false
@@ -303,7 +282,7 @@ export default function VideoLibraryPage() {
 
             return true
         })
-    }, [videosData, filters, categoriesQuery.data])
+    }, [videosData, filters])
 
     // Bulk actions configuration
     const bulkActions: BulkAction[] = [
@@ -692,10 +671,10 @@ export default function VideoLibraryPage() {
                         status: (video.processing_status || 'ready') as 'uploading' | 'processing' | 'ready' | 'error' | 'archived',
                         subscriptionTier: (video.tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
                         categoryId: video.category_id,
-                        disciplineId: getCategoryData(video.category_id)?.discipline_id || '',
-                        categoryName: getCategoryData(video.category_id)?.name || '',
-                        disciplineName: getDisciplineName(video.category_id),
-                        instructor: '',
+                        disciplineId: video.category?.discipline_id || '',
+                        categoryName: video.category?.name || 'Uncategorized',
+                        disciplineName: video.category?.discipline?.name || 'N/A',
+                        instructor: video.instructor?.full_name || '',
                         uploadDate: video.created_at,
                         lastModified: video.updated_at,
                         viewCount: video.view_count || 0,

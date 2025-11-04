@@ -127,6 +127,31 @@ export interface VideoAnalytics {
     monthlyViews: Array<{ month: string; views: number }>
 }
 
+// Type for raw Supabase response with plural keys
+interface VideoSupabaseResponse extends Video {
+    categories?: Category & {
+        disciplines?: Discipline
+    }
+    instructors?: Instructor
+}
+
+/**
+ * Transform Supabase response to match TypeScript types
+ * Converts plural keys (categories, disciplines, instructors) to singular (category, discipline, instructor)
+ */
+function transformVideoRelations(video: VideoSupabaseResponse): VideoWithRelations {
+    const transformed: VideoWithRelations = {
+        ...video,
+        category: video.categories ? {
+            ...video.categories,
+            discipline: video.categories.disciplines
+        } : undefined,
+        instructor: video.instructors
+    }
+
+    return transformed
+}
+
 // Query Functions
 export const contentQueries = {
     /**
@@ -253,8 +278,11 @@ export const contentQueries = {
             throw handleSupabaseError(error)
         }
 
+        // Transform the data to match TypeScript types (singular keys)
+        const transformedData = (data || []).map((video) => transformVideoRelations(video as VideoSupabaseResponse))
+
         return {
-            data: (data || []) as VideoWithRelations[],
+            data: transformedData,
             totalCount: count || 0,
             hasMore: (count || 0) > to + 1
         }
@@ -285,7 +313,7 @@ export const contentQueries = {
             throw handleSupabaseError(error)
         }
 
-        return data as VideoWithRelations
+        return transformVideoRelations(data as VideoSupabaseResponse)
     },
 
     /**
