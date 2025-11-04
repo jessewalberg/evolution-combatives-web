@@ -52,14 +52,28 @@ export async function POST(request: NextRequest) {
             updated_at: string
             processing_status?: 'ready' | 'error'
             is_published?: boolean
+            duration_seconds?: number
+            thumbnail_url?: string
         } = {
             updated_at: new Date().toISOString()
         }
 
         // Update database if status changed
         if (cloudflareStatus.status === 'ready') {
+            // Get full video details to capture duration and metadata
+            const videoDetails = await cloudflareStreamService.video.getVideoDetails(video.cloudflare_video_id)
+
             updateData.processing_status = 'ready'
             updateData.is_published = true
+
+            // Capture duration if available
+            if (videoDetails.duration) {
+                updateData.duration_seconds = Math.round(videoDetails.duration)
+            }
+
+            // Generate and store thumbnail URL
+            updateData.thumbnail_url = await cloudflareStreamService.video.generateThumbnailUrl(video.cloudflare_video_id)
+
             needsUpdate = true
         } else if (cloudflareStatus.status === 'error') {
             updateData.processing_status = 'error'

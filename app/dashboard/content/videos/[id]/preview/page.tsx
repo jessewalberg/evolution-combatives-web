@@ -8,7 +8,7 @@
 
 'use client'
 
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 import Image from 'next/image'
 import { useRouter, useParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -20,7 +20,7 @@ import { Badge } from '../../../../../../src/components/ui/badge'
 import { Spinner } from '../../../../../../src/components/ui/loading'
 import { clientContentService } from '../../../../../../src/services/content-client'
 import { queryKeys } from '../../../../../../src/lib/query-client'
-import type { VideoWithRelations } from 'shared/types/database'
+import type { VideoWithRelations, Category, Discipline } from 'shared/types/database'
 
 // Icons
 import {
@@ -31,7 +31,9 @@ import {
     ClockIcon,
     EyeIcon,
     TagIcon,
-    ArrowPathIcon
+    ArrowPathIcon,
+    CheckIcon,
+    XMarkIcon
 } from '@heroicons/react/24/outline'
 
 export default function VideoPreviewPage() {
@@ -40,6 +42,11 @@ export default function VideoPreviewPage() {
     const videoId = params.id as string
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
+
+    // State for editing classification
+    const [isEditingClassification, setIsEditingClassification] = useState(false)
+    const [editedDisciplineId, setEditedDisciplineId] = useState<string>('')
+    const [editedCategoryId, setEditedCategoryId] = useState<string>('')
 
     // Check permissions
     const canManageContent = hasPermission('content.write')
@@ -63,6 +70,41 @@ export default function VideoPreviewPage() {
     })
 
     const video = videoQuery.data
+
+    // Fetch categories and disciplines for editing
+    const categoriesQuery = useQuery<Category[]>({
+        queryKey: queryKeys.categoriesList(),
+        queryFn: () => clientContentService.fetchCategories(),
+        enabled: !!user && !!profile?.admin_role
+    })
+
+    const disciplinesQuery = useQuery<Discipline[]>({
+        queryKey: queryKeys.disciplinesList(),
+        queryFn: () => clientContentService.fetchDisciplines(),
+        enabled: !!user && !!profile?.admin_role
+    })
+
+    // Filter categories by selected discipline
+    const availableCategories = useMemo(() => {
+        if (!editedDisciplineId || !categoriesQuery.data) return []
+        return categoriesQuery.data.filter(cat => cat.discipline_id === editedDisciplineId)
+    }, [editedDisciplineId, categoriesQuery.data])
+
+    // Update video category mutation
+    const updateVideoMutation = useMutation({
+        mutationFn: (categoryId: string) => clientContentService.updateVideo(videoId, { category_id: categoryId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.videoDetail(videoId) })
+            queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
+            toast.success('Video classification updated successfully')
+            setIsEditingClassification(false)
+        },
+        onError: (error: Error) => {
+            toast.error('Failed to update classification', {
+                description: error.message
+            })
+        }
+    })
 
     // Auto-sync mutation to check video status with Cloudflare
     const syncVideoMutation = useMutation({
@@ -123,7 +165,34 @@ export default function VideoPreviewPage() {
         }
     }, [video?.processing_status, syncVideoMutation])
 
+    // Handlers for classification editing
+    const handleEditClassification = () => {
+        if (video) {
+            setEditedDisciplineId(video.category?.discipline_id || '')
+            setEditedCategoryId(video.category_id)
+            setIsEditingClassification(true)
+        }
+    }
 
+    const handleSaveClassification = () => {
+        if (!editedCategoryId) {
+            toast.error('Please select a category')
+            return
+        }
+        updateVideoMutation.mutate(editedCategoryId)
+    }
+
+    const handleCancelClassification = () => {
+        setIsEditingClassification(false)
+        setEditedDisciplineId('')
+        setEditedCategoryId('')
+    }
+
+    const handleDisciplineChange = (disciplineId: string) => {
+        setEditedDisciplineId(disciplineId)
+        // When discipline changes, reset category selection
+        setEditedCategoryId('')
+    }
 
     // Format duration
     const formatDuration = (seconds: number): string => {
@@ -430,32 +499,117 @@ export default function VideoPreviewPage() {
 
                         {/* Category & Discipline */}
                         <Card className="p-6">
-                            <h3 className="text-lg font-semibold text-foreground mb-4">
-                                Classification
-                            </h3>
-                            <div className="space-y-3">
-                                <div>
-                                    <span className="text-sm text-muted-foreground">Category</span>
-                                    <p className="font-medium text-foreground">
-                                        {(video.category && typeof video.category === 'object' && 'name' in video.category) ? (video.category as { name: string }).name : 'Uncategorized'}
-                                    </p>
-                                </div>
-                                <div>
-                                    <span className="text-sm text-muted-foreground">Discipline</span>
-                                    <p className="font-medium text-foreground">
-                                        {(video.category && typeof video.category === 'object' && 'disciplines' in video.category && video.category.disciplines && typeof video.category.disciplines === 'object' && 'name' in video.category.disciplines) ? (video.category.disciplines as { name: string }).name : 'N/A'}
-                                    </p>
-                                </div>
-                                {video.instructor && (
-                                    <div>
-                                        <span className="text-sm text-muted-foreground">Instructor</span>
-                                        <p className="font-medium text-foreground">
-                                            {typeof video.instructor === 'object' && 'name' in video.instructor ?
-                                                (video.instructor as { name?: string }).name || 'Unknown' : 'Unknown'}
-                                        </p>
-                                    </div>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-foreground">
+                                    Classification
+                                </h3>
+                                {canManageContent && !isEditingClassification && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleEditClassification}
+                                        leftIcon={<PencilIcon className="h-4 w-4" />}
+                                    >
+                                        Edit
+                                    </Button>
                                 )}
                             </div>
+
+                            {isEditingClassification ? (
+                                // Edit mode
+                                <div className="space-y-4">
+                                    {/* Discipline Selector */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-foreground mb-2">
+                                            Discipline
+                                        </label>
+                                        <select
+                                            value={editedDisciplineId}
+                                            onChange={(e) => handleDisciplineChange(e.target.value)}
+                                            className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                                            disabled={disciplinesQuery.isLoading}
+                                        >
+                                            <option value="">Select discipline...</option>
+                                            {disciplinesQuery.data?.map((discipline) => (
+                                                <option key={discipline.id} value={discipline.id}>
+                                                    {discipline.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Category Selector */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-foreground mb-2">
+                                            Category
+                                        </label>
+                                        <select
+                                            value={editedCategoryId}
+                                            onChange={(e) => setEditedCategoryId(e.target.value)}
+                                            className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                                            disabled={!editedDisciplineId || categoriesQuery.isLoading}
+                                        >
+                                            <option value="">Select category...</option>
+                                            {availableCategories.map((category) => (
+                                                <option key={category.id} value={category.id}>
+                                                    {category.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {editedDisciplineId && availableCategories.length === 0 && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                No categories available for this discipline
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex gap-2 pt-2">
+                                        <Button
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={handleSaveClassification}
+                                            disabled={!editedCategoryId || updateVideoMutation.isPending}
+                                            leftIcon={<CheckIcon className="h-4 w-4" />}
+                                        >
+                                            {updateVideoMutation.isPending ? 'Saving...' : 'Save'}
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleCancelClassification}
+                                            disabled={updateVideoMutation.isPending}
+                                            leftIcon={<XMarkIcon className="h-4 w-4" />}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                // Display mode
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="text-sm text-muted-foreground">Category</span>
+                                        <p className="font-medium text-foreground">
+                                            {video.category?.name || 'Uncategorized'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm text-muted-foreground">Discipline</span>
+                                        <p className="font-medium text-foreground">
+                                            {video.category?.discipline?.name || 'N/A'}
+                                        </p>
+                                    </div>
+                                    {video.instructor && (
+                                        <div>
+                                            <span className="text-sm text-muted-foreground">Instructor</span>
+                                            <p className="font-medium text-foreground">
+                                                {video.instructor.full_name || 'Unknown'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </Card>
 
                         {/* Upload Info */}
