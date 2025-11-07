@@ -4,6 +4,7 @@ import "./globals.css";
 import { QueryProvider } from "../src/providers/QueryProvider";
 import { ThemeProvider } from "../src/providers/ThemeProvider";
 import { Toaster } from "sonner";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -33,6 +34,7 @@ export default function RootLayout({
                             closeButton
                             theme="system"
                         />
+                        <SpeedInsights />
                     </QueryProvider>
                 </ThemeProvider>
             </body>
