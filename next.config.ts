@@ -2,6 +2,25 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.cloudflarestream.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'customer-*.cloudflarestream.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'videodelivery.net',
+        pathname: '/**',
+      },
+    ],
+  },
   async rewrites() {
     return [
       {
