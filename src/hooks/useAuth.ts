@@ -33,7 +33,7 @@ export function useAuth() {
     const router = useRouter()
     const queryClient = useQueryClient()
 
-    const { data: session } = useQuery({
+    const { data: session, isLoading: isSessionLoading } = useQuery({
         queryKey: ['auth', 'session'],
         queryFn: async () => {
             const { data: { session } } = await supabase.auth.getSession()
@@ -45,7 +45,7 @@ export function useAuth() {
         retry: 1, // Reduce retry attempts
     })
 
-    const { data: profile } = useQuery({
+    const { data: profile, isLoading: isProfileLoading } = useQuery({
         queryKey: ['auth', 'profile', session?.user.id],
         queryFn: async () => {
             if (!session?.user.id) return null
@@ -128,7 +128,7 @@ export function useAuth() {
     const canAccessDiscipline = (disciplineRequiredTier: SubscriptionTier) => {
         // Super admins can access everything regardless of subscription
         if (profile?.admin_role === 'super_admin') return true
-        
+
         return hasAccessToDiscipline(userTier, disciplineRequiredTier)
     }
 
@@ -139,7 +139,7 @@ export function useAuth() {
         userTier,
         session,
         isAuthenticated: !!session?.user,
-        isLoading: false,
+        isLoading: isSessionLoading || isProfileLoading,
         error: null,
         permissions: profile?.admin_role
             ? ROLE_PERMISSIONS[profile.admin_role as NonNullable<AdminRole>] || new Set<string>()

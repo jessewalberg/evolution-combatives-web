@@ -106,7 +106,7 @@ export default function VideoEditPage() {
     const router = useRouter()
     const params = useParams()
     const videoId = params.id as string
-    const { user, profile, hasPermission } = useAuth()
+    const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
 
     // State
@@ -324,7 +324,7 @@ export default function VideoEditPage() {
     }
 
     // Loading and error states
-    if (videoQuery.isLoading) {
+    if (authLoading || videoQuery.isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <Spinner size="lg" />
