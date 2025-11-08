@@ -27,6 +27,7 @@ import { Spinner } from '../../../../../../src/components/ui/loading'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../../../../../src/components/ui/dialog'
 
 import { contentService, contentQueries } from '../../../../../../src/services/content'
+import { clientContentService } from '../../../../../../src/services/content-client'
 import { cloudflareApi } from '../../../../../../src/lib/cloudflare-api'
 import { queryKeys } from '../../../../../../src/lib/query-client'
 import type { VideoUpdate } from 'shared/types/database'
@@ -257,7 +258,7 @@ export default function VideoEditPage() {
     })
 
     const deleteVideoMutation = useMutation({
-        mutationFn: () => contentService.mutations.deleteVideo(videoId),
+        mutationFn: () => clientContentService.deleteVideo(videoId),
         onSuccess: () => {
             toast.success('Video deleted successfully')
             // Invalidate video list and navigate back
