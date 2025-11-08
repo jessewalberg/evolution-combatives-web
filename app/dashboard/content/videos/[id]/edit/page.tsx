@@ -197,16 +197,19 @@ export default function VideoEditPage() {
                 tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
             }
 
-            // Handle thumbnail upload if provided
-            if (data.customThumbnail && videoQuery.data?.cloudflare_video_id) {
+            // Handle custom thumbnail upload if provided
+            if (data.customThumbnail && videoQuery.data?.id) {
                 try {
-                    const thumbnailUrl = await cloudflareApi.generateThumbnailUrl(
-                        videoQuery.data.cloudflare_video_id,
-                        { time: 5, width: 640, height: 360 }
+                    const thumbnailUrl = await cloudflareApi.uploadCustomThumbnail(
+                        videoQuery.data.id, // Use database video ID
+                        data.customThumbnail
                     )
                     updateData.thumbnail_url = thumbnailUrl
+                    toast.success('Custom thumbnail uploaded successfully')
                 } catch (error) {
-                    console.error('Failed to update thumbnail:', error)
+                    console.error('Failed to upload custom thumbnail:', error)
+                    toast.error('Failed to upload custom thumbnail')
+                    // Continue with other updates even if thumbnail upload fails
                 }
             }
 
@@ -221,7 +224,7 @@ export default function VideoEditPage() {
 
             // Optimistically update to the new value
             if (previousVideo) {
-                queryClient.setQueryData(queryKeys.videoDetail(videoId), {
+                const updates: Record<string, unknown> = {
                     ...previousVideo,
                     title: newData.title,
                     description: newData.description,
@@ -230,7 +233,12 @@ export default function VideoEditPage() {
                     is_published: newData.isPublished,
                     tags: newData.tags ? newData.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
                     updated_at: new Date().toISOString(),
-                })
+                }
+
+                // If custom thumbnail is being uploaded, we'll keep the existing thumbnail_url
+                // The actual URL will be updated after the upload completes
+
+                queryClient.setQueryData(queryKeys.videoDetail(videoId), updates)
             }
 
             return { previousVideo }
