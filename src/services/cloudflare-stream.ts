@@ -638,6 +638,46 @@ export const videoManagement = {
     },
 
     /**
+     * Upload custom thumbnail for video
+     */
+    async uploadCustomThumbnail(
+        videoId: string,
+        thumbnailFile: File | Blob,
+        timestamp?: number
+    ): Promise<string> {
+        try {
+            const formData = new FormData()
+            formData.append('file', thumbnailFile)
+
+            // Optional: Set the timestamp for when this thumbnail should appear
+            if (timestamp !== undefined) {
+                formData.append('timestamp', timestamp.toString())
+            }
+
+            const response = await fetch(`${getStreamApiBase()}/${videoId}/thumbnails`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`
+                    // Note: Don't set Content-Type header - browser will set it with boundary for FormData
+                },
+                body: formData
+            })
+
+            // Validate the response
+            await handleStreamResponse<{ result: { uid: string; thumbnail: string } }>(response)
+
+            // Return the thumbnail URL (Cloudflare uses a consistent format)
+            return `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/thumbnails/thumbnail.jpg`
+        } catch (error) {
+            throw new CloudflareStreamError(
+                `Failed to upload custom thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                undefined,
+                error
+            )
+        }
+    },
+
+    /**
      * Retry processing for a failed video
      */
     async retryProcessing(videoId: string): Promise<void> {

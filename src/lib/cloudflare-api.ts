@@ -188,6 +188,45 @@ export class CloudflareApiClient {
     async retryProcessing(videoId: string): Promise<void> {
         await this.makeRequest('retryProcessing', { videoId })
     }
+
+    /**
+     * Upload custom thumbnail for a video
+     * @param videoId - Database video ID (not Cloudflare video ID)
+     * @param thumbnailFile - Image file to upload
+     * @param timestamp - Optional timestamp for when thumbnail should appear
+     * @returns Promise with thumbnail URL
+     */
+    async uploadCustomThumbnail(
+        videoId: string,
+        thumbnailFile: File,
+        timestamp?: number
+    ): Promise<string> {
+        const formData = new FormData()
+        formData.append('videoId', videoId)
+        formData.append('thumbnail', thumbnailFile)
+        if (timestamp !== undefined) {
+            formData.append('timestamp', timestamp.toString())
+        }
+
+        const response = await fetch('/api/cloudflare/upload-thumbnail', {
+            method: 'POST',
+            body: formData,
+            credentials: 'include'
+        })
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+            throw new Error(errorData.message || errorData.error || `Upload failed with status ${response.status}`)
+        }
+
+        const result = await response.json()
+
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to upload thumbnail')
+        }
+
+        return result.thumbnailUrl
+    }
 }
 
 export const cloudflareApi = new CloudflareApiClient()
