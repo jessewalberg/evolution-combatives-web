@@ -494,9 +494,10 @@ export default function VideoEditPage() {
                                                             <CustomSelect
                                                                 placeholder="Select required tier"
                                                                 options={[
-                                                                    { value: 'beginner', label: 'Beginner' },
-                                                                    { value: 'intermediate', label: 'Intermediate' },
-                                                                    { value: 'advanced', label: 'Advanced' }
+                                                                    { value: 'none', label: 'Free Content' },
+                                                                    { value: 'tier1', label: 'Tier 1 - Beginner ($9)' },
+                                                                    { value: 'tier2', label: 'Tier 2 - Intermediate ($19)' },
+                                                                    { value: 'tier3', label: 'Tier 3 - Advanced ($49)' }
                                                                 ]}
                                                                 value={field.value}
                                                                 onChange={field.onChange}
