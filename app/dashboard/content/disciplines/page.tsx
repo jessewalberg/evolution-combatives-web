@@ -151,7 +151,7 @@ export default function DisciplinesPage() {
     const createMutation = useMutation({
         mutationFn: (data: DisciplineInsert) => clientContentService.createDiscipline(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
             toast.success('Discipline created successfully')
             setCreateDialogOpen(false)
             resetForm()
@@ -165,7 +165,7 @@ export default function DisciplinesPage() {
         mutationFn: ({ id, data }: { id: string; data: DisciplineUpdate }) =>
             clientContentService.updateDiscipline(id, data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
             toast.success('Discipline updated successfully')
             setEditDialogOpen(false)
             setSelectedDiscipline(null)
@@ -179,7 +179,7 @@ export default function DisciplinesPage() {
     const deleteMutation = useMutation({
         mutationFn: (disciplineId: string) => clientContentService.deleteDiscipline(disciplineId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
             toast.success('Discipline deleted successfully')
             setDeleteDialogOpen(false)
             setSelectedDiscipline(null)

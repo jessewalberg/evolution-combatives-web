@@ -55,6 +55,7 @@ import {
 
 // Services & Types
 import { clientContentService } from '../../../../src/services/content-client'
+import { queryKeys } from '../../../../src/lib/query-client'
 import { useAuth } from '../../../../src/hooks/useAuth'
 import type { CategoryWithRelations, DisciplineWithRelations, CategoryInsert, CategoryUpdate } from '../../../../src/lib/shared/types/database'
 
@@ -260,7 +261,7 @@ export default function CategoriesPage() {
     })
 
     const categoriesQuery = useQuery({
-        queryKey: ['categories', 'list', selectedDiscipline],
+        queryKey: queryKeys.categoriesList(selectedDiscipline),
         queryFn: () => clientContentService.fetchCategories(),
         enabled: !!user && !!profile?.admin_role,
     })
@@ -296,7 +297,7 @@ export default function CategoriesPage() {
     const createMutation = useMutation({
         mutationFn: (data: CategoryInsert) => clientContentService.createCategory(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
             toast.success('Category created successfully')
             setCreateDialogOpen(false)
             resetForm()
@@ -310,7 +311,7 @@ export default function CategoriesPage() {
         mutationFn: ({ id, data }: { id: string; data: CategoryUpdate }) =>
             clientContentService.updateCategory(id, data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
             toast.success('Category updated successfully')
             setEditDialogOpen(false)
             setSelectedCategory(null)
@@ -324,7 +325,7 @@ export default function CategoriesPage() {
     const deleteMutation = useMutation({
         mutationFn: (categoryId: string) => clientContentService.deleteCategory(categoryId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
             toast.success('Category deleted successfully')
             setDeleteDialogOpen(false)
             setSelectedCategory(null)
@@ -338,7 +339,7 @@ export default function CategoriesPage() {
         mutationFn: (reorderData: Array<{ id: string; sort_order: number }>) =>
             clientContentService.reorderCategories(reorderData),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
             toast.success('Categories reordered successfully')
         },
         onError: (error: Error) => {
