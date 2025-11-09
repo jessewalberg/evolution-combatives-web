@@ -35,6 +35,7 @@ import {
 
 // Services & Types
 import { clientContentService } from '../../../../src/services/content-client'
+import { queryKeys } from '../../../../src/lib/query-client'
 import { useAuth } from '../../../../src/hooks/useAuth'
 import type { DisciplineWithRelations, CategoryWithRelations, DisciplineInsert, DisciplineUpdate } from '../../../../src/lib/shared/types/database'
 
@@ -151,7 +152,7 @@ export default function DisciplinesPage() {
     const createMutation = useMutation({
         mutationFn: (data: DisciplineInsert) => clientContentService.createDiscipline(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
             toast.success('Discipline created successfully')
             setCreateDialogOpen(false)
             resetForm()
@@ -165,7 +166,7 @@ export default function DisciplinesPage() {
         mutationFn: ({ id, data }: { id: string; data: DisciplineUpdate }) =>
             clientContentService.updateDiscipline(id, data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
             toast.success('Discipline updated successfully')
             setEditDialogOpen(false)
             setSelectedDiscipline(null)
@@ -179,7 +180,7 @@ export default function DisciplinesPage() {
     const deleteMutation = useMutation({
         mutationFn: (disciplineId: string) => clientContentService.deleteDiscipline(disciplineId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['disciplines', 'list'] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
             toast.success('Discipline deleted successfully')
             setDeleteDialogOpen(false)
             setSelectedDiscipline(null)
