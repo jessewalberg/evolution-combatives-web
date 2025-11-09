@@ -35,6 +35,7 @@ import {
 
 // Services & Types
 import { clientContentService } from '../../../../src/services/content-client'
+import { queryKeys } from '../../../../src/lib/query-client'
 import { useAuth } from '../../../../src/hooks/useAuth'
 import type { DisciplineWithRelations, CategoryWithRelations, DisciplineInsert, DisciplineUpdate } from '../../../../src/lib/shared/types/database'
 
