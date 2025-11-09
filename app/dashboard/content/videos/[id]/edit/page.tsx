@@ -26,7 +26,6 @@ import { Badge } from '../../../../../../src/components/ui/badge'
 import { Spinner } from '../../../../../../src/components/ui/loading'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../../../../../src/components/ui/dialog'
 
-import { contentService, contentQueries } from '../../../../../../src/services/content'
 import { clientContentService } from '../../../../../../src/services/content-client'
 import { cloudflareApi } from '../../../../../../src/lib/cloudflare-api'
 import { queryKeys } from '../../../../../../src/lib/query-client'
@@ -122,13 +121,13 @@ export default function VideoEditPage() {
     // Queries
     const videoQuery = useQuery({
         queryKey: queryKeys.videoDetail(videoId),
-        queryFn: () => contentQueries.fetchVideoById(videoId),
+        queryFn: () => clientContentService.fetchVideoById(videoId),
         enabled: !!videoId && !!user && !!profile?.admin_role,
     })
 
     const categoriesQuery = useQuery({
         queryKey: queryKeys.categoriesList(),
-        queryFn: () => contentQueries.fetchCategories(),
+        queryFn: () => clientContentService.fetchCategories(),
         enabled: !!user && !!profile?.admin_role,
     })
 
@@ -214,7 +213,7 @@ export default function VideoEditPage() {
                 }
             }
 
-            return contentService.mutations.updateVideo(videoId, updateData)
+            return clientContentService.updateVideo(videoId, updateData)
         },
         onMutate: async (newData) => {
             // Cancel any outgoing refetches
