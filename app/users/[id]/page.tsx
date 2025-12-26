@@ -1156,7 +1156,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             <p className="font-medium text-white capitalize">{sub.tier} Plan</p>
                                             <p className="text-sm text-neutral-400">
                                                 {new Date(sub.created_at).toLocaleDateString()} -
-                                                {sub.status === 'canceled' ? new Date(sub.updated_at).toLocaleDateString() : 'Present'}
+                                                {sub.status === 'canceled' ? 'Canceled' : 'Present'}
                                             </p>
                                         </div>
                                         <Badge
