@@ -201,7 +201,7 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
         if (subscriptionData) {
             await supabase
                 .from('profiles')
-                .update({ subscription_tier: null })
+                .update({ subscription_tier: 'none' })
                 .eq('id', subscriptionData.user_id);
         }
     }
@@ -239,7 +239,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     if (subscriptionData) {
         await supabase
             .from('profiles')
-            .update({ subscription_tier: null })
+            .update({ subscription_tier: 'none' })
             .eq('id', subscriptionData.user_id);
     }
 
