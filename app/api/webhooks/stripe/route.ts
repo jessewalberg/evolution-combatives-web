@@ -233,6 +233,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
  * Handle successful payment
  */
 async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription) {
+    console.log('handlePaymentSucceeded', JSON.stringify(invoice));
     if (invoice.subscription) {
         const supabase = createAdminClient();
 
