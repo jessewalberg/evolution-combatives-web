@@ -129,7 +129,6 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
         });
 
     if (error) {
@@ -164,7 +163,6 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
         })
         .eq('stripe_subscription_id', subscription.id);
 
@@ -198,12 +196,18 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     const supabase = createAdminClient();
 
+    // Get the subscription record first to get user_id
+    const { data: subscriptionData } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('stripe_subscription_id', subscription.id)
+        .single();
+
     // Update subscription status to canceled
     const { error } = await supabase
         .from('subscriptions')
         .update({
             status: 'canceled',
-            canceled_at: new Date().toISOString(),
         })
         .eq('stripe_subscription_id', subscription.id);
 
@@ -213,12 +217,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     }
 
     // Remove subscription tier from user profile
-    const { data: subscriptionData } = await supabase
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_subscription_id', subscription.id)
-        .single();
-
     if (subscriptionData) {
         await supabase
             .from('profiles')

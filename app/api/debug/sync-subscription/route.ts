@@ -135,9 +135,6 @@ export async function POST(request: NextRequest) {
                     current_period_start: currentPeriodStart,
                     current_period_end: currentPeriodEnd,
                     cancel_at_period_end: subscription.cancel_at_period_end ?? false,
-                    canceled_at: null,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
                 })
 
             if (insertError) {

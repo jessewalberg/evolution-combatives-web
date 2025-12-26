@@ -61,7 +61,6 @@ export interface Database {
                     current_period_start: string;
                     current_period_end: string;
                     cancel_at_period_end: boolean;
-                    canceled_at: string | null;
                     created_at: string;
                     updated_at: string;
                 };
@@ -75,7 +74,6 @@ export interface Database {
                     current_period_start: string;
                     current_period_end: string;
                     cancel_at_period_end?: boolean;
-                    canceled_at?: string | null;
                 };
                 Update: {
                     id?: string;
@@ -87,7 +85,6 @@ export interface Database {
                     current_period_start?: string;
                     current_period_end?: string;
                     cancel_at_period_end?: boolean;
-                    canceled_at?: string | null;
                     updated_at?: string;
                 };
             };

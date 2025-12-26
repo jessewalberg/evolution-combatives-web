@@ -1075,12 +1075,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             {new Date(userData.subscription.current_period_end).toLocaleDateString()}
                                         </span>
                                     </div>
-                                    {userData.subscription.canceled_at && (
+                                    {userData.subscription.status === 'canceled' && (
                                         <div className="flex justify-between">
-                                            <span className="text-neutral-400">Canceled:</span>
-                                            <span className="text-red-400">
-                                                {new Date(userData.subscription.canceled_at).toLocaleDateString()}
-                                            </span>
+                                            <span className="text-neutral-400">Status:</span>
+                                            <span className="text-red-400">Canceled</span>
                                         </div>
                                     )}
                                     {userData.paymentHistory && userData.paymentHistory.length > 0 && (
@@ -1155,7 +1153,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             <p className="font-medium text-white capitalize">{sub.tier} Plan</p>
                                             <p className="text-sm text-neutral-400">
                                                 {new Date(sub.created_at).toLocaleDateString()} -
-                                                {sub.canceled_at ? new Date(sub.canceled_at).toLocaleDateString() : 'Present'}
+                                                {sub.status === 'canceled' ? new Date(sub.updated_at).toLocaleDateString() : 'Present'}
                                             </p>
                                         </div>
                                         <Badge
