@@ -115,7 +115,23 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         return;
     }
 
+    console.log('Subscription created event data:', JSON.stringify({
+        id: subscription.id,
+        current_period_start: subscription.current_period_start,
+        current_period_end: subscription.current_period_end,
+        status: subscription.status,
+    }));
+
     const supabase = createAdminClient();
+
+    // Safely convert timestamps to ISO strings with fallbacks
+    const now = new Date();
+    const currentPeriodStart = subscription.current_period_start
+        ? new Date(subscription.current_period_start * 1000).toISOString()
+        : now.toISOString();
+    const currentPeriodEnd = subscription.current_period_end
+        ? new Date(subscription.current_period_end * 1000).toISOString()
+        : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // Default to 30 days from now
 
     // Create subscription record in database
     const { error } = await supabase
@@ -126,9 +142,9 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
             status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
             stripe_subscription_id: subscription.id,
             stripe_customer_id: subscription.customer as string,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
+            current_period_start: currentPeriodStart,
+            current_period_end: currentPeriodEnd,
+            cancel_at_period_end: subscription.cancel_at_period_end ?? false,
         });
 
     if (error) {
@@ -155,15 +171,29 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
 async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPeriod) {
     const supabase = createAdminClient();
 
+    // Build update object with only defined period values
+    const updateData: {
+        status: string;
+        cancel_at_period_end: boolean;
+        current_period_start?: string;
+        current_period_end?: string;
+    } = {
+        status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
+        cancel_at_period_end: subscription.cancel_at_period_end ?? false,
+    };
+
+    // Only update period values if they exist
+    if (subscription.current_period_start) {
+        updateData.current_period_start = new Date(subscription.current_period_start * 1000).toISOString();
+    }
+    if (subscription.current_period_end) {
+        updateData.current_period_end = new Date(subscription.current_period_end * 1000).toISOString();
+    }
+
     // Update subscription record
     const { error } = await supabase
         .from('subscriptions')
-        .update({
-            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-        })
+        .update(updateData)
         .eq('stripe_subscription_id', subscription.id);
 
     if (error) {
