@@ -54,38 +54,30 @@ export interface Database {
                 Row: {
                     id: string;
                     user_id: string;
-                    tier: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-                    stripe_subscription_id: string | null;
-                    stripe_customer_id: string | null;
-                    current_period_start: string;
-                    current_period_end: string;
-                    cancel_at_period_end: boolean;
+                    platform: 'revenuecat' | 'stripe';
+                    external_subscription_id: string;
+                    status: string;
+                    tier: string;
+                    current_period_end: string | null;
                     created_at: string;
-                    updated_at: string;
                 };
                 Insert: {
                     id?: string;
                     user_id: string;
-                    tier: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-                    stripe_subscription_id?: string | null;
-                    stripe_customer_id?: string | null;
-                    current_period_start: string;
-                    current_period_end: string;
-                    cancel_at_period_end?: boolean;
+                    platform: 'revenuecat' | 'stripe';
+                    external_subscription_id: string;
+                    status: string;
+                    tier: string;
+                    current_period_end?: string | null;
                 };
                 Update: {
                     id?: string;
                     user_id?: string;
-                    tier?: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    status?: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-                    stripe_subscription_id?: string | null;
-                    stripe_customer_id?: string | null;
-                    current_period_start?: string;
-                    current_period_end?: string;
-                    cancel_at_period_end?: boolean;
-                    updated_at?: string;
+                    platform?: 'revenuecat' | 'stripe';
+                    external_subscription_id?: string;
+                    status?: string;
+                    tier?: string;
+                    current_period_end?: string | null;
                 };
             };
             disciplines: {

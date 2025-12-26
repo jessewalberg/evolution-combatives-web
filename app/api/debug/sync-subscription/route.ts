@@ -94,13 +94,10 @@ export async function POST(request: NextRequest) {
             .from('subscriptions')
             .select('id')
             .eq('user_id', user.id)
-            .eq('stripe_subscription_id', subscription.id)
+            .eq('external_subscription_id', subscription.id)
             .single()
 
         // Extract period dates - Stripe API v18+ uses Date objects
-        const currentPeriodStart = 'current_period_start' in subscription
-            ? new Date((subscription.current_period_start as number) * 1000).toISOString()
-            : new Date().toISOString()
         const currentPeriodEnd = 'current_period_end' in subscription
             ? new Date((subscription.current_period_end as number) * 1000).toISOString()
             : new Date().toISOString()
@@ -112,10 +109,7 @@ export async function POST(request: NextRequest) {
                 .update({
                     tier: tier as 'tier1' | 'tier2' | 'tier3',
                     status: subscription.status as 'active' | 'canceled',
-                    current_period_start: currentPeriodStart,
                     current_period_end: currentPeriodEnd,
-                    cancel_at_period_end: subscription.cancel_at_period_end ?? false,
-                    updated_at: new Date().toISOString()
                 })
                 .eq('id', existingSub.id)
 
@@ -130,11 +124,9 @@ export async function POST(request: NextRequest) {
                     user_id: user.id,
                     tier: tier as 'tier1' | 'tier2' | 'tier3',
                     status: subscription.status as 'active' | 'canceled',
-                    stripe_subscription_id: subscription.id,
-                    stripe_customer_id: subscription.customer as string,
-                    current_period_start: currentPeriodStart,
+                    platform: 'stripe',
+                    external_subscription_id: subscription.id,
                     current_period_end: currentPeriodEnd,
-                    cancel_at_period_end: subscription.cancel_at_period_end ?? false,
                 })
 
             if (insertError) {

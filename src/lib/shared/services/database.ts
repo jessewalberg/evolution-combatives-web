@@ -200,9 +200,9 @@ export class DatabaseService {
             id,
             tier,
             status,
-            current_period_start,
+            platform,
+            external_subscription_id,
             current_period_end,
-            cancel_at_period_end,
             created_at
           )
         `)
@@ -425,11 +425,11 @@ export class DatabaseService {
     async getUserSubscription(userId: string): Promise<ServiceResponse<{
         id: string
         user_id: string
-        tier: 'none' | 'tier1' | 'tier2' | 'tier3'
-        status: 'active' | 'canceled' | 'past_due' | 'trialing'
-        current_period_start: string
-        current_period_end: string
-        cancel_at_period_end: boolean
+        tier: string
+        status: string
+        platform: 'revenuecat' | 'stripe'
+        external_subscription_id: string
+        current_period_end: string | null
         created_at: string
     } | null>> {
         return safeQuery(async () => {
@@ -453,23 +453,21 @@ export class DatabaseService {
     ): Promise<ServiceResponse<{
         id: string
         user_id: string
-        tier: 'none' | 'tier1' | 'tier2' | 'tier3'
-        status: 'active' | 'canceled' | 'past_due' | 'trialing'
-        current_period_start: string
-        current_period_end: string
-        cancel_at_period_end: boolean
+        tier: string
+        status: string
+        platform: 'revenuecat' | 'stripe'
+        external_subscription_id: string
+        current_period_end: string | null
         created_at: string
-        updated_at: string
     }>> {
         try {
             const result = await withRetry(async () => {
                 const { data, error } = await this.supabase
                     .from('subscriptions')
-                    .upsert({
-                        user_id: userId,
+                    .update({
                         ...subscriptionData,
-                        updated_at: new Date().toISOString()
                     })
+                    .eq('user_id', userId)
                     .select()
                     .single()
 
@@ -511,9 +509,9 @@ export class DatabaseService {
             id,
             tier,
             status,
-            current_period_start,
+            platform,
+            external_subscription_id,
             current_period_end,
-            cancel_at_period_end,
             created_at
           )
         `)

@@ -437,7 +437,8 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                         user_id: userId,
                         tier: tier!,
                         status: status || 'active',
-                        current_period_start: new Date().toISOString(),
+                        platform: 'stripe' as const,
+                        external_subscription_id: `admin_${userId}_${Date.now()}`,
                         current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
                     })
                     .select()
@@ -1064,17 +1065,19 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                 </div>
                                 <div className="space-y-2">
                                     <div className="flex justify-between">
-                                        <span className="text-neutral-400">Period Start:</span>
+                                        <span className="text-neutral-400">Started:</span>
                                         <span className="text-white">
-                                            {new Date(userData.subscription.current_period_start).toLocaleDateString()}
+                                            {new Date(userData.subscription.created_at).toLocaleDateString()}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-neutral-400">Period End:</span>
-                                        <span className="text-white">
-                                            {new Date(userData.subscription.current_period_end).toLocaleDateString()}
-                                        </span>
-                                    </div>
+                                    {userData.subscription.current_period_end && (
+                                        <div className="flex justify-between">
+                                            <span className="text-neutral-400">Period End:</span>
+                                            <span className="text-white">
+                                                {new Date(userData.subscription.current_period_end).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                    )}
                                     {userData.subscription.status === 'canceled' && (
                                         <div className="flex justify-between">
                                             <span className="text-neutral-400">Status:</span>

@@ -83,10 +83,8 @@ export interface ProgressUpdateData {
 export interface SubscriptionUpdateData {
     tier?: SubscriptionTier
     status?: 'active' | 'inactive' | 'canceled' | 'past_due'
-    current_period_start?: string
     current_period_end?: string
-    cancel_at_period_end?: boolean
-    stripe_subscription_id?: string
+    external_subscription_id?: string
 }
 
 // Types imported from database.ts to avoid conflicts
@@ -177,11 +175,11 @@ export interface UserProfileWithSubscription {
     last_sign_in_at?: string
     subscription?: {
         id: string
-        tier: SubscriptionTier
+        tier: string
         status: string
-        current_period_start: string
-        current_period_end: string
-        cancel_at_period_end: boolean
+        platform: 'revenuecat' | 'stripe'
+        external_subscription_id: string
+        current_period_end: string | null
         created_at: string
     }
 }

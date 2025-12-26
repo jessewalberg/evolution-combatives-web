@@ -126,9 +126,6 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
 
     // Safely convert timestamps to ISO strings with fallbacks
     const now = new Date();
-    const currentPeriodStart = subscription.current_period_start
-        ? new Date(subscription.current_period_start * 1000).toISOString()
-        : now.toISOString();
     const currentPeriodEnd = subscription.current_period_end
         ? new Date(subscription.current_period_end * 1000).toISOString()
         : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // Default to 30 days from now
@@ -138,13 +135,11 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         .from('subscriptions')
         .insert({
             user_id: userId,
-            tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
-            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: subscription.customer as string,
-            current_period_start: currentPeriodStart,
+            tier: tier,
+            status: subscription.status,
+            platform: 'stripe',
+            external_subscription_id: subscription.id,
             current_period_end: currentPeriodEnd,
-            cancel_at_period_end: subscription.cancel_at_period_end ?? false,
         });
 
     if (error) {
@@ -174,18 +169,12 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
     // Build update object with only defined period values
     const updateData: {
         status: string;
-        cancel_at_period_end: boolean;
-        current_period_start?: string;
         current_period_end?: string;
     } = {
-        status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-        cancel_at_period_end: subscription.cancel_at_period_end ?? false,
+        status: subscription.status,
     };
 
     // Only update period values if they exist
-    if (subscription.current_period_start) {
-        updateData.current_period_start = new Date(subscription.current_period_start * 1000).toISOString();
-    }
     if (subscription.current_period_end) {
         updateData.current_period_end = new Date(subscription.current_period_end * 1000).toISOString();
     }
@@ -194,7 +183,7 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
     const { error } = await supabase
         .from('subscriptions')
         .update(updateData)
-        .eq('stripe_subscription_id', subscription.id);
+        .eq('external_subscription_id', subscription.id);
 
     if (error) {
         console.error('Error updating subscription in database:', error);
@@ -206,7 +195,7 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
         const { data: subscriptionData } = await supabase
             .from('subscriptions')
             .select('user_id')
-            .eq('stripe_subscription_id', subscription.id)
+            .eq('external_subscription_id', subscription.id)
             .single();
 
         if (subscriptionData) {
@@ -230,7 +219,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     const { data: subscriptionData } = await supabase
         .from('subscriptions')
         .select('user_id')
-        .eq('stripe_subscription_id', subscription.id)
+        .eq('external_subscription_id', subscription.id)
         .single();
 
     // Update subscription status to canceled
@@ -239,7 +228,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
         .update({
             status: 'canceled',
         })
-        .eq('stripe_subscription_id', subscription.id);
+        .eq('external_subscription_id', subscription.id);
 
     if (error) {
         console.error('Error updating canceled subscription:', error);
@@ -269,7 +258,7 @@ async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription) {
         await supabase
             .from('subscriptions')
             .update({ status: 'active' })
-            .eq('stripe_subscription_id', invoice.subscription as string);
+            .eq('external_subscription_id', invoice.subscription as string);
 
         console.log(`Payment succeeded for subscription: ${invoice.subscription}`);
     }
@@ -286,7 +275,7 @@ async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription) {
         await supabase
             .from('subscriptions')
             .update({ status: 'past_due' })
-            .eq('stripe_subscription_id', invoice.subscription as string);
+            .eq('external_subscription_id', invoice.subscription as string);
 
         console.log(`Payment failed for subscription: ${invoice.subscription}`);
     }
