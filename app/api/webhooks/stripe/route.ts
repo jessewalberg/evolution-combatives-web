@@ -130,20 +130,23 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         ? new Date(subscription.current_period_end * 1000).toISOString()
         : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // Default to 30 days from now
 
-    // Create subscription record in database
+    // Create or update subscription record in database
+    // Uses upsert to handle case where subscription already exists for this user/platform
     const { error } = await supabase
         .from('subscriptions')
-        .insert({
+        .upsert({
             user_id: userId,
             tier: tier,
             status: subscription.status,
             platform: 'stripe',
             external_subscription_id: subscription.id,
             current_period_end: currentPeriodEnd,
+        }, {
+            onConflict: 'user_id,platform',
         });
 
     if (error) {
-        console.error('Error creating subscription in database:', error);
+        console.error('Error creating/updating subscription in database:', error);
         throw error;
     }
 
