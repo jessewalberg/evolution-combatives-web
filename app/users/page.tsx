@@ -244,7 +244,7 @@ export default function UsersPage() {
             const [profilesResult, subscriptionsResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('id, email, full_name, admin_role, created_at, subscription_tier, last_active')
+                    .select('id, email, full_name, admin_role, created_at, subscription_tier, last_active, last_login_at')
                     .order('created_at', { ascending: false })
                     .limit(50),
 
@@ -288,16 +288,35 @@ export default function UsersPage() {
                 const completionRate = progress.length > 0 ?
                     (completedCount / progress.length) * 100 : 0
 
-                // Determine activity status (placeholder since last_active_at may not exist)
-                const activityStatus: User['activityStatus'] = 'recent' // Default to recent for now
+                // Determine activity status based on last_active or last_login_at
+                const lastActivityDate = profile.last_active || profile.last_login_at || profile.created_at
+                const hoursSinceActivity = lastActivityDate
+                    ? (Date.now() - new Date(lastActivityDate).getTime()) / (1000 * 60 * 60)
+                    : Infinity
 
-                // Determine user status based on subscription and account state
+                let activityStatus: User['activityStatus'] = 'dormant'
+                if (hoursSinceActivity < 1) {
+                    activityStatus = 'online' // Active within the last hour
+                } else if (hoursSinceActivity < 24) {
+                    activityStatus = 'recent' // Active within last 24 hours
+                } else if (hoursSinceActivity < 168) { // 7 days
+                    activityStatus = 'inactive'
+                } else {
+                    activityStatus = 'dormant' // 30+ days or never
+                }
+
+                // Determine user status based on admin role and subscription status
+                // Admin users are always considered active (no subscription required)
                 let userStatus: User['status'] = 'inactive'
-                if (subscription?.status === 'active') {
+                if (profile.admin_role) {
+                    // Admin users are active by default (no subscription required)
                     userStatus = 'active'
-                } else if (subscription?.status === 'canceled' || subscription?.status === 'suspended') {
+                } else if (subscription?.status === 'active') {
+                    userStatus = 'active'
+                } else if (subscription?.status === 'canceled' || subscription?.status === 'past_due') {
                     userStatus = 'suspended'
                 } else {
+                    // No subscription - show as inactive (not suspended)
                     userStatus = 'inactive'
                 }
 
@@ -325,7 +344,7 @@ export default function UsersPage() {
                     status: userStatus,
                     activityStatus,
                     joinDate: profile.created_at,
-                    lastActive: profile.last_active || profile.created_at,
+                    lastActive: profile.last_active || profile.last_login_at || profile.created_at,
                     totalVideosWatched: progress.length,
                     completionRate,
                     subscriptionExpiresAt: subscription?.current_period_end,
@@ -340,7 +359,7 @@ export default function UsersPage() {
                     subscriptionHistory: [], // Would be populated from subscription events
                     totalWatchTime: 0, // Would be calculated from actual watch time data
                     streakDays: 0, // Would be calculated from activity data
-                    lastLogin: profile.last_active || profile.created_at
+                    lastLogin: profile.last_login_at || profile.last_active || undefined
                 } as User
             })
         },

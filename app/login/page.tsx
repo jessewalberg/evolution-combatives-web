@@ -244,11 +244,20 @@ function LoginContent() {
                 return
             }
 
-            // Update last login timestamp
-            await supabase
+            // Update last login and last active timestamps
+            const now = new Date().toISOString()
+            const { error: updateError } = await supabase
                 .from('profiles')
-                .update({ last_login_at: new Date().toISOString() })
+                .update({ 
+                    last_login_at: now,
+                    last_active: now 
+                })
                 .eq('id', authData.user.id)
+            
+            if (updateError) {
+                console.error('Failed to update login timestamp:', updateError)
+                // Don't block login, just log the error
+            }
 
             // Clear failed attempts on successful login
             clearFailedAttempts(data.email)
