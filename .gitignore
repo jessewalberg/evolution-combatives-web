@@ -81,3 +81,6 @@ CLAUDE_DEVELOPMENT_RULES.md
 tsconfig.tsbuildinfo
 .vercel
 .env*.local
+
+# Supabase
+supabase/.temp/
