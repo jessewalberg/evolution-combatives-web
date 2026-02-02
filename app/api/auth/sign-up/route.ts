@@ -186,6 +186,17 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        if (authData.user.identities?.length === 0) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: 'Registration failed',
+                    message: 'If an account exists for this email, please sign in or reset your password.'
+                },
+                { status: 409 }
+            )
+        }
+
         // Clear failed attempts on successful sign up
         clearFailedAttempts(rateLimitKey)
 

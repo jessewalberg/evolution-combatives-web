@@ -142,6 +142,13 @@ function SignUpContent() {
                 return
             }
 
+            if (authData.user.identities?.length === 0) {
+                setError('root', {
+                    message: 'If an account exists for this email, please sign in or reset your password.'
+                })
+                return
+            }
+
             // Show success message
             toast.success('Account created!', {
                 description: 'Please check your email to confirm your account before signing in.'
