@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { createCheckoutSession, getOrCreateCustomer } from '../../../../../src/lib/stripe'
+import { createCheckoutSession, getOrCreateCustomer, stripe } from '../../../../../src/lib/stripe'
 import { SUBSCRIPTION_PRICING } from '../../../../../src/lib/shared/constants/subscriptionTiers'
 import { z } from 'zod'
 
@@ -162,6 +162,35 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Prevent multiple active subscriptions for the same user
+        const { data: existingSubscriptions, error: existingSubsError } = await authResult.supabase
+            .from('subscriptions')
+            .select('id, status, tier, external_subscription_id')
+            .eq('user_id', user.id)
+            .in('status', ['active', 'trialing'])
+
+        if (existingSubsError) {
+            console.error('❌ [Mobile Subscription API] Failed to check existing subscriptions:', existingSubsError)
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: 'Unable to verify subscription status',
+                },
+                { status: 500 }
+            )
+        }
+
+        if ((existingSubscriptions?.length || 0) > 0) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: 'Subscription already active',
+                    message: 'An active subscription already exists for this account.',
+                },
+                { status: 409 }
+            )
+        }
+
         // Get or create Stripe customer
         const customer = await getOrCreateCustomer(user.email!, user.id)
 
@@ -176,6 +205,28 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 { success: false, error: 'Invalid subscription tier' },
                 { status: 400 }
+            )
+        }
+
+        // Double-check Stripe for existing active subscriptions on this customer
+        const stripeSubscriptions = await stripe.subscriptions.list({
+            customer: customer.id,
+            status: 'all',
+            limit: 10,
+        })
+
+        const hasActiveStripeSubscription = stripeSubscriptions.data.some(sub =>
+            ['active', 'trialing'].includes(sub.status)
+        )
+
+        if (hasActiveStripeSubscription) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: 'Subscription already active',
+                    message: 'An active subscription already exists for this account.',
+                },
+                { status: 409 }
             )
         }
 
