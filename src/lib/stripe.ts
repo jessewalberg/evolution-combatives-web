@@ -90,6 +90,22 @@ export const createCheckoutSession = async ({
 };
 
 /**
+ * Create a billing portal session for subscription management
+ */
+export const createBillingPortalSession = async ({
+    customerId,
+    returnUrl,
+}: {
+    customerId: string;
+    returnUrl: string;
+}): Promise<Stripe.BillingPortal.Session> => {
+    return await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: returnUrl,
+    });
+};
+
+/**
  * Retrieve a customer by email or create a new one
  */
 export const getOrCreateCustomer = async (email: string, userId: string): Promise<Stripe.Customer> => {
