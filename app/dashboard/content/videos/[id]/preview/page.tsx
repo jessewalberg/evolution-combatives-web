@@ -627,7 +627,7 @@ export default function VideoPreviewPage() {
                                 <div>
                                     <span className="text-sm text-muted-foreground">Last Modified</span>
                                     <p className="text-sm font-medium text-foreground">
-                                        {formatDate(video.updated_at)}
+                                        {video.updated_at ? formatDate(video.updated_at) : 'Never'}
                                     </p>
                                 </div>
                                 {video.cloudflare_video_id && (

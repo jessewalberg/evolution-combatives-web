@@ -25,7 +25,80 @@ import type {
     SearchResult,
     NotificationData,
 } from '../types/services'
+import type {
+    ProfileUpdate,
+    SubscriptionUpdate,
+    UserProgressInsert,
+} from '../types/database'
 import { handleSupabaseError, withRetry, safeQuery } from '../utils/supabase-errors'
+
+type VideoTagJoin = {
+    tag: {
+        id: string
+        name: string
+    } | null
+}
+
+type VideoWithTagJoins = VideoWithRelations & {
+    tags?: Array<VideoTagJoin | string | null> | null
+}
+
+type CategoryWithVideosJoin = CategoryWithCount & {
+    videos?: Array<{ count?: number } | null> | null
+}
+
+type InstructorWithStatsJoin = InstructorWithStats & {
+    videos?: Array<{ count?: number } | null> | null
+    video_views?: Array<{ views?: number } | null> | null
+}
+
+type RpcFn = <T>(
+    fn: string,
+    params?: Record<string, unknown> | unknown
+) => Promise<{ data: T | null; error: unknown }>
+
+type UntypedQueryBuilder = {
+    select: (query?: string) => UntypedQueryBuilder
+    update: (values: Record<string, unknown>) => UntypedQueryBuilder
+    eq: (column: string, value: string) => UntypedQueryBuilder
+    order: (column: string, opts?: { ascending?: boolean }) => UntypedQueryBuilder
+    limit: (count: number) => UntypedQueryBuilder
+    single: () => UntypedQueryBuilder
+} & PromiseLike<{ data: unknown; error: unknown }>
+
+type UntypedSupabase = {
+    from: (table: string) => UntypedQueryBuilder
+}
+
+const normalizeVideoTags = (
+    input: unknown
+): Array<string | { id: string; name: string }> => {
+    if (!Array.isArray(input)) return []
+
+    const isTagJoin = (value: unknown): value is VideoTagJoin => {
+        return typeof value === 'object' && value !== null && 'tag' in value
+    }
+
+    return input
+        .map(item => {
+            if (typeof item === 'string') return item
+            if (isTagJoin(item)) return item.tag ?? null
+            return null
+        })
+        .filter(Boolean) as Array<string | { id: string; name: string }>
+}
+
+const extractSubscriptionFromJoin = (
+    value: unknown
+): UserProfileWithSubscription['subscription'] | null => {
+    if (!value || typeof value !== 'object') return null
+    const subscriptionValue = (value as { subscription?: unknown }).subscription
+    if (Array.isArray(subscriptionValue)) {
+        const first = subscriptionValue[0] as UserProfileWithSubscription['subscription'] | undefined
+        return first || null
+    }
+    return null
+}
 
 /**
  * Database service class that provides common database operations
@@ -111,12 +184,13 @@ export class DatabaseService {
                 if (error) throw error
 
                 // Transform the data to match our interface
-                const transformedData = data?.map(video => ({
+                const rows = (data ?? []) as unknown as VideoWithTagJoins[]
+                const transformedData = rows.map(video => ({
                     ...video,
-                    tags: video.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
-                })) || []
+                    tags: normalizeVideoTags((video as VideoWithTagJoins).tags)
+                }))
 
-                return transformedData
+                return transformedData as VideoWithRelations[]
             }, 3, 1000, 'getVideos')
 
             return { data: result, error: null }
@@ -163,12 +237,13 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform the data
-            const transformedData = data ? {
-                ...data,
-                tags: data.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
+            const row = data as unknown as VideoWithTagJoins | null
+            const transformedData = row ? {
+                ...row,
+                tags: normalizeVideoTags((row as VideoWithTagJoins).tags)
             } : null
 
-            return { data: transformedData, error }
+            return { data: transformedData as VideoWithRelations | null, error }
         })
     }
 
@@ -178,7 +253,8 @@ export class DatabaseService {
     async getVideoAnalytics(): Promise<ServiceResponse<VideoAnalytics>> {
         return safeQuery(async () => {
             // This would typically be a database function or complex query
-            const { data, error } = await this.supabase.rpc('get_video_analytics')
+            const rpc = this.supabase.rpc as unknown as RpcFn
+            const { data, error } = await rpc<VideoAnalytics>('get_video_analytics')
             return { data, error }
         })
     }
@@ -217,7 +293,7 @@ export class DatabaseService {
                 subscription: data.subscription?.[0] || null
             } : null
 
-            return { data: transformedData, error }
+            return { data: transformedData as UserProfileWithSubscription | null, error }
         })
     }
 
@@ -227,12 +303,13 @@ export class DatabaseService {
     async updateProfile(userId: string, updates: ProfileUpdateData): Promise<ServiceResponse<UserProfileWithSubscription>> {
         try {
             const result = await withRetry(async () => {
+                const payload: ProfileUpdate = {
+                    ...updates,
+                    updated_at: new Date().toISOString()
+                }
                 const { data, error } = await this.supabase
                     .from('profiles')
-                    .update({
-                        ...updates,
-                        updated_at: new Date().toISOString()
-                    })
+                    .update(payload)
                     .eq('id', userId)
                     .select()
                     .single()
@@ -242,7 +319,7 @@ export class DatabaseService {
                 return data
             }, 2, 1000, 'updateProfile')
 
-            return { data: result, error: null }
+            return { data: result as UserProfileWithSubscription, error: null }
         } catch (error) {
             const processedError = handleSupabaseError(error, 'updateProfile')
             return { data: null, error: processedError.message }
@@ -278,7 +355,7 @@ export class DatabaseService {
             query = query.order('last_watched_at', { ascending: false })
 
             const { data, error } = await query
-            return { data, error }
+            return { data: data as UserProgressWithVideo[] | null, error }
         })
     }
 
@@ -292,15 +369,15 @@ export class DatabaseService {
     ): Promise<ServiceResponse<UserProgressWithVideo>> {
         try {
             const result = await withRetry(async () => {
+                const payload: UserProgressInsert = {
+                    user_id: userId,
+                    video_id: videoId,
+                    ...progressData,
+                    last_watched_at: progressData.last_watched_at || new Date().toISOString()
+                }
                 const { data, error } = await this.supabase
                     .from('user_progress')
-                    .upsert({
-                        user_id: userId,
-                        video_id: videoId,
-                        ...progressData,
-                        last_watched_at: progressData.last_watched_at || new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    })
+                    .upsert(payload)
                     .select(`
              *,
              video:videos(
@@ -321,7 +398,7 @@ export class DatabaseService {
                 return data
             }, 2, 1000, 'updateProgress')
 
-            return { data: result, error: null }
+            return { data: result as unknown as UserProgressWithVideo, error: null }
         } catch (error) {
             const processedError = handleSupabaseError(error, 'updateProgress')
             return { data: null, error: processedError.message }
@@ -359,12 +436,13 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform data to include video count
-            const transformedData = data?.map(category => ({
+            const rows = (data ?? []) as unknown as CategoryWithVideosJoin[]
+            const transformedData = rows.map(category => ({
                 ...category,
                 video_count: category.videos?.[0]?.count || 0
-            })) || []
+            }))
 
-            return { data: transformedData, error }
+            return { data: transformedData as CategoryWithCount[], error }
         })
     }
 
@@ -384,7 +462,13 @@ export class DatabaseService {
                 .select('*')
                 .order('sort_order', { ascending: true })
 
-            return { data, error }
+            return { data: data as Array<{
+                id: string
+                name: string
+                description?: string
+                sort_order: number
+                created_at: string
+            }> | null, error }
         })
     }
 
@@ -405,13 +489,17 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform data to include stats
-            const transformedData = data?.map(instructor => ({
+            const rows = (data ?? []) as unknown as InstructorWithStatsJoin[]
+            const transformedData = rows.map(instructor => ({
                 ...instructor,
                 video_count: instructor.videos?.[0]?.count || 0,
-                total_views: instructor.video_views?.reduce((sum: number, v: { views: number }) => sum + (v.views || 0), 0) || 0
-            })) || []
+                total_views: instructor.video_views?.reduce(
+                    (sum, v) => sum + (v?.views || 0),
+                    0
+                ) || 0
+            }))
 
-            return { data: transformedData, error }
+            return { data: transformedData as InstructorWithStats[], error }
         })
     }
 
@@ -440,7 +528,16 @@ export class DatabaseService {
                 .eq('status', 'active')
                 .single()
 
-            return { data, error }
+            return { data: data as {
+                id: string
+                user_id: string
+                tier: string
+                status: string
+                platform: 'revenuecat' | 'stripe'
+                external_subscription_id: string
+                current_period_end: string | null
+                created_at: string
+            } | null, error }
         })
     }
 
@@ -462,11 +559,12 @@ export class DatabaseService {
     }>> {
         try {
             const result = await withRetry(async () => {
+                const payload: SubscriptionUpdate = {
+                    ...subscriptionData,
+                }
                 const { data, error } = await this.supabase
                     .from('subscriptions')
-                    .update({
-                        ...subscriptionData,
-                    })
+                    .update(payload)
                     .eq('user_id', userId)
                     .select()
                     .single()
@@ -476,7 +574,16 @@ export class DatabaseService {
                 return data
             }, 2, 1000, 'updateSubscription')
 
-            return { data: result, error: null }
+            return { data: result as {
+                id: string
+                user_id: string
+                tier: string
+                status: string
+                platform: 'revenuecat' | 'stripe'
+                external_subscription_id: string
+                current_period_end: string | null
+                created_at: string
+            }, error: null }
         } catch (error) {
             const processedError = handleSupabaseError(error, 'updateSubscription')
             return { data: null, error: processedError.message }
@@ -522,11 +629,13 @@ export class DatabaseService {
 
             const totalPages = Math.ceil((count || 0) / pageSize)
 
+            const mappedUsers = (data ?? []).map(user => ({
+                ...(user as unknown as UserProfileWithSubscription),
+                subscription: extractSubscriptionFromJoin(user)
+            })) as UserProfileWithSubscription[]
+
             const result: PaginatedResponse<UserProfileWithSubscription> = {
-                data: data?.map(user => ({
-                    ...user,
-                    subscription: user.subscription?.[0] || null
-                })) || [],
+                data: mappedUsers,
                 count: count || 0,
                 page,
                 pageSize,
@@ -545,7 +654,8 @@ export class DatabaseService {
     async getUserAnalytics(): Promise<ServiceResponse<UserAnalytics>> {
         return safeQuery(async () => {
             // This would typically be a database function
-            const { data, error } = await this.supabase.rpc('get_user_analytics')
+            const rpc = this.supabase.rpc as unknown as RpcFn
+            const { data, error } = await rpc<UserAnalytics>('get_user_analytics')
             return { data, error }
         })
     }
@@ -560,7 +670,8 @@ export class DatabaseService {
     async search(query: string, limit = 20): Promise<ServiceResponse<SearchResult[]>> {
         return safeQuery(async () => {
             // This would typically use a full-text search function
-            const { data, error } = await this.supabase.rpc('search_content', {
+            const rpc = this.supabase.rpc as unknown as RpcFn
+            const { data, error } = await rpc<SearchResult[]>('search_content', {
                 search_query: query,
                 result_limit: limit
             })
@@ -578,14 +689,15 @@ export class DatabaseService {
      */
     async getUserNotifications(userId: string): Promise<ServiceResponse<NotificationData[]>> {
         return safeQuery(async () => {
-            const { data, error } = await this.supabase
+            const untyped = this.supabase as unknown as UntypedSupabase
+            const { data, error } = await untyped
                 .from('notifications')
                 .select('*')
                 .eq('user_id', userId)
                 .order('created_at', { ascending: false })
                 .limit(50)
 
-            return { data, error }
+            return { data: data as NotificationData[] | null, error }
         })
     }
 
@@ -595,7 +707,8 @@ export class DatabaseService {
     async markNotificationRead(notificationId: string): Promise<ServiceResponse<NotificationData>> {
         try {
             const result = await withRetry(async () => {
-                const { data, error } = await this.supabase
+                const untyped = this.supabase as unknown as UntypedSupabase
+                const { data, error } = await untyped
                     .from('notifications')
                     .update({ read: true })
                     .eq('id', notificationId)
@@ -607,7 +720,7 @@ export class DatabaseService {
                 return data
             }, 2, 1000, 'markNotificationRead')
 
-            return { data: result, error: null }
+            return { data: result as NotificationData, error: null }
         } catch (error) {
             const processedError = handleSupabaseError(error, 'markNotificationRead')
             return { data: null, error: processedError.message }
@@ -636,7 +749,8 @@ export class DatabaseService {
      */
     async executeRawQuery<T = unknown>(query: string, params?: unknown[]): Promise<ServiceResponse<T>> {
         return safeQuery(async () => {
-            const { data, error } = await this.supabase.rpc('execute_sql', {
+            const rpc = this.supabase.rpc as unknown as RpcFn
+            const { data, error } = await rpc<T>('execute_sql', {
                 query,
                 params: params || []
             })
@@ -650,8 +764,9 @@ export class DatabaseService {
      */
     async getTableStats(): Promise<ServiceResponse<Record<string, number>>> {
         return safeQuery(async () => {
-            const { data, error } = await this.supabase.rpc('get_table_stats')
+            const rpc = this.supabase.rpc as unknown as RpcFn
+            const { data, error } = await rpc<Record<string, number>>('get_table_stats')
             return { data, error }
         })
     }
-} 
+}

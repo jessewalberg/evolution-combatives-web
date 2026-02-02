@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "db:types": "supabase gen types typescript --project-id bxpxpkiubjbcmgsnfpvp",
+    "db:push": "supabase db push",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",

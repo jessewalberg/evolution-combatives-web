@@ -221,9 +221,9 @@ export default function DisciplinesPage() {
             name: discipline.name,
             slug: discipline.slug,
             description: discipline.description || '',
-            color: discipline.color,
-            subscriptionTierRequired: discipline.subscription_tier_required,
-            isActive: discipline.is_active,
+            color: discipline.color || '#6B7280',
+            subscriptionTierRequired: (discipline.subscription_tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
+            isActive: discipline.is_active ?? true,
         })
         setEditDialogOpen(true)
     }
@@ -421,7 +421,7 @@ export default function DisciplinesPage() {
                                                 <div className="flex items-center gap-3">
                                                     <div
                                                         className="w-4 h-4 rounded-full flex-shrink-0"
-                                                        style={{ backgroundColor: discipline.color }}
+                                                        style={{ backgroundColor: discipline.color || '#6B7280' }}
                                                     />
                                                     <div>
                                                         <div className="font-medium text-neutral-0">{discipline.name}</div>

@@ -151,7 +151,7 @@ export default function VideoEditPage() {
                 title: video.title,
                 description: video.description || '',
                 categoryId: video.category_id,
-                subscriptionTierRequired: video.tier_required,
+                subscriptionTierRequired: (video.tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
                 isPublished: video.is_published || false,
                 tags: video.tags?.join(', ') || '',
             })
@@ -674,7 +674,7 @@ export default function VideoEditPage() {
                                 <div className="flex justify-between">
                                     <span className="text-neutral-400">Last Updated</span>
                                     <span className="text-neutral-0">
-                                        {new Date(video.updated_at).toLocaleDateString()}
+                                        {video.updated_at ? new Date(video.updated_at).toLocaleDateString() : 'Never'}
                                     </span>
                                 </div>
                                 {video.duration_seconds && (

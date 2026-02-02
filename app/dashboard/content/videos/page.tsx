@@ -676,7 +676,7 @@ export default function VideoLibraryPage() {
                         disciplineName: video.category?.discipline?.name || 'N/A',
                         instructor: video.instructor?.full_name || '',
                         uploadDate: video.created_at,
-                        lastModified: video.updated_at,
+                        lastModified: video.updated_at || video.created_at,
                         viewCount: video.view_count || 0,
                         completionRate: 0, // This would need to be calculated from user_progress
                         tags: video.tags || [],

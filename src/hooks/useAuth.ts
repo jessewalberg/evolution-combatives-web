@@ -82,7 +82,7 @@ export function useAuth() {
     })
 
     // Determine user's subscription tier (defaults to 'none' for free access)
-    const userTier = subscription?.tier || 'none'
+    const userTier = (subscription?.tier || 'none') as SubscriptionTier
 
     const loginMutation = useMutation({
         mutationFn: (credentials: { email: string; password: string }) =>

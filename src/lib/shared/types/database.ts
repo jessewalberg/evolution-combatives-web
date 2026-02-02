@@ -1,414 +1,636 @@
 /**
- * Evolution Combatives - Unified Database Types
- * Comprehensive type definitions for both mobile app and admin dashboard
+ * Evolution Combatives - Database Types
  * 
- * @description Database schema types generated from Supabase with business logic
- * @author Evolution Combatives
+ * GENERATED FROM SUPABASE - Do not manually edit the Database interface.
+ * To regenerate: npm run db:types
+ * 
+ * Custom business logic types are added below the generated types.
  */
 
-export interface Database {
+export type Json =
+    | string
+    | number
+    | boolean
+    | null
+    | { [key: string]: Json | undefined }
+    | Json[]
+
+export type Database = {
     public: {
         Tables: {
-            profiles: {
+            admin_activity: {
                 Row: {
-                    id: string;
-                    email: string;
-                    full_name: string | null;
-                    subscription_tier: string | null;
-                    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null;
-                    created_at: string;
-                    updated_at: string;
-                    last_active: string | null;
-                    last_login_at: string | null;
-                    last_activity_at: string | null;
-                };
+                    action: string
+                    admin_id: string
+                    created_at: string
+                    details: Json | null
+                    id: string
+                }
                 Insert: {
-                    id: string;
-                    email: string;
-                    full_name?: string | null;
-                    subscription_tier?: string | null;
-                    admin_role?: 'super_admin' | 'content_admin' | 'support_admin' | null;
-                    last_active?: string | null;
-                    last_login_at?: string | null;
-                    last_activity_at?: string | null;
-                };
+                    action: string
+                    admin_id: string
+                    created_at?: string
+                    details?: Json | null
+                    id?: string
+                }
                 Update: {
-                    id?: string;
-                    email?: string;
-                    full_name?: string | null;
-                    subscription_tier?: string | null;
-                    admin_role?: 'super_admin' | 'content_admin' | 'support_admin' | null;
-                    updated_at?: string;
-                    last_active?: string | null;
-                    last_login_at?: string | null;
-                    last_activity_at?: string | null;
-                };
-            };
-            subscriptions: {
-                Row: {
-                    id: string;
-                    user_id: string;
-                    platform: 'revenuecat' | 'stripe';
-                    external_subscription_id: string;
-                    status: string;
-                    tier: string;
-                    current_period_end: string | null;
-                    created_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    user_id: string;
-                    platform: 'revenuecat' | 'stripe';
-                    external_subscription_id: string;
-                    status: string;
-                    tier: string;
-                    current_period_end?: string | null;
-                };
-                Update: {
-                    id?: string;
-                    user_id?: string;
-                    platform?: 'revenuecat' | 'stripe';
-                    external_subscription_id?: string;
-                    status?: string;
-                    tier?: string;
-                    current_period_end?: string | null;
-                };
-            };
-            disciplines: {
-                Row: {
-                    id: string;
-                    name: string;
-                    slug: string;
-                    description: string | null;
-                    color: string;
-                    icon: string | null;
-                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    sort_order: number;
-                    is_active: boolean;
-                    created_at: string;
-                    updated_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    name: string;
-                    slug: string;
-                    description?: string | null;
-                    color: string;
-                    icon?: string | null;
-                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    sort_order?: number;
-                    is_active?: boolean;
-                };
-                Update: {
-                    id?: string;
-                    name?: string;
-                    slug?: string;
-                    description?: string | null;
-                    color?: string;
-                    icon?: string | null;
-                    subscription_tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    sort_order?: number;
-                    is_active?: boolean;
-                    updated_at?: string;
-                };
-            };
-            categories: {
-                Row: {
-                    id: string;
-                    discipline_id: string;
-                    name: string;
-                    slug: string;
-                    description: string | null;
-                    color: string;
-                    icon: string | null;
-                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    sort_order: number;
-                    is_active: boolean;
-                    created_at: string;
-                    updated_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    discipline_id: string;
-                    name: string;
-                    slug: string;
-                    description?: string | null;
-                    color: string;
-                    icon?: string | null;
-                    subscription_tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    sort_order?: number;
-                    is_active?: boolean;
-                };
-                Update: {
-                    id?: string;
-                    discipline_id?: string;
-                    name?: string;
-                    slug?: string;
-                    description?: string | null;
-                    color?: string;
-                    icon?: string | null;
-                    subscription_tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    sort_order?: number;
-                    is_active?: boolean;
-                    updated_at?: string;
-                };
-            };
-            instructors: {
-                Row: {
-                    id: string;
-                    full_name: string;
-                    bio: string | null;
-                    avatar_url: string | null;
-                    specialties: string[] | null;
-                    years_experience: number | null;
-                    credentials: string[] | null;
-                    is_active: boolean;
-                    created_at: string;
-                    updated_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    full_name: string;
-                    bio?: string | null;
-                    avatar_url?: string | null;
-                    specialties?: string[] | null;
-                    years_experience?: number | null;
-                    credentials?: string[] | null;
-                    is_active?: boolean;
-                };
-                Update: {
-                    id?: string;
-                    full_name?: string;
-                    bio?: string | null;
-                    avatar_url?: string | null;
-                    specialties?: string[] | null;
-                    years_experience?: number | null;
-                    credentials?: string[] | null;
-                    is_active?: boolean;
-                    updated_at?: string;
-                };
-            };
-            videos: {
-                Row: {
-                    id: string;
-                    title: string;
-                    description: string | null;
-                    slug: string;
-                    category_id: string;
-                    instructor_id: string | null;
-                    cloudflare_video_id: string;
-                    duration_seconds: number;
-                    thumbnail_url: string | null;
-                    tier_required: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    tags: string[] | null;
-                    processing_status: 'uploading' | 'processing' | 'ready' | 'error';
-                    is_published: boolean;
-                    view_count: number;
-                    sort_order: number;
-                    created_at: string;
-                    updated_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    title: string;
-                    description?: string | null;
-                    slug: string;
-                    category_id: string;
-                    instructor_id?: string | null;
-                    cloudflare_video_id: string;
-                    duration_seconds: number;
-                    thumbnail_url?: string | null;
-                    tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    tags?: string[] | null;
-                    processing_status?: 'uploading' | 'processing' | 'ready' | 'error';
-                    is_published?: boolean;
-                    view_count?: number;
-                    sort_order?: number;
-                };
-                Update: {
-                    id?: string;
-                    title?: string;
-                    description?: string | null;
-                    slug?: string;
-                    category_id?: string;
-                    instructor_id?: string;
-                    cloudflare_video_id?: string;
-                    duration_seconds?: number;
-                    thumbnail_url?: string | null;
-                    tier_required?: 'none' | 'tier1' | 'tier2' | 'tier3';
-                    tags?: string[] | null;
-                    processing_status?: 'uploading' | 'processing' | 'ready' | 'error';
-                    is_published?: boolean;
-                    view_count?: number;
-                    sort_order?: number;
-                    updated_at?: string;
-                };
-            };
-            user_progress: {
-                Row: {
-                    id: string;
-                    user_id: string;
-                    video_id: string;
-                    progress_seconds: number;
-                    progress_percentage: number;
-                    completed: boolean;
-                    last_watched_at: string;
-                    completion_date: string | null;
-                    created_at: string;
-                    updated_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    user_id: string;
-                    video_id: string;
-                    progress_seconds: number;
-                    progress_percentage: number;
-                    completed?: boolean;
-                    last_watched_at: string;
-                    completion_date?: string | null;
-                };
-                Update: {
-                    id?: string;
-                    user_id?: string;
-                    video_id?: string;
-                    progress_seconds?: number;
-                    progress_percentage?: number;
-                    completed?: boolean;
-                    last_watched_at?: string;
-                    completion_date?: string | null;
-                    updated_at?: string;
-                };
-            };
-            questions: {
-                Row: {
-                    id: string;
-                    user_id: string;
-                    video_id: string | null;
-                    title: string;
-                    content: string;
-                    status: 'pending' | 'answered' | 'closed';
-                    is_public: boolean;
-                    upvotes: number;
-                    created_at: string;
-                    updated_at: string;
-                };
-                Insert: {
-                    id?: string;
-                    user_id: string;
-                    video_id?: string | null;
-                    title: string;
-                    content: string;
-                    status?: 'pending' | 'answered' | 'closed';
-                    is_public?: boolean;
-                    upvotes?: number;
-                };
-                Update: {
-                    id?: string;
-                    user_id?: string;
-                    video_id?: string | null;
-                    title?: string;
-                    content?: string;
-                    status?: 'pending' | 'answered' | 'closed';
-                    is_public?: boolean;
-                    upvotes?: number;
-                    updated_at?: string;
-                };
-            };
+                    action?: string
+                    admin_id?: string
+                    created_at?: string
+                    details?: Json | null
+                    id?: string
+                }
+                Relationships: []
+            }
             answers: {
                 Row: {
-                    id: string;
-                    question_id: string;
-                    user_id: string;
-                    content: string;
-                    is_instructor_answer: boolean;
-                    upvotes: number;
-                    created_at: string;
-                    updated_at: string;
-                };
+                    admin_id: string
+                    answer: string
+                    created_at: string
+                    id: string
+                    question_id: string
+                }
                 Insert: {
-                    id?: string;
-                    question_id: string;
-                    user_id: string;
-                    content: string;
-                    is_instructor_answer?: boolean;
-                    upvotes?: number;
-                };
+                    admin_id: string
+                    answer: string
+                    created_at?: string
+                    id?: string
+                    question_id: string
+                }
                 Update: {
-                    id?: string;
-                    question_id?: string;
-                    user_id?: string;
-                    content?: string;
-                    is_instructor_answer?: boolean;
-                    upvotes?: number;
-                    updated_at?: string;
-                };
-            };
-            notifications: {
+                    admin_id?: string
+                    answer?: string
+                    created_at?: string
+                    id?: string
+                    question_id?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "answers_question_id_fkey"
+                        columns: ["question_id"]
+                        isOneToOne: false
+                        referencedRelation: "questions"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            bookmarks: {
                 Row: {
-                    id: string;
-                    user_id: string;
-                    title: string;
-                    content: string;
-                    type: 'system' | 'video' | 'question' | 'subscription' | 'achievement';
-                    is_read: boolean;
-                    action_url: string | null;
-                    created_at: string;
-                };
+                    created_at: string
+                    id: string
+                    notes: string | null
+                    user_id: string
+                    video_id: string
+                }
                 Insert: {
-                    id?: string;
-                    user_id: string;
-                    title: string;
-                    content: string;
-                    type: 'system' | 'video' | 'question' | 'subscription' | 'achievement';
-                    is_read?: boolean;
-                    action_url?: string | null;
-                };
+                    created_at?: string
+                    id?: string
+                    notes?: string | null
+                    user_id: string
+                    video_id: string
+                }
                 Update: {
-                    id?: string;
-                    user_id?: string;
-                    title?: string;
-                    content?: string;
-                    type?: 'system' | 'video' | 'question' | 'subscription' | 'achievement';
-                    is_read?: boolean;
-                    action_url?: string | null;
-                };
-            };
-        };
+                    created_at?: string
+                    id?: string
+                    notes?: string | null
+                    user_id?: string
+                    video_id?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "bookmarks_video_id_fkey"
+                        columns: ["video_id"]
+                        isOneToOne: false
+                        referencedRelation: "videos"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            categories: {
+                Row: {
+                    color: string | null
+                    created_at: string
+                    description: string | null
+                    discipline_id: string
+                    icon: string | null
+                    id: string
+                    is_active: boolean | null
+                    name: string
+                    slug: string
+                    sort_order: number | null
+                    subscription_tier_required: string | null
+                    updated_at: string | null
+                }
+                Insert: {
+                    color?: string | null
+                    created_at?: string
+                    description?: string | null
+                    discipline_id: string
+                    icon?: string | null
+                    id?: string
+                    is_active?: boolean | null
+                    name: string
+                    slug: string
+                    sort_order?: number | null
+                    subscription_tier_required?: string | null
+                    updated_at?: string | null
+                }
+                Update: {
+                    color?: string | null
+                    created_at?: string
+                    description?: string | null
+                    discipline_id?: string
+                    icon?: string | null
+                    id?: string
+                    is_active?: boolean | null
+                    name?: string
+                    slug?: string
+                    sort_order?: number | null
+                    subscription_tier_required?: string | null
+                    updated_at?: string | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "categories_discipline_id_fkey"
+                        columns: ["discipline_id"]
+                        isOneToOne: false
+                        referencedRelation: "disciplines"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            disciplines: {
+                Row: {
+                    color: string | null
+                    created_at: string
+                    description: string | null
+                    icon: string | null
+                    id: string
+                    image_url: string | null
+                    is_active: boolean | null
+                    name: string
+                    slug: string
+                    sort_order: number | null
+                    subscription_tier_required: string | null
+                    updated_at: string | null
+                }
+                Insert: {
+                    color?: string | null
+                    created_at?: string
+                    description?: string | null
+                    icon?: string | null
+                    id?: string
+                    image_url?: string | null
+                    is_active?: boolean | null
+                    name: string
+                    slug: string
+                    sort_order?: number | null
+                    subscription_tier_required?: string | null
+                    updated_at?: string | null
+                }
+                Update: {
+                    color?: string | null
+                    created_at?: string
+                    description?: string | null
+                    icon?: string | null
+                    id?: string
+                    image_url?: string | null
+                    is_active?: boolean | null
+                    name?: string
+                    slug?: string
+                    sort_order?: number | null
+                    subscription_tier_required?: string | null
+                    updated_at?: string | null
+                }
+                Relationships: []
+            }
+            instructors: {
+                Row: {
+                    avatar_url: string | null
+                    bio: string | null
+                    created_at: string | null
+                    credentials: string[] | null
+                    fts: unknown
+                    full_name: string
+                    id: string
+                    is_active: boolean | null
+                    specialties: string[] | null
+                    updated_at: string | null
+                    years_experience: number | null
+                }
+                Insert: {
+                    avatar_url?: string | null
+                    bio?: string | null
+                    created_at?: string | null
+                    credentials?: string[] | null
+                    fts?: unknown
+                    full_name: string
+                    id?: string
+                    is_active?: boolean | null
+                    specialties?: string[] | null
+                    updated_at?: string | null
+                    years_experience?: number | null
+                }
+                Update: {
+                    avatar_url?: string | null
+                    bio?: string | null
+                    created_at?: string | null
+                    credentials?: string[] | null
+                    fts?: unknown
+                    full_name?: string
+                    id?: string
+                    is_active?: boolean | null
+                    specialties?: string[] | null
+                    updated_at?: string | null
+                    years_experience?: number | null
+                }
+                Relationships: []
+            }
+            profiles: {
+                Row: {
+                    admin_role: string | null
+                    avatar_url: string | null
+                    bio: string | null
+                    created_at: string
+                    email: string
+                    full_name: string | null
+                    id: string
+                    last_active: string | null
+                    last_activity_at: string | null
+                    last_login_at: string | null
+                    phone: string | null
+                    subscription_tier: string | null
+                    updated_at: string
+                }
+                Insert: {
+                    admin_role?: string | null
+                    avatar_url?: string | null
+                    bio?: string | null
+                    created_at?: string
+                    email: string
+                    full_name?: string | null
+                    id: string
+                    last_active?: string | null
+                    last_activity_at?: string | null
+                    last_login_at?: string | null
+                    phone?: string | null
+                    subscription_tier?: string | null
+                    updated_at?: string
+                }
+                Update: {
+                    admin_role?: string | null
+                    avatar_url?: string | null
+                    bio?: string | null
+                    created_at?: string
+                    email?: string
+                    full_name?: string | null
+                    id?: string
+                    last_active?: string | null
+                    last_activity_at?: string | null
+                    last_login_at?: string | null
+                    phone?: string | null
+                    subscription_tier?: string | null
+                    updated_at?: string
+                }
+                Relationships: []
+            }
+            questions: {
+                Row: {
+                    answered: boolean | null
+                    created_at: string
+                    id: string
+                    question: string
+                    user_id: string
+                    video_id: string | null
+                }
+                Insert: {
+                    answered?: boolean | null
+                    created_at?: string
+                    id?: string
+                    question: string
+                    user_id: string
+                    video_id?: string | null
+                }
+                Update: {
+                    answered?: boolean | null
+                    created_at?: string
+                    id?: string
+                    question?: string
+                    user_id?: string
+                    video_id?: string | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "questions_video_id_fkey"
+                        columns: ["video_id"]
+                        isOneToOne: false
+                        referencedRelation: "videos"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            subscriptions: {
+                Row: {
+                    created_at: string
+                    current_period_end: string | null
+                    external_subscription_id: string
+                    id: string
+                    platform: string
+                    status: string
+                    tier: string
+                    user_id: string
+                }
+                Insert: {
+                    created_at?: string
+                    current_period_end?: string | null
+                    external_subscription_id: string
+                    id?: string
+                    platform: string
+                    status: string
+                    tier: string
+                    user_id: string
+                }
+                Update: {
+                    created_at?: string
+                    current_period_end?: string | null
+                    external_subscription_id?: string
+                    id?: string
+                    platform?: string
+                    status?: string
+                    tier?: string
+                    user_id?: string
+                }
+                Relationships: []
+            }
+            user_progress: {
+                Row: {
+                    bookmarked: boolean | null
+                    completed: boolean | null
+                    completion_date: string | null
+                    id: string
+                    last_watched_at: string | null
+                    progress_percentage: number | null
+                    progress_seconds: number | null
+                    user_id: string
+                    video_id: string
+                }
+                Insert: {
+                    bookmarked?: boolean | null
+                    completed?: boolean | null
+                    completion_date?: string | null
+                    id?: string
+                    last_watched_at?: string | null
+                    progress_percentage?: number | null
+                    progress_seconds?: number | null
+                    user_id: string
+                    video_id: string
+                }
+                Update: {
+                    bookmarked?: boolean | null
+                    completed?: boolean | null
+                    completion_date?: string | null
+                    id?: string
+                    last_watched_at?: string | null
+                    progress_percentage?: number | null
+                    progress_seconds?: number | null
+                    user_id?: string
+                    video_id?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "user_progress_video_id_fkey"
+                        columns: ["video_id"]
+                        isOneToOne: false
+                        referencedRelation: "videos"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            video_access_logs: {
+                Row: {
+                    accessed_at: string
+                    id: string
+                    ip_address: unknown
+                    subscription_tier: string
+                    user_agent: string | null
+                    user_id: string
+                    video_id: string
+                }
+                Insert: {
+                    accessed_at?: string
+                    id?: string
+                    ip_address?: unknown
+                    subscription_tier: string
+                    user_agent?: string | null
+                    user_id: string
+                    video_id: string
+                }
+                Update: {
+                    accessed_at?: string
+                    id?: string
+                    ip_address?: unknown
+                    subscription_tier?: string
+                    user_agent?: string | null
+                    user_id?: string
+                    video_id?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "video_access_logs_video_id_fkey"
+                        columns: ["video_id"]
+                        isOneToOne: false
+                        referencedRelation: "videos"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            videos: {
+                Row: {
+                    category_id: string
+                    cloudflare_video_id: string
+                    created_at: string
+                    description: string | null
+                    duration_seconds: number | null
+                    fts: unknown
+                    id: string
+                    instructor_id: string | null
+                    is_published: boolean | null
+                    processing_status: string | null
+                    slug: string | null
+                    sort_order: number | null
+                    tags: string[] | null
+                    thumbnail_url: string | null
+                    tier_required: string | null
+                    title: string
+                    updated_at: string | null
+                    view_count: number | null
+                }
+                Insert: {
+                    category_id: string
+                    cloudflare_video_id: string
+                    created_at?: string
+                    description?: string | null
+                    duration_seconds?: number | null
+                    fts?: unknown
+                    id?: string
+                    instructor_id?: string | null
+                    is_published?: boolean | null
+                    processing_status?: string | null
+                    slug?: string | null
+                    sort_order?: number | null
+                    tags?: string[] | null
+                    thumbnail_url?: string | null
+                    tier_required?: string | null
+                    title: string
+                    updated_at?: string | null
+                    view_count?: number | null
+                }
+                Update: {
+                    category_id?: string
+                    cloudflare_video_id?: string
+                    created_at?: string
+                    description?: string | null
+                    duration_seconds?: number | null
+                    fts?: unknown
+                    id?: string
+                    instructor_id?: string | null
+                    is_published?: boolean | null
+                    processing_status?: string | null
+                    slug?: string | null
+                    sort_order?: number | null
+                    tags?: string[] | null
+                    thumbnail_url?: string | null
+                    tier_required?: string | null
+                    title?: string
+                    updated_at?: string | null
+                    view_count?: number | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "videos_category_id_fkey"
+                        columns: ["category_id"]
+                        isOneToOne: false
+                        referencedRelation: "categories"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+        }
         Views: {
-            [_ in never]: never;
-        };
+            [_ in never]: never
+        }
         Functions: {
-            [_ in never]: never;
-        };
+            get_video_instructor_name: {
+                Args: { p_instructor_id: string }
+                Returns: string
+            }
+        }
         Enums: {
-            subscription_tier: 'tier1' | 'tier2' | 'tier3';
-            admin_role: 'super_admin' | 'content_admin' | 'support_admin';
-            subscription_status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-            video_difficulty: 'none' | 'tier1' | 'tier2' | 'tier3';
-            processing_status: 'uploading' | 'processing' | 'ready' | 'error';
-            question_status: 'pending' | 'answered' | 'closed';
-            notification_type: 'system' | 'video' | 'question' | 'subscription' | 'achievement';
-        };
+            [_ in never]: never
+        }
         CompositeTypes: {
-            [_ in never]: never;
-        };
-    };
+            [_ in never]: never
+        }
+    }
 }
 
-// Utility types for easier access
-export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
-export type Enums<T extends keyof Database['public']['Enums']> = Database['public']['Enums'][T];
+// ============================================================================
+// Utility Types (from Supabase)
+// ============================================================================
 
-// Use database enum for subscription tiers to match the database schema
+type DefaultSchema = Database[Extract<keyof Database, "public">]
+
+export type Tables<
+    DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof Database },
+    TableName extends DefaultSchemaTableNameOrOptions extends {
+        schema: keyof Database
+    }
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+}
+    ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+            Row: infer R
+        }
+    ? R
+    : never
+    : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+            Row: infer R
+        }
+    ? R
+    : never
+    : never
+
+export type TablesInsert<
+    DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof Database },
+    TableName extends DefaultSchemaTableNameOrOptions extends {
+        schema: keyof Database
+    }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+}
+    ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+        Insert: infer I
+    }
+    ? I
+    : never
+    : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+    }
+    ? I
+    : never
+    : never
+
+export type TablesUpdate<
+    DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof Database },
+    TableName extends DefaultSchemaTableNameOrOptions extends {
+        schema: keyof Database
+    }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+}
+    ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+        Update: infer U
+    }
+    ? U
+    : never
+    : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+    }
+    ? U
+    : never
+    : never
+
+// ============================================================================
+// Business Logic Types (Custom)
+// ============================================================================
+
+// Core business types
 export type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
+export type VideoDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin';
 export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
-export type VideoDifficulty = 'none' | 'tier1' | 'tier2' | 'tier3';
 export type ProcessingStatus = 'uploading' | 'processing' | 'ready' | 'error';
-export type QuestionStatus = 'pending' | 'answered' | 'closed';
-export type NotificationType = 'system' | 'video' | 'question' | 'subscription' | 'achievement';
 
-// Table types for common use
+// Table row types for common use
 export type Profile = Tables<'profiles'>;
 export type Subscription = Tables<'subscriptions'>;
 export type Discipline = Tables<'disciplines'>;
@@ -416,35 +638,31 @@ export type Category = Tables<'categories'>;
 export type Instructor = Tables<'instructors'>;
 export type Video = Tables<'videos'>;
 export type UserProgress = Tables<'user_progress'>;
+export type Bookmark = Tables<'bookmarks'>;
 export type Question = Tables<'questions'>;
 export type Answer = Tables<'answers'>;
-export type Notification = Tables<'notifications'>;
 
-// Insert types for database operations
-export type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
-export type SubscriptionInsert = Database['public']['Tables']['subscriptions']['Insert'];
-export type DisciplineInsert = Database['public']['Tables']['disciplines']['Insert'];
-export type CategoryInsert = Database['public']['Tables']['categories']['Insert'];
-export type InstructorInsert = Database['public']['Tables']['instructors']['Insert'];
-export type VideoInsert = Database['public']['Tables']['videos']['Insert'];
-export type UserProgressInsert = Database['public']['Tables']['user_progress']['Insert'];
-export type QuestionInsert = Database['public']['Tables']['questions']['Insert'];
-export type AnswerInsert = Database['public']['Tables']['answers']['Insert'];
-export type NotificationInsert = Database['public']['Tables']['notifications']['Insert'];
+// Insert types
+export type ProfileInsert = TablesInsert<'profiles'>;
+export type SubscriptionInsert = TablesInsert<'subscriptions'>;
+export type DisciplineInsert = TablesInsert<'disciplines'>;
+export type CategoryInsert = TablesInsert<'categories'>;
+export type InstructorInsert = TablesInsert<'instructors'>;
+export type VideoInsert = TablesInsert<'videos'>;
+export type UserProgressInsert = TablesInsert<'user_progress'>;
+export type BookmarkInsert = TablesInsert<'bookmarks'>;
 
-// Update types for database operations
-export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
-export type SubscriptionUpdate = Database['public']['Tables']['subscriptions']['Update'];
-export type DisciplineUpdate = Database['public']['Tables']['disciplines']['Update'];
-export type CategoryUpdate = Database['public']['Tables']['categories']['Update'];
-export type InstructorUpdate = Database['public']['Tables']['instructors']['Update'];
-export type VideoUpdate = Database['public']['Tables']['videos']['Update'];
-export type UserProgressUpdate = Database['public']['Tables']['user_progress']['Update'];
-export type QuestionUpdate = Database['public']['Tables']['questions']['Update'];
-export type AnswerUpdate = Database['public']['Tables']['answers']['Update'];
-export type NotificationUpdate = Database['public']['Tables']['notifications']['Update'];
+// Update types
+export type ProfileUpdate = TablesUpdate<'profiles'>;
+export type SubscriptionUpdate = TablesUpdate<'subscriptions'>;
+export type DisciplineUpdate = TablesUpdate<'disciplines'>;
+export type CategoryUpdate = TablesUpdate<'categories'>;
+export type InstructorUpdate = TablesUpdate<'instructors'>;
+export type VideoUpdate = TablesUpdate<'videos'>;
+export type UserProgressUpdate = TablesUpdate<'user_progress'>;
+export type BookmarkUpdate = TablesUpdate<'bookmarks'>;
 
-// Enhanced types with relationships for application use
+// Enhanced types with relationships
 export type VideoWithRelations = Video & {
     category?: Category & {
         discipline?: Discipline;
@@ -462,25 +680,19 @@ export type DisciplineWithRelations = Discipline & {
     categories?: Category[];
 };
 
-export type QuestionWithRelations = Question & {
-    user?: Profile;
-    video?: Video;
-    answers?: (Answer & {
-        user?: Profile;
-    })[];
-};
-
 export type ProfileWithSubscription = Profile & {
     subscription?: Subscription;
 };
 
-export type UserWithProgress = Profile & {
-    subscription?: Subscription;
-    progress?: UserProgress[];
-    questions?: Question[];
+// Subscription tier hierarchy for access control
+export const SUBSCRIPTION_TIER_HIERARCHY: Record<SubscriptionTier, number> = {
+    none: 0,
+    tier1: 1,
+    tier2: 2,
+    tier3: 3,
 };
 
-// Note: Subscription tier constants are defined in ../constants/subscriptionTiers.ts
+export const TIER_RANK = SUBSCRIPTION_TIER_HIERARCHY;
 
 // Admin role permissions
 export const ADMIN_PERMISSIONS = {
@@ -502,19 +714,4 @@ export const ADMIN_PERMISSIONS = {
         'manage_subscriptions',
         'moderate_questions',
     ],
-} as const;
-
-// Content access rules based on subscription tiers
-export const CONTENT_ACCESS_RULES = {
-    beginner: ['basic_martial_arts', 'fundamentals'],
-    intermediate: ['basic_martial_arts', 'fundamentals', 'advanced_techniques', 'instructor_qa'],
-    advanced: ['basic_martial_arts', 'fundamentals', 'advanced_techniques', 'instructor_qa', 'law_enforcement', 'exclusive'],
-} as const;
-
-// Video processing status flow
-export const VIDEO_PROCESSING_FLOW = {
-    uploading: ['processing', 'error'],
-    processing: ['ready', 'error'],
-    ready: ['processing'], // Can reprocess if needed
-    error: ['uploading', 'processing'], // Can retry
 } as const;

@@ -26,6 +26,7 @@ import type {
     Subscription,
     UserProgress,
     Question,
+    Answer as DbAnswer,
     VideoWithRelations,
     SubscriptionTier,
     SubscriptionStatus
@@ -57,10 +58,17 @@ import {
 
 // TypeScript interfaces
 interface UserProfileData extends Profile {
+    // Extended profile fields (may not exist in DB yet)
+    badge_number?: string | null
+    department?: string | null
+    rank?: string | null
+    is_active?: boolean
     subscription?: Subscription
     subscriptionHistory?: Subscription[]
     progress?: (UserProgress & {
         video?: VideoWithRelations
+        videos?: { title: string }
+        created_at?: string
     })[]
     questions?: (Question & {
         answers?: Answer[]
@@ -123,14 +131,8 @@ interface SubscriptionAction {
     disabled?: boolean
 }
 
-interface Answer {
-    id: string
-    content: string
-    admin_id: string
-    admin_name: string
-    created_at: string
-    is_official: boolean
-}
+// Use DbAnswer from database types - this extends the base Answer type
+type Answer = DbAnswer
 
 interface SubscriptionAction {
     id: string
@@ -356,9 +358,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 id: `progress_${prog.id} `,
                 type: 'video_watched',
                 title: 'Video Progress',
-                description: `Watched ${prog.videos?.title || 'Unknown Video'} (${prog.progress_percentage}%)`,
-                timestamp: prog.last_watched_at,
-                metadata: { videoId: prog.video_id, progress: prog.progress_percentage }
+                description: `Watched ${prog.videos?.title || 'Unknown Video'} (${prog.progress_percentage || 0}%)`,
+                timestamp: prog.last_watched_at || new Date().toISOString(),
+                metadata: { videoId: prog.video_id, progress: prog.progress_percentage || 0 }
             })
         })
 
@@ -368,9 +370,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 id: `question_${question.id} `,
                 type: 'question_asked',
                 title: 'Question Asked',
-                description: question.title,
+                description: question.question,
                 timestamp: question.created_at,
-                metadata: { questionId: question.id, status: question.status }
+                metadata: { questionId: question.id, answered: question.answered }
             })
         })
 
@@ -536,7 +538,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 badge_number: userData.badge_number || '',
                 department: userData.department || '',
                 rank: userData.rank || '',
-                admin_role: userData.admin_role
+                admin_role: userData.admin_role as 'super_admin' | 'content_admin' | 'support_admin' | null
             })
         }
     })
@@ -648,7 +650,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     const totalVideosWatched = userData.progress?.length || 0
     const completedVideos = userData.progress?.filter(p => p.completed).length || 0
     const averageProgress = userData.progress?.length ?
-        userData.progress.reduce((sum, p) => sum + p.progress_percentage, 0) / userData.progress.length : 0
+        userData.progress.reduce((sum, p) => sum + (p.progress_percentage || 0), 0) / userData.progress.length : 0
     const totalQuestions = userData.questions?.length || 0
 
 
@@ -786,7 +788,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                             <p className="text-sm text-neutral-400">Questions Asked</p>
                             <p className="text-2xl font-bold text-white">{totalQuestions}</p>
                             <p className="text-sm text-blue-400">
-                                {userData.questions?.filter(q => q.status === 'answered').length || 0} answered
+                                {userData.questions?.filter(q => q.answered).length || 0} answered
                             </p>
                         </div>
                         <ChatBubbleLeftIcon className="h-8 w-8 text-neutral-400" />
@@ -1248,18 +1250,18 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             </h4>
                                             <p className="text-sm text-neutral-400">
                                                 {progress.video?.category?.name} •
-                                                Last watched: {new Date(progress.last_watched_at).toLocaleDateString()}
+                                                Last watched: {progress.last_watched_at ? new Date(progress.last_watched_at).toLocaleDateString() : 'Unknown'}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <div className="w-24 bg-neutral-700 rounded-full h-2">
                                                 <div
                                                     className="bg-blue-500 h-2 rounded-full"
-                                                    style={{ width: `${progress.progress_percentage}% ` }}
+                                                    style={{ width: `${progress.progress_percentage || 0}% ` }}
                                                 />
                                             </div>
                                             <span className="text-sm text-white w-12 text-right">
-                                                {progress.progress_percentage.toFixed(0)}%
+                                                {(progress.progress_percentage || 0).toFixed(0)}%
                                             </span>
                                             {progress.completed && (
                                                 <CheckCircleIcon className="h-5 w-5 text-green-400" />
@@ -1283,18 +1285,15 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                             {userData.questions.map(question => (
                                 <div key={question.id} className="p-4 bg-neutral-800 rounded-lg">
                                     <div className="flex items-start justify-between mb-2">
-                                        <h4 className="font-medium text-white">{question.title}</h4>
+                                        <h4 className="font-medium text-white">{question.question}</h4>
                                         <Badge
                                             variant={
-                                                question.status === 'answered' ? 'success' :
-                                                    question.status === 'pending' ? 'warning' :
-                                                        'secondary'
+                                                question.answered ? 'success' : 'warning'
                                             }
                                         >
-                                            {question.status}
+                                            {question.answered ? 'Answered' : 'Pending'}
                                         </Badge>
                                     </div>
-                                    <p className="text-sm text-neutral-400 mb-2">{question.content}</p>
 
                                     {/* Show answers if any */}
                                     {question.answers && question.answers.length > 0 && (
@@ -1302,17 +1301,11 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                             {question.answers.map(answer => (
                                                 <div key={answer.id} className="mb-3 last:mb-0">
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-sm font-medium text-blue-400">
-                                                            {answer.admin_name}
-                                                        </span>
-                                                        {answer.is_official && (
-                                                            <Badge variant="info" size="sm">Official</Badge>
-                                                        )}
                                                         <span className="text-xs text-neutral-500">
                                                             {new Date(answer.created_at).toLocaleDateString()}
                                                         </span>
                                                     </div>
-                                                    <p className="text-sm text-neutral-300">{answer.content}</p>
+                                                    <p className="text-sm text-neutral-300">{answer.answer}</p>
                                                 </div>
                                             ))}
                                         </div>
@@ -1320,7 +1313,6 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
                                     <div className="flex items-center justify-between text-xs text-neutral-500 mt-3">
                                         <span>Asked: {new Date(question.created_at).toLocaleDateString()}</span>
-                                        <span>{question.upvotes} upvotes</span>
                                     </div>
                                 </div>
                             ))}

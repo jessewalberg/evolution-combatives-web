@@ -164,7 +164,7 @@ function SortableCategoryRow({ category, discipline, onEdit, onDelete }: {
                 <div className="flex items-center gap-2">
                     <div
                         className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: discipline.color }}
+                        style={{ backgroundColor: discipline.color || '#6B7280' }}
                     />
                     <span className="text-neutral-0">{discipline.name}</span>
                 </div>
@@ -381,9 +381,9 @@ export default function CategoriesPage() {
             slug: category.slug,
             description: category.description || '',
             disciplineId: category.discipline_id,
-            isActive: category.is_active,
+            isActive: category.is_active ?? true,
             color: category.color || '#6B7280',
-            subscription_tier_required: category.subscription_tier_required || 'none'
+            subscription_tier_required: (category.subscription_tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3'
         })
         setEditDialogOpen(true)
     }
