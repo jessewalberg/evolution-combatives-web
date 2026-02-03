@@ -298,6 +298,7 @@ export default function CategoriesPage() {
         mutationFn: (data: CategoryInsert) => clientContentService.createCategory(data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categoriesList(), refetchType: 'active' })
             toast.success('Category created successfully')
             setCreateDialogOpen(false)
             resetForm()
@@ -312,6 +313,7 @@ export default function CategoriesPage() {
             clientContentService.updateCategory(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categoriesList(), refetchType: 'active' })
             toast.success('Category updated successfully')
             setEditDialogOpen(false)
             setSelectedCategory(null)
@@ -326,6 +328,7 @@ export default function CategoriesPage() {
         mutationFn: (categoryId: string) => clientContentService.deleteCategory(categoryId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categoriesList(), refetchType: 'active' })
             toast.success('Category deleted successfully')
             setDeleteDialogOpen(false)
             setSelectedCategory(null)
@@ -340,6 +343,7 @@ export default function CategoriesPage() {
             clientContentService.reorderCategories(reorderData),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.categories() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.categoriesList(), refetchType: 'active' })
             toast.success('Categories reordered successfully')
         },
         onError: (error: Error) => {

@@ -33,13 +33,17 @@ export default function VideoUploadPage() {
     const categoriesQuery = useQuery({
         queryKey: queryKeys.categoriesList(),
         queryFn: () => contentApi.fetchCategories(),
-        enabled: !!user && !!profile?.admin_role
+        enabled: !!user && !!profile?.admin_role,
+        staleTime: 0,
+        refetchOnMount: true
     })
 
     const disciplinesQuery = useQuery({
         queryKey: queryKeys.disciplinesList(),
         queryFn: () => contentApi.fetchDisciplines(),
-        enabled: !!user && !!profile?.admin_role
+        enabled: !!user && !!profile?.admin_role,
+        staleTime: 0,
+        refetchOnMount: true
     })
 
     // Handle successful upload
