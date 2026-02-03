@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "db:types": "supabase gen types typescript --project-id bxpxpkiubjbcmgsnfpvp",
+    "db:types": "supabase gen types typescript --project-id hknjeztslvbenmlaqfqa",
     "db:push": "supabase db push",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "supabase:ensure-dev": "bash ./scripts/ensure-supabase-dev.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

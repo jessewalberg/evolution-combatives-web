@@ -407,7 +407,8 @@ export const contentMutations = {
             processing_status: videoData.status || 'processing',
             is_published: videoData.isPublished || false,
             view_count: videoData.viewCount || 0,
-            sort_order: videoData.sortOrder || 0
+            sort_order: videoData.sortOrder || 0,
+            file_size: videoData.fileSize ?? null
         }
 
         const { data, error } = await supabase

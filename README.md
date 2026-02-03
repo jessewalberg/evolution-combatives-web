@@ -88,6 +88,12 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # Stripe Configuration
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key_here
+
+### Supabase Project Refs
+- Dev (link first): `hknjeztslvbenmlaqfqa`
+- Prod: `bxpxpkiubjbcmgsnfpvp`
+
+Tip: `./scripts/ensure-supabase-dev.sh` blocks accidental prod migrations unless `FORCE_PROD=1`.
 STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key_here
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 STRIPE_BEGINNER_PRICE_ID=price_your_beginner_price_id_here

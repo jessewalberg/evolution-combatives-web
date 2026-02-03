@@ -451,6 +451,7 @@ export type Database = {
                     created_at: string
                     description: string | null
                     duration_seconds: number | null
+                    file_size: number | null
                     fts: unknown
                     id: string
                     instructor_id: string | null
@@ -471,6 +472,7 @@ export type Database = {
                     created_at?: string
                     description?: string | null
                     duration_seconds?: number | null
+                    file_size?: number | null
                     fts?: unknown
                     id?: string
                     instructor_id?: string | null
@@ -491,6 +493,7 @@ export type Database = {
                     created_at?: string
                     description?: string | null
                     duration_seconds?: number | null
+                    file_size?: number | null
                     fts?: unknown
                     id?: string
                     instructor_id?: string | null

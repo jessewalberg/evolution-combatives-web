@@ -486,7 +486,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
 
                                             {/* Video info */}
                                             <div className="min-w-0 flex-1">
-                                                <h4 className="font-medium text-foreground truncate">
+                                                <h4 className="font-medium text-gray-900 dark:text-white truncate">
                                                     {video.title}
                                                 </h4>
                                                 <p className="text-sm text-muted-foreground truncate">
@@ -509,7 +509,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     </TableCell>
                                     <TableCell>
                                         <div className="text-sm">
-                                            <div className="text-foreground">{formatDate(video.uploadDate)}</div>
+                                            <div className="text-gray-900 dark:text-white">{formatDate(video.uploadDate)}</div>
                                             <div className="text-muted-foreground text-xs">
                                                 Modified {formatDate(video.lastModified)}
                                             </div>
@@ -517,7 +517,7 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                     </TableCell>
                                     <TableCell>
                                         <div className="text-sm">
-                                            <div className="text-foreground">{video.viewCount.toLocaleString()} views</div>
+                                            <div className="text-gray-900 dark:text-white">{video.viewCount.toLocaleString()} views</div>
                                             <div className="text-muted-foreground text-xs">
                                                 {video.completionRate}% completion
                                             </div>

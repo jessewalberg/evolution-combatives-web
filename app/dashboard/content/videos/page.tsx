@@ -113,7 +113,9 @@ export default function VideoLibraryPage() {
     const videosQuery = useQuery({
         queryKey: queryKeys.videosList(contentFilters, pagination),
         queryFn: () => clientContentService.fetchVideos(contentFilters, pagination),
-        enabled: !!user && !!profile?.admin_role
+        enabled: !!user && !!profile?.admin_role,
+        staleTime: 0,
+        refetchOnMount: true
     })
 
     const categoriesQuery = useQuery({
@@ -133,6 +135,7 @@ export default function VideoLibraryPage() {
         mutationFn: (videoId: string) => clientContentService.deleteVideo(videoId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.videosList(), refetchType: 'active' })
             toast.success('Video deleted successfully')
         },
         onError: (error: Error) => {
@@ -147,6 +150,7 @@ export default function VideoLibraryPage() {
             clientContentService.bulkUpdateVideoStatus(videoIds, { processing_status: status }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.videosList(), refetchType: 'active' })
             setSelectedVideos(new Set())
             setBulkActionLoading(false)
             toast.success('Videos updated successfully')
@@ -163,6 +167,7 @@ export default function VideoLibraryPage() {
         mutationFn: (videoIds: string[]) => clientContentService.bulkDeleteVideos(videoIds),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.videosList(), refetchType: 'active' })
             setSelectedVideos(new Set())
             setBulkActionLoading(false)
             toast.success('Videos deleted successfully')
@@ -199,6 +204,7 @@ export default function VideoLibraryPage() {
         },
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
+            queryClient.invalidateQueries({ queryKey: queryKeys.videosList(), refetchType: 'active' })
 
             if (result.results.errors > 0) {
                 console.log('Sync errors:', result.results.details.filter((d: { error?: string }) => d.error))
@@ -667,7 +673,7 @@ export default function VideoLibraryPage() {
                         description: video.description || '',
                         thumbnailUrl: video.thumbnail_url || undefined,
                         duration: video.duration_seconds || 0,
-                        fileSize: 0, // File size not available in current schema
+                        fileSize: (video as { file_size?: number | null }).file_size || 0,
                         status: (video.processing_status || 'ready') as 'uploading' | 'processing' | 'ready' | 'error' | 'archived',
                         subscriptionTier: (video.tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
                         categoryId: video.category_id,
