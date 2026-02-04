@@ -8,6 +8,7 @@
 
 'use client'
 
+import Link from 'next/link'
 import { useAuth } from '../../src/hooks/useAuth'
 import AdminLayout from '../../src/components/layout/admin-layout'
 import { toast } from 'sonner'
@@ -77,12 +78,33 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
 
     // Show loading spinner while checking authentication
-    if (isLoading || !user) {
+    if (isLoading) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center">
                     <Spinner size="lg" />
                     <p className="text-muted-foreground mt-4">Loading dashboard...</p>
+                </div>
+            </div>
+        )
+    }
+
+    if (!user) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="text-center max-w-md mx-auto p-8">
+                    <h2 className="text-2xl font-semibold text-foreground mb-4">
+                        Sign In Required
+                    </h2>
+                    <p className="text-muted-foreground mb-6">
+                        Please sign in to access the admin dashboard.
+                    </p>
+                    <Link
+                        href="/login"
+                        className="inline-flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md transition-colors"
+                    >
+                        Go to Login
+                    </Link>
                 </div>
             </div>
         )

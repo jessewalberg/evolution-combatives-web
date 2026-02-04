@@ -8,12 +8,14 @@
 
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createBrowserClient } from '../lib/supabase-browser'
 import { hasAccessToDiscipline } from '../lib/shared/constants/subscriptionTiers'
 import type { AdminRole, SubscriptionTier } from 'shared/types/database'
+import type { Session } from '@supabase/supabase-js'
 
 const supabase = createBrowserClient()
 
@@ -38,17 +40,32 @@ export function useAuth() {
     const router = useRouter()
     const queryClient = useQueryClient()
 
-    const { data: session, isLoading: isSessionLoading } = useQuery({
-        queryKey: ['auth', 'session'],
-        queryFn: async () => {
+    const [session, setSession] = useState<Session | null>(null)
+    const [isSessionLoading, setIsSessionLoading] = useState(true)
+
+    useEffect(() => {
+        let isMounted = true
+
+        const loadSession = async () => {
             const { data: { session } } = await supabase.auth.getSession()
-            return session
-        },
-        staleTime: 10 * 60 * 1000, // Increased to 10 minutes
-        refetchOnWindowFocus: false, // Disabled to prevent excessive requests
-        refetchOnMount: false, // Only fetch once per mount
-        retry: 1, // Reduce retry attempts
-    })
+            if (!isMounted) return
+            setSession(session ?? null)
+            setIsSessionLoading(false)
+        }
+
+        loadSession()
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session ?? null)
+            setIsSessionLoading(false)
+            queryClient.invalidateQueries({ queryKey: ['auth'] })
+        })
+
+        return () => {
+            isMounted = false
+            subscription.unsubscribe()
+        }
+    }, [queryClient])
 
     const { data: profile, isLoading: isProfileLoading } = useQuery({
         queryKey: ['auth', 'profile', session?.user.id],
