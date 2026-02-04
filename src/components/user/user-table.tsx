@@ -50,7 +50,7 @@ type UserStatus = 'active' | 'suspended' | 'pending' | 'inactive'
 /**
  * Admin role types
  */
-type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | null
+type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
 
 /**
  * Activity status types
@@ -193,6 +193,7 @@ const USER_STATUSES = [
 const ADMIN_ROLES = [
     { value: 'super_admin', label: 'Super Admin', color: 'error' },
     { value: 'content_admin', label: 'Content Admin', color: 'warning' },
+    { value: 'content_support_admin', label: 'Content + Support Admin', color: 'success' },
     { value: 'support_admin', label: 'Support Admin', color: 'info' },
 ] as const
 

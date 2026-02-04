@@ -176,7 +176,7 @@ export interface AvatarProps
     /**
      * Admin role for badge overlay
      */
-    role?: 'super_admin' | 'content_admin' | 'support_admin'
+    role?: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin'
 
     /**
      * Whether the avatar is clickable
@@ -282,6 +282,12 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     )
+                case 'content_support_admin':
+                    return (
+                        <svg className={cn(iconSize, 'text-white')} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 7a4 4 0 118 0 4 4 0 01-8 0zM4 19a6 6 0 0112 0M16 8a3 3 0 116 0 3 3 0 01-6 0zM14 19a5 5 0 0110 0" />
+                        </svg>
+                    )
                 case 'support_admin':
                     return (
                         <svg className={cn(iconSize, 'text-white')} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -299,6 +305,8 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
                     return 'bg-error-600'
                 case 'content_admin':
                     return 'bg-primary-600'
+                case 'content_support_admin':
+                    return 'bg-success-600'
                 case 'support_admin':
                     return 'bg-success-600'
                 default:
@@ -385,7 +393,7 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
                             roleBadgeVariants({ size }),
                             getRoleBadgeColor(role)
                         )}
-                        aria-label={`Role: ${role.replace('_', ' ')}`}
+                        aria-label={`Role: ${role.split('_').join(' ')}`}
                     >
                         {getRoleIcon(role, size || 'default')}
                     </div>
@@ -418,7 +426,7 @@ export interface AvatarGroupProps extends React.HTMLAttributes<HTMLDivElement> {
         src?: string
         alt?: string
         status?: 'online' | 'offline' | 'away' | 'busy'
-        role?: 'super_admin' | 'content_admin' | 'support_admin'
+        role?: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin'
     }>
 
     /**

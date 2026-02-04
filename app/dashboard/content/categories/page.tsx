@@ -251,7 +251,9 @@ export default function CategoriesPage() {
     )
 
     // Check permissions
-    const canManageContent = profile?.admin_role === 'super_admin' || profile?.admin_role === 'content_admin'
+    const canManageContent = profile?.admin_role === 'super_admin'
+        || profile?.admin_role === 'content_admin'
+        || profile?.admin_role === 'content_support_admin'
 
     // Queries
     const disciplinesQuery = useQuery({

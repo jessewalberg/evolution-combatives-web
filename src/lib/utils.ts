@@ -18,7 +18,7 @@ export type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
 /**
  * Admin role types
  */
-export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | null
+export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
 
 /**
  * Video processing status types
@@ -260,6 +260,8 @@ export function getAdminRoleBadge(role: AdminRole): {
             return { variant: 'error', text: 'Super Admin' }
         case 'content_admin':
             return { variant: 'primary', text: 'Content Admin' }
+        case 'content_support_admin':
+            return { variant: 'success', text: 'Content + Support Admin' }
         case 'support_admin':
             return { variant: 'info', text: 'Support Admin' }
         default:

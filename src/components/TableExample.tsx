@@ -31,7 +31,7 @@ interface User {
     id: string
     name: string
     email: string
-    role: 'super_admin' | 'content_admin' | 'support_admin' | 'user'
+    role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | 'user'
     subscription: 'None' | 'Beginner' | 'Intermediate' | 'Advanced'
     joinDate: string
     lastActive: string
@@ -455,7 +455,7 @@ const TableExample: React.FC = () => {
                                         <TableCell className="font-medium">{user.name}</TableCell>
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell>
-                                            <span className="capitalize">{user.role.replace('_', ' ')}</span>
+                                            <span className="capitalize">{user.role.split('_').join(' ')}</span>
                                         </TableCell>
                                         <TableCell>
                                             <span className={getSubscriptionBadge(user.subscription)}>

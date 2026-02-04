@@ -281,7 +281,9 @@ export default function ProcessingPage() {
     const [refreshInterval, setRefreshInterval] = useState(5000) // 5 seconds
 
     // Check permissions
-    const canManageProcessing = profile?.admin_role === 'super_admin' || profile?.admin_role === 'content_admin'
+    const canManageProcessing = profile?.admin_role === 'super_admin'
+        || profile?.admin_role === 'content_admin'
+        || profile?.admin_role === 'content_support_admin'
 
     // Fetch processing jobs
     const processingJobsQuery = useQuery({

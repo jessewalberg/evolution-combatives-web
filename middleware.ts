@@ -30,6 +30,7 @@ const ROUTE_CONFIG = {
         '/api/auth/login',
         '/api/auth/sign-up',
         '/api/auth/logout',
+        '/api/auth/forgot-password',
         '/api/csrf-token',
         '/api/subscriptions/create-checkout',
         '/api/mobile*', // Mobile API routes handle their own auth
@@ -87,6 +88,17 @@ const ROUTE_CONFIG = {
             '/dashboard',
             '/users',
             '/qa',
+            '/api/support'
+        ],
+        content_support_admin: [
+            '/dashboard',
+            '/users',
+            '/analytics',
+            '/qa',
+            '/subscribe',
+            '/api/admin',
+            '/api/content',
+            '/api/cloudflare',
             '/api/support'
         ]
     }

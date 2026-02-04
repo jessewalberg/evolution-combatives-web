@@ -122,11 +122,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     return (
         <AdminLayout
-            userRole={profile.admin_role as 'super_admin' | 'content_admin' | 'support_admin'}
+            userRole={profile.admin_role as 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin'}
             user={{
                 name: profile.full_name || user.email || 'Admin User',
                 email: user.email || '',
-                role: profile.admin_role.replace('_', ' ').toUpperCase(),
+                role: profile.admin_role.split('_').join(' ').toUpperCase(),
                 avatar: profile.avatar_url || undefined
             }}
             breadcrumbs={[

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user has content.write permission
-        const allowedRoles = ['super_admin', 'content_admin']
+        const allowedRoles = ['super_admin', 'content_admin', 'content_support_admin']
         if (!allowedRoles.includes(profile.admin_role)) {
             return NextResponse.json(
                 { error: 'Forbidden', message: 'Insufficient permissions to upload thumbnails' },
@@ -170,4 +170,3 @@ export async function POST(request: NextRequest) {
         )
     }
 }
-

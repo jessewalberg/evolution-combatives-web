@@ -629,7 +629,7 @@ export type TablesUpdate<
 // Core business types
 export type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 export type VideoDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'expert';
-export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin';
+export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin';
 export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
 export type ProcessingStatus = 'uploading' | 'processing' | 'ready' | 'error';
 
@@ -715,6 +715,13 @@ export const ADMIN_PERMISSIONS = {
     support_admin: [
         'manage_users',
         'manage_subscriptions',
+        'moderate_questions',
+    ],
+    content_support_admin: [
+        'manage_content',
+        'manage_users',
+        'manage_subscriptions',
+        'view_analytics',
         'moderate_questions',
     ],
 } as const;

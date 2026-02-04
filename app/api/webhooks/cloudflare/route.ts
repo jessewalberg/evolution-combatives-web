@@ -236,7 +236,7 @@ async function sendAdminNotification(
     const { data: admins, error: adminsError } = await supabase
         .from('profiles')
         .select('id, email, admin_role')
-        .in('admin_role', ['super_admin', 'content_admin'])
+        .in('admin_role', ['super_admin', 'content_admin', 'content_support_admin'])
 
     if (adminsError) {
         console.error('Failed to fetch admin users for notification:', adminsError)

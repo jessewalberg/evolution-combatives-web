@@ -75,9 +75,10 @@ function ResetPasswordContent() {
 
                 if (error || !data.session) {
                     // Check if we have the proper URL parameters for password reset
-                    const accessToken = searchParams.get('access_token')
-                    const refreshToken = searchParams.get('refresh_token')
-                    const type = searchParams.get('type')
+                    const hashParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.hash.slice(1) : '')
+                    const accessToken = searchParams.get('access_token') || hashParams.get('access_token')
+                    const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token')
+                    const type = searchParams.get('type') || hashParams.get('type')
 
                     if (type === 'recovery' && accessToken && refreshToken) {
                         // Set the session with the tokens from URL

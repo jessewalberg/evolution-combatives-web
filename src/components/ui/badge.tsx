@@ -305,7 +305,7 @@ SubscriptionBadge.displayName = 'SubscriptionBadge'
  * Admin Role Badge
  */
 export interface AdminRoleBadgeProps extends Omit<BadgeProps, 'variant' | 'icon'> {
-    role: 'super_admin' | 'content_admin' | 'support_admin' | 'user'
+    role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | 'user'
 }
 
 const AdminRoleBadge = React.forwardRef<HTMLDivElement, AdminRoleBadgeProps>(
@@ -320,6 +320,11 @@ const AdminRoleBadge = React.forwardRef<HTMLDivElement, AdminRoleBadgeProps>(
                 variant: 'primary' as const,
                 icon: <HeroIcons.Cog6Tooth className="h-3 w-3" />,
                 text: 'Content Admin'
+            },
+            content_support_admin: {
+                variant: 'success' as const,
+                icon: <HeroIcons.Users className="h-3 w-3" />,
+                text: 'Content + Support Admin'
             },
             support_admin: {
                 variant: 'success' as const,

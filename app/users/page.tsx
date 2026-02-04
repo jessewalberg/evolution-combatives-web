@@ -113,7 +113,7 @@ interface User {
     lastName: string
     avatarUrl?: string
     subscriptionTier: 'none' | 'tier1' | 'tier2' | 'tier3' | null
-    adminRole: 'super_admin' | 'content_admin' | 'support_admin' | null
+    adminRole: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
     status: 'active' | 'suspended' | 'pending' | 'inactive'
     activityStatus: 'online' | 'recent' | 'inactive' | 'dormant'
     joinDate: string

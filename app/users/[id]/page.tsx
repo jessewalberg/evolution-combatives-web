@@ -150,7 +150,7 @@ interface UserEditForm {
     badge_number: string
     department: string
     rank: string
-    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null
+    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
 }
 
 export default function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -538,7 +538,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 badge_number: userData.badge_number || '',
                 department: userData.department || '',
                 rank: userData.rank || '',
-                admin_role: userData.admin_role as 'super_admin' | 'content_admin' | 'support_admin' | null
+                admin_role: userData.admin_role as 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
             })
         }
     })
@@ -740,7 +740,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                 {userData.admin_role && (
                                     <Badge variant="info">
                                         <ShieldCheckIcon className="h-3 w-3 mr-1" />
-                                        {userData.admin_role.replace('_', ' ')}
+                                        {userData.admin_role.split('_').join(' ')}
                                     </Badge>
                                 )}
                             </div>
@@ -912,6 +912,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                         className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-white"
                                     >
                                         <option value="">No Admin Role</option>
+                                        <option value="content_support_admin">Content + Support Admin</option>
                                         <option value="support_admin">Support Admin</option>
                                         <option value="content_admin">Content Admin</option>
                                         <option value="super_admin">Super Admin</option>

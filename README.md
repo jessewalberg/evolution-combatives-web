@@ -163,13 +163,15 @@ Key UI features:
 - **Super Admin**: Full system access
 - **Content Admin**: Content management and analytics
 - **Support Admin**: User management and Q&A moderation
+- **Content + Support Admin**: Content management, user support, and analytics
 
 ### Permissions System
 ```typescript
 export const ADMIN_PERMISSIONS = {
     super_admin: ['manage_users', 'manage_content', 'manage_subscriptions', 'manage_admins', 'view_analytics', 'system_settings'],
     content_admin: ['manage_content', 'view_analytics', 'moderate_questions'],
-    support_admin: ['manage_users', 'manage_subscriptions', 'moderate_questions']
+    support_admin: ['manage_users', 'manage_subscriptions', 'moderate_questions'],
+    content_support_admin: ['manage_users', 'manage_subscriptions', 'manage_content', 'view_analytics', 'moderate_questions']
 }
 ```
 

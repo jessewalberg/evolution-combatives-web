@@ -14,7 +14,6 @@ import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
 import { Input } from '../../src/components/ui/input'
 import { Button } from '../../src/components/ui/button'
 import { ThemeToggle } from '../../src/providers/ThemeProvider'
@@ -38,8 +37,6 @@ export default function ForgotPasswordPage() {
     const [isLoading, setIsLoading] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
 
-    const supabase = createClientComponentClient()
-
     // Form setup with validation
     const {
         register,
@@ -59,26 +56,16 @@ export default function ForgotPasswordPage() {
         try {
             setIsLoading(true)
 
-            // First check if user exists and has admin role
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('admin_role, full_name')
-                .eq('email', data.email)
-                .single()
-
-            if (!profile || !profile.admin_role) {
-                // Don't reveal whether the email exists for security
-                setIsSuccess(true)
-                return
-            }
-
-            // Send password reset email
-            const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-                redirectTo: `${window.location.origin}/reset-password`
+            const response = await fetch('/api/auth/forgot-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email: data.email })
             })
 
-            if (error) {
-                if (error.message.includes('rate limit')) {
+            if (!response.ok) {
+                if (response.status === 429) {
                     setError('root', {
                         message: 'Too many password reset requests. Please wait before trying again.'
                     })

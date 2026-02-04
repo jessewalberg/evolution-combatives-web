@@ -231,6 +231,7 @@ const BadgeExample: React.FC = () => {
                         <div className="flex flex-wrap gap-3">
                             <AdminRoleBadge role="super_admin" />
                             <AdminRoleBadge role="content_admin" />
+                            <AdminRoleBadge role="content_support_admin" />
                             <AdminRoleBadge role="support_admin" />
                             <AdminRoleBadge role="user" />
                         </div>
@@ -241,6 +242,7 @@ const BadgeExample: React.FC = () => {
                         <div className="flex flex-wrap gap-3">
                             <AdminRoleBadge role="super_admin" appearance="outline" />
                             <AdminRoleBadge role="content_admin" appearance="outline" />
+                            <AdminRoleBadge role="content_support_admin" appearance="outline" />
                             <AdminRoleBadge role="support_admin" appearance="outline" />
                             <AdminRoleBadge role="user" appearance="outline" />
                         </div>
