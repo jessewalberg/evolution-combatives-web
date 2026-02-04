@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
             description: body.description || null,
             color: body.color || '#3B82F6',
             icon: body.icon || null,
+            image_url: body.image_url || null,
             subscription_tier_required: body.subscription_tier_required || 'none',
             sort_order: body.sort_order || 1,
             is_active: body.is_active !== undefined ? body.is_active : true

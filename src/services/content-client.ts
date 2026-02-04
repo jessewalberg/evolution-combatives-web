@@ -128,6 +128,22 @@ export const clientContentService = {
         }
     },
 
+    async reorderDisciplines(reorderData: Array<{ id: string; sort_order: number }>): Promise<void> {
+        const headers = await createSecureHeaders()
+        const response = await fetch('/api/content/disciplines/reorder', {
+            method: 'POST',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ reorderData })
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+    },
+
     // Category Mutations
     async createCategory(data: CategoryInsert): Promise<Category> {
         const headers = await createSecureHeaders()

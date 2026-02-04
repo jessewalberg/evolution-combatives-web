@@ -59,6 +59,7 @@ export async function PUT(
         if (body.description !== undefined) updateData.description = body.description
         if (body.color !== undefined) updateData.color = body.color
         if (body.icon !== undefined) updateData.icon = body.icon
+        if (body.image_url !== undefined) updateData.image_url = body.image_url
         if (body.subscription_tier_required !== undefined) {
             updateData.subscription_tier_required = body.subscription_tier_required
         }

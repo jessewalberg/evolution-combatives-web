@@ -11,8 +11,28 @@
 
 import * as React from 'react'
 import { useState } from 'react'
+import Image from 'next/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent,
+} from '@dnd-kit/core'
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+    useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 // UI Components
 import { Button } from '../../../../src/components/ui/button'
@@ -31,6 +51,7 @@ import {
     ShieldCheckIcon,
     UserGroupIcon,
     VideoCameraIcon,
+    Bars3Icon,
 } from '@heroicons/react/24/outline'
 
 // Services & Types
@@ -96,6 +117,127 @@ function EmptyState({
     )
 }
 
+// Sortable Discipline Row Component
+function SortableDisciplineRow({
+    discipline,
+    onEdit,
+    onDelete,
+    canManageContent,
+}: {
+    discipline: DisciplineWithRelations
+    onEdit: (discipline: DisciplineWithRelations) => void
+    onDelete: (discipline: DisciplineWithRelations) => void
+    canManageContent: boolean
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: discipline.id })
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    }
+
+    const categoryCount = discipline.categories?.length || 0
+    const videoCount = discipline.categories?.reduce(
+        (sum: number, category: CategoryWithRelations) => sum + (category.videos?.length || 0),
+        0
+    ) || 0
+    const tierConfig = SUBSCRIPTION_TIERS.find(t => t.value === discipline.subscription_tier_required)
+
+    return (
+        <TableRow ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
+            <TableCell>
+                <div className="flex items-center gap-3">
+                    <div
+                        {...attributes}
+                        {...listeners}
+                        className={`p-1 rounded ${canManageContent ? 'cursor-grab active:cursor-grabbing hover:bg-neutral-700' : 'cursor-default opacity-50'}`}
+                    >
+                        <Bars3Icon className="h-4 w-4 text-neutral-400" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {discipline.image_url ? (
+                            <Image
+                                src={discipline.image_url}
+                                alt={`${discipline.name} thumbnail`}
+                                width={40}
+                                height={40}
+                                className="h-10 w-10 rounded object-cover border border-neutral-700"
+                                unoptimized
+                            />
+                        ) : (
+                            <div
+                                className="h-10 w-10 rounded flex items-center justify-center border border-neutral-700 text-neutral-0 font-semibold"
+                                style={{ backgroundColor: discipline.color || '#6B7280' }}
+                            >
+                                {discipline.name?.charAt(0).toUpperCase() || 'D'}
+                            </div>
+                        )}
+                        <div>
+                            <div className="font-medium text-neutral-0">{discipline.name}</div>
+                            <div className="text-sm text-neutral-400">{discipline.slug}</div>
+                        </div>
+                    </div>
+                </div>
+            </TableCell>
+            <TableCell>
+                <div className="text-sm text-neutral-300 max-w-xs truncate">
+                    {discipline.description || 'No description'}
+                </div>
+            </TableCell>
+            <TableCell>
+                <Badge variant={tierConfig?.color as 'default' | 'secondary' | 'success' | 'warning' | 'error'}>
+                    {tierConfig?.label}
+                </Badge>
+            </TableCell>
+            <TableCell>
+                <div className="flex items-center gap-2">
+                    <DocumentDuplicateIcon className="h-4 w-4 text-neutral-400" />
+                    <span className="text-neutral-0">{categoryCount}</span>
+                </div>
+            </TableCell>
+            <TableCell>
+                <div className="flex items-center gap-2">
+                    <VideoCameraIcon className="h-4 w-4 text-neutral-400" />
+                    <span className="text-neutral-0">{videoCount}</span>
+                </div>
+            </TableCell>
+            <TableCell>
+                <Badge variant={discipline.is_active ? 'success' : 'secondary'}>
+                    {discipline.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+            </TableCell>
+            <TableCell align="right">
+                <div className="flex items-center justify-end gap-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(discipline)}
+                        disabled={!canManageContent}
+                    >
+                        <PencilIcon className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDelete(discipline)}
+                        disabled={!canManageContent}
+                    >
+                        <TrashIcon className="h-4 w-4 text-error-400" />
+                    </Button>
+                </div>
+            </TableCell>
+        </TableRow>
+    )
+}
+
 // Subscription tier options
 const SUBSCRIPTION_TIERS = [
     { value: 'none', label: 'Free', color: 'secondary' },
@@ -120,6 +262,9 @@ export default function DisciplinesPage() {
         slug: string
         description: string
         color: string
+        imageUrl: string
+        icon: string
+        sortOrder: number
         subscriptionTierRequired: SubscriptionTier
         isActive: boolean
     }>({
@@ -127,6 +272,9 @@ export default function DisciplinesPage() {
         slug: '',
         description: '',
         color: '#3B82F6',
+        imageUrl: '',
+        icon: '',
+        sortOrder: 1,
         subscriptionTierRequired: 'none',
         isActive: true
     })
@@ -192,6 +340,18 @@ export default function DisciplinesPage() {
         },
     })
 
+    const reorderMutation = useMutation({
+        mutationFn: (reorderData: Array<{ id: string; sort_order: number }>) =>
+            clientContentService.reorderDisciplines(reorderData),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.disciplines() })
+            toast.success('Disciplines reordered successfully')
+        },
+        onError: (error: Error) => {
+            toast.error(`Failed to reorder disciplines: ${error.message}`)
+        },
+    })
+
     // Handlers
     const resetForm = () => {
         setFormData({
@@ -199,6 +359,9 @@ export default function DisciplinesPage() {
             slug: '',
             description: '',
             color: '#3B82F6',
+            imageUrl: '',
+            icon: '',
+            sortOrder: 1,
             subscriptionTierRequired: 'none',
             isActive: true
         })
@@ -224,6 +387,9 @@ export default function DisciplinesPage() {
             slug: discipline.slug,
             description: discipline.description || '',
             color: discipline.color || '#6B7280',
+            imageUrl: discipline.image_url || '',
+            icon: discipline.icon || '',
+            sortOrder: discipline.sort_order || 1,
             subscriptionTierRequired: (discipline.subscription_tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
             isActive: discipline.is_active ?? true,
         })
@@ -248,6 +414,17 @@ export default function DisciplinesPage() {
             .trim()
     }
 
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 4,
+            },
+        }),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    )
+
     const onSubmit = async () => {
         try {
             const disciplineData = {
@@ -255,9 +432,13 @@ export default function DisciplinesPage() {
                 slug: formData.slug,
                 description: formData.description,
                 color: formData.color,
+                image_url: formData.imageUrl || null,
+                icon: formData.icon || null,
                 subscription_tier_required: formData.subscriptionTierRequired,
                 is_active: formData.isActive,
-                sort_order: selectedDiscipline ? selectedDiscipline.sort_order : (disciplines.length || 0) + 1,
+                sort_order: Number.isFinite(formData.sortOrder) && formData.sortOrder > 0
+                    ? formData.sortOrder
+                    : (selectedDiscipline?.sort_order || (disciplines.length || 0) + 1),
             }
 
             if (selectedDiscipline) {
@@ -268,6 +449,25 @@ export default function DisciplinesPage() {
         } catch (error) {
             toast.error('An unexpected error occurred')
         }
+    }
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event
+
+        if (!canManageContent || !over || active.id === over.id) {
+            return
+        }
+
+        const oldIndex = disciplines.findIndex(item => item.id === active.id)
+        const newIndex = disciplines.findIndex(item => item.id === over.id)
+
+        const newOrder = arrayMove(disciplines, oldIndex, newIndex)
+        const reorderData = newOrder.map((item, index) => ({
+            id: item.id,
+            sort_order: index + 1
+        }))
+
+        reorderMutation.mutate(reorderData)
     }
 
     // Loading state
@@ -412,77 +612,26 @@ export default function DisciplinesPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {disciplines.map((discipline: DisciplineWithRelations) => {
-                                    const categoryCount = discipline.categories?.length || 0
-                                    const videoCount = discipline.categories?.reduce((sum: number, category: CategoryWithRelations) => sum + (category.videos?.length || 0), 0) || 0
-                                    const tierConfig = SUBSCRIPTION_TIERS.find(t => t.value === discipline.subscription_tier_required)
-
-                                    return (
-                                        <TableRow key={discipline.id}>
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    <div
-                                                        className="w-4 h-4 rounded-full flex-shrink-0"
-                                                        style={{ backgroundColor: discipline.color || '#6B7280' }}
-                                                    />
-                                                    <div>
-                                                        <div className="font-medium text-neutral-0">{discipline.name}</div>
-                                                        <div className="text-sm text-neutral-400">{discipline.slug}</div>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-sm text-neutral-300 max-w-xs truncate">
-                                                    {discipline.description || 'No description'}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={tierConfig?.color as 'default' | 'secondary' | 'success' | 'warning' | 'error'}>
-                                                    {tierConfig?.label}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <DocumentDuplicateIcon className="h-4 w-4 text-neutral-400" />
-                                                    <span className="text-neutral-0">{categoryCount}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <VideoCameraIcon className="h-4 w-4 text-neutral-400" />
-                                                    <span className="text-neutral-0">{videoCount}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={discipline.is_active ? 'success' : 'secondary'}>
-                                                    {discipline.is_active ? 'Active' : 'Inactive'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell align="right">
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleEdit(discipline)}
-                                                        className="h-8 w-8 p-0 border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                                                    >
-                                                        <PencilIcon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                                                        <span className="sr-only">Edit discipline</span>
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(discipline)}
-                                                        className="h-8 w-8 p-0 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-400 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-                                                    >
-                                                        <TrashIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
-                                                        <span className="sr-only">Delete discipline</span>
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    )
-                                })}
+                                <DndContext
+                                    sensors={sensors}
+                                    collisionDetection={closestCenter}
+                                    onDragEnd={handleDragEnd}
+                                >
+                                    <SortableContext
+                                        items={disciplines.map(discipline => discipline.id)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        {disciplines.map((discipline: DisciplineWithRelations) => (
+                                            <SortableDisciplineRow
+                                                key={discipline.id}
+                                                discipline={discipline}
+                                                onEdit={handleEdit}
+                                                onDelete={handleDelete}
+                                                canManageContent={canManageContent}
+                                            />
+                                        ))}
+                                    </SortableContext>
+                                </DndContext>
                             </TableBody>
                         </Table>
                     )}
@@ -560,6 +709,34 @@ export default function DisciplinesPage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="text-sm font-medium text-neutral-0 mb-2 block">
+                                    Image URL
+                                </label>
+                                <Input
+                                    placeholder="https://.../discipline-image.jpg"
+                                    value={formData.imageUrl}
+                                    onChange={(e) => {
+                                        setFormData(prev => ({ ...prev, imageUrl: e.target.value }))
+                                    }}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-neutral-0 mb-2 block">
+                                    Icon (optional)
+                                </label>
+                                <Input
+                                    placeholder="e.g., shield, fists"
+                                    value={formData.icon}
+                                    onChange={(e) => {
+                                        setFormData(prev => ({ ...prev, icon: e.target.value }))
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm font-medium text-neutral-0 mb-2 block">
                                     Color <span className="text-error-400">*</span>
                                 </label>
                                 <Input
@@ -572,6 +749,23 @@ export default function DisciplinesPage() {
                                 />
                             </div>
 
+                            <div>
+                                <label className="text-sm font-medium text-neutral-0 mb-2 block">
+                                    Sort Order
+                                </label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    value={formData.sortOrder}
+                                    onChange={(e) => {
+                                        const nextValue = Number(e.target.value);
+                                        setFormData(prev => ({ ...prev, sortOrder: Number.isFinite(nextValue) ? nextValue : 1 }))
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4">
                             <div>
                                 <label className="text-sm font-medium text-neutral-0 mb-2 block">
                                     Required Subscription Tier <span className="text-error-400">*</span>
