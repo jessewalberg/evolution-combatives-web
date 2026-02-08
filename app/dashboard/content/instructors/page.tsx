@@ -85,7 +85,7 @@ export default function InstructorsPage() {
         enabled: !!user && !!profile?.admin_role,
     })
 
-    const instructors = instructorsQuery.data || []
+    const instructors = useMemo(() => instructorsQuery.data ?? [], [instructorsQuery.data])
 
     const filteredInstructors = useMemo(() => {
         const term = search.trim().toLowerCase()

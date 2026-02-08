@@ -16,7 +16,10 @@ const syncVideoInstructors = async (
     videoId: string,
     instructorIds: string[]
 ) => {
-    const table = (supabase as unknown as { from: (table: string) => any }).from('video_instructors')
+    const table = (supabase as unknown as { from: (tableName: string) => unknown }).from('video_instructors') as {
+        delete: () => { eq: (column: string, value: string) => Promise<{ error: unknown }> }
+        insert: (rows: Array<{ video_id: string; instructor_id: string; is_primary: boolean }>) => Promise<{ error: unknown }>
+    }
 
     const { error: deleteError } = await table
         .delete()
@@ -83,7 +86,8 @@ export async function POST(request: NextRequest) {
             case 'createVideo':
                 {
                 const normalizedInstructorIds = normalizeInstructorIds(data.videoData?.instructorIds || data.videoData?.instructor_id)
-                const { instructorIds: _instructorIds, ...videoData } = data.videoData || {}
+                const videoData = { ...(data.videoData || {}) } as Record<string, unknown>
+                delete videoData.instructorIds
                 const { data: newVideo, error: createError } = await supabase
                     .from('videos')
                     .insert({
@@ -107,7 +111,8 @@ export async function POST(request: NextRequest) {
             case 'updateVideo':
                 {
                 const normalizedInstructorIds = normalizeInstructorIds(data.updates?.instructorIds || data.updates?.instructor_id)
-                const { instructorIds: _instructorIds, ...updateData } = data.updates || {}
+                const updateData = { ...(data.updates || {}) } as Record<string, unknown>
+                delete updateData.instructorIds
                 const { data: updatedVideo, error: updateError } = await supabase
                     .from('videos')
                     .update({

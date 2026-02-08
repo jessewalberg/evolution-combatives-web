@@ -175,7 +175,14 @@ function transformVideoRelations(video: VideoSupabaseResponse): VideoWithRelatio
 }
 
 const getUntypedTable = (supabase: ReturnType<typeof createAdminClient>, table: string) =>
-    (supabase as unknown as { from: (tableName: string) => any }).from(table)
+    (supabase as unknown as { from: (tableName: string) => unknown }).from(table) as {
+        select: (columns: string) => {
+            in: (column: string, values: string[]) => Promise<{ data: Array<{ video_id: string }> | null }>
+            eq: (column: string, value: string) => Promise<{ data: Array<{ video_id: string }> | null }>
+        }
+        delete: () => { eq: (column: string, value: string) => Promise<{ error: unknown }> }
+        insert: (rows: Array<{ video_id: string; instructor_id: string; is_primary: boolean }>) => Promise<{ error: unknown }>
+    }
 
 const normalizeInstructorIds = (value?: string[] | string | null): string[] => {
     if (!value) return []
@@ -577,7 +584,8 @@ export const contentMutations = {
                 : updates.instructor_id || null
         )
 
-        const { instructorIds: _instructorIds, ...dbUpdates } = updates
+        const dbUpdates = { ...updates } as VideoUpdate & { instructorIds?: string[] }
+        delete dbUpdates.instructorIds
 
         const { data, error } = await supabase
             .from('videos')
