@@ -46,6 +46,9 @@ export const ROUTES = {
             DISCIPLINES: '/dashboard/content/disciplines',
             DISCIPLINE_DETAIL: (id: string) => `/dashboard/content/disciplines/${id}`,
 
+            INSTRUCTORS: '/dashboard/content/instructors',
+            INSTRUCTOR_DETAIL: (id: string) => `/dashboard/content/instructors/${id}`,
+
             PROCESSING: '/dashboard/content/processing',
         },
 
@@ -101,6 +104,7 @@ export const ROUTES = {
             VIDEO_DETAIL: (id: string) => `/api/content/videos/${id}`,
             CATEGORIES: '/api/content/categories',
             DISCIPLINES: '/api/content/disciplines',
+            INSTRUCTORS: '/api/content/instructors',
         },
         CLOUDFLARE: {
             UPLOAD: '/api/cloudflare/upload',
@@ -199,4 +203,3 @@ export type RouteParams = {
  * Export for convenience
  */
 export default ROUTES
-

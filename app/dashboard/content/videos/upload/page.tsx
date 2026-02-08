@@ -46,6 +46,14 @@ export default function VideoUploadPage() {
         refetchOnMount: true
     })
 
+    const instructorsQuery = useQuery({
+        queryKey: queryKeys.instructorsList(),
+        queryFn: () => contentApi.fetchInstructors(),
+        enabled: !!user && !!profile?.admin_role,
+        staleTime: 0,
+        refetchOnMount: true
+    })
+
     // Handle successful upload
     const handleUploadSuccess = (videoId: string) => {
         toast.success('Video uploaded successfully!')
@@ -123,7 +131,11 @@ export default function VideoUploadPage() {
                                 id: disc.id,
                                 name: disc.name
                             }))}
-                            isLoading={categoriesQuery.isLoading || disciplinesQuery.isLoading}
+                            instructors={(instructorsQuery.data || []).map((instructor) => ({
+                                id: instructor.id,
+                                fullName: instructor.full_name
+                            }))}
+                            isLoading={categoriesQuery.isLoading || disciplinesQuery.isLoading || instructorsQuery.isLoading}
                             onSuccess={handleUploadSuccess}
                             onError={handleUploadError}
                             onUploadStart={() => setIsUploading(true)}

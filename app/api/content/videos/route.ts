@@ -12,10 +12,14 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url)
         const search = searchParams.get('search') || undefined
         const categoryId = searchParams.get('categoryId') || undefined
+        const disciplineId = searchParams.get('disciplineId') || undefined
+        const instructorId = searchParams.get('instructorId') || undefined
         
         const filters = {
             search,
-            categoryId
+            categoryId,
+            disciplineId,
+            instructorId
         }
         
         const pagination = {

@@ -5,6 +5,7 @@
 
 import { Video } from "../components/video"
 import { Category, Discipline } from "./shared"
+import type { Instructor } from 'shared/types/database'
 
 interface ContentApiResponse<T = unknown> {
     success: boolean
@@ -125,11 +126,11 @@ export class ContentApiClient {
         return result.data!
     }
 
-    async createVideo(videoData: Video): Promise<Video> {
+    async createVideo(videoData: Video & { instructorIds?: string[] }): Promise<Video> {
         return this.makeRequest('/api/content/videos', 'create', { videoData })
     }
 
-    async updateVideo(id: string, updateData: Partial<Video>): Promise<Video> {
+    async updateVideo(id: string, updateData: Partial<Video> & { instructorIds?: string[] }): Promise<Video> {
         return this.makeRequest('/api/content/videos', 'update', { id, updateData })
     }
 
@@ -139,6 +140,10 @@ export class ContentApiClient {
 
     async fetchDisciplines(): Promise<Discipline[]> {
         return this.makeGetRequest('/api/content/disciplines')
+    }
+
+    async fetchInstructors(): Promise<Instructor[]> {
+        return this.makeGetRequest('/api/content/instructors')
     }
 }
 

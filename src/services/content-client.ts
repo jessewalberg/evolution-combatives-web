@@ -19,6 +19,9 @@ import type {
     Discipline,
     DisciplineInsert,
     DisciplineUpdate,
+    Instructor,
+    InstructorInsert,
+    InstructorUpdate,
 } from './content'
 
 // CSRF token cache
@@ -228,7 +231,7 @@ export const clientContentService = {
      * Fetch videos with filtering and pagination
      */
     async fetchVideos(
-        filters: { search?: string; categoryId?: string } = {},
+        filters: { search?: string; categoryId?: string; disciplineId?: string; instructorId?: string } = {},
         pagination: { page?: number; pageSize?: number } = {}
     ): Promise<{
         data: Video[]
@@ -238,6 +241,8 @@ export const clientContentService = {
         const searchParams = new URLSearchParams()
         if (filters.search) searchParams.set('search', filters.search)
         if (filters.categoryId) searchParams.set('categoryId', filters.categoryId)
+        if (filters.disciplineId) searchParams.set('disciplineId', filters.disciplineId)
+        if (filters.instructorId) searchParams.set('instructorId', filters.instructorId)
         if (pagination.page !== undefined) searchParams.set('page', pagination.page.toString())
         if (pagination.pageSize !== undefined) searchParams.set('pageSize', pagination.pageSize.toString())
 
@@ -259,6 +264,60 @@ export const clientContentService = {
             throw new Error(result.error)
         }
         return result.data
+    },
+
+    async fetchInstructors(includeInactive = false): Promise<Instructor[]> {
+        const searchParams = new URLSearchParams()
+        if (includeInactive) {
+            searchParams.set('includeInactive', 'true')
+        }
+        const queryString = searchParams.toString()
+        const response = await fetch(`/api/content/instructors${queryString ? `?${queryString}` : ''}`)
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async createInstructor(data: InstructorInsert): Promise<Instructor> {
+        const headers = await createSecureHeaders()
+        const response = await fetch('/api/content/instructors', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(data)
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async updateInstructor(id: string, data: InstructorUpdate): Promise<Instructor> {
+        const headers = await createSecureHeaders()
+        const response = await fetch(`/api/content/instructors/${id}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(data)
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+        return result.data
+    },
+
+    async deleteInstructor(id: string): Promise<void> {
+        const headers = await createSecureHeaders()
+        const response = await fetch(`/api/content/instructors/${id}`, {
+            method: 'DELETE',
+            headers
+        })
+        const result = await response.json()
+        if (!result.success) {
+            throw new Error(result.error)
+        }
     },
 
     /**
@@ -300,7 +359,7 @@ export const clientContentService = {
     /**
      * Update video information
      */
-    async updateVideo(videoId: string, updates: VideoUpdate): Promise<Video> {
+    async updateVideo(videoId: string, updates: VideoUpdate & { instructorIds?: string[] }): Promise<Video> {
         const response = await fetch('/api/admin/content', {
             method: 'POST',
             headers: await createSecureHeaders(),

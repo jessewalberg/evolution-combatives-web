@@ -49,6 +49,7 @@ const videoEditSchema = z.object({
     title: z.string().min(3, 'Title must be at least 3 characters long.').max(100, 'Title must be 100 characters or less.'),
     description: z.string().min(10, 'Description must be at least 10 characters long.').max(1000, 'Description must be 1000 characters or less.'),
     categoryId: z.string().uuid('Please select a valid category.'),
+    instructorIds: z.array(z.string().uuid()).default([]),
     subscriptionTierRequired: z.enum(['none', 'tier1', 'tier2', 'tier3']),
     isPublished: z.boolean(),
     tags: z.string().optional(),
@@ -131,6 +132,12 @@ export default function VideoEditPage() {
         enabled: !!user && !!profile?.admin_role,
     })
 
+    const instructorsQuery = useQuery({
+        queryKey: queryKeys.instructorsList(),
+        queryFn: () => clientContentService.fetchInstructors(),
+        enabled: !!user && !!profile?.admin_role,
+    })
+
     // Form setup
     const form = useForm<VideoEditFormValues>({
         resolver: zodResolver(videoEditSchema),
@@ -138,6 +145,7 @@ export default function VideoEditPage() {
             title: '',
             description: '',
             subscriptionTierRequired: 'none',
+            instructorIds: [],
             isPublished: false,
             tags: '',
         },
@@ -151,6 +159,8 @@ export default function VideoEditPage() {
                 title: video.title,
                 description: video.description || '',
                 categoryId: video.category_id,
+                instructorIds: (video as { instructors?: Array<{ id: string }>; instructor_id?: string | null }).instructors?.map(i => i.id)
+                    || ((video as { instructor_id?: string | null }).instructor_id ? [(video as { instructor_id?: string | null }).instructor_id as string] : []),
                 subscriptionTierRequired: (video.tier_required || 'none') as 'none' | 'tier1' | 'tier2' | 'tier3',
                 isPublished: video.is_published || false,
                 tags: video.tags?.join(', ') || '',
@@ -192,6 +202,7 @@ export default function VideoEditPage() {
                 title: data.title,
                 description: data.description,
                 category_id: data.categoryId,
+                instructor_id: data.instructorIds?.[0] || null,
                 tier_required: data.subscriptionTierRequired,
                 is_published: data.isPublished,
                 tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
@@ -213,7 +224,10 @@ export default function VideoEditPage() {
                 }
             }
 
-            return clientContentService.updateVideo(videoId, updateData)
+            return clientContentService.updateVideo(videoId, {
+                ...updateData,
+                instructorIds: data.instructorIds || [],
+            })
         },
         onMutate: async (newData) => {
             // Cancel any outgoing refetches
@@ -229,6 +243,7 @@ export default function VideoEditPage() {
                     title: newData.title,
                     description: newData.description,
                     category_id: newData.categoryId,
+                    instructor_id: newData.instructorIds?.[0] || null,
                     tier_required: newData.subscriptionTierRequired,
                     is_published: newData.isPublished,
                     tags: newData.tags ? newData.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
@@ -509,6 +524,38 @@ export default function VideoEditPage() {
                                                 )}
                                             />
                                         </div>
+
+                                        <FormField
+                                            control={form.control}
+                                            name="instructorIds"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Instructors</FormLabel>
+                                                    <FormControl>
+                                                        <select
+                                                            multiple
+                                                            value={field.value || []}
+                                                            onChange={(e) => {
+                                                                const selected = Array.from(e.currentTarget.selectedOptions).map(option => option.value)
+                                                                field.onChange(selected)
+                                                            }}
+                                                            disabled={!canEditContent || updateVideoMutation.isPending}
+                                                            className="w-full min-h-[120px] px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-0 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                                        >
+                                                            {(instructorsQuery.data || []).map((instructor) => (
+                                                                <option key={instructor.id} value={instructor.id}>
+                                                                    {instructor.full_name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </FormControl>
+                                                    <p className="text-xs text-neutral-400">
+                                                        Hold Cmd/Ctrl to select multiple instructors.
+                                                    </p>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
 
                                         <FormField
                                             control={form.control}

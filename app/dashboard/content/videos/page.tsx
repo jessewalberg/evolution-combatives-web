@@ -244,9 +244,15 @@ export default function VideoLibraryPage() {
             // Search filter
             if (filters.search) {
                 const searchLower = filters.search.toLowerCase()
+                const linkedInstructors = (video as { instructors?: Array<{ full_name?: string | null }> }).instructors || []
+                const instructorText = [
+                    video.instructor?.full_name || '',
+                    ...linkedInstructors.map((instructor) => instructor.full_name || '')
+                ].join(' ').toLowerCase()
                 const matchesSearch =
                     video.title.toLowerCase().includes(searchLower) ||
-                    (video.description && video.description.toLowerCase().includes(searchLower))
+                    (video.description && video.description.toLowerCase().includes(searchLower)) ||
+                    instructorText.includes(searchLower)
 
                 if (!matchesSearch) return false
             }
@@ -380,12 +386,20 @@ export default function VideoLibraryPage() {
 
     // Export videos data
     const handleExport = () => {
+        const getInstructorNames = (video: VideoWithRelations) => {
+            const linked = (video as { instructors?: Array<{ full_name?: string | null }> }).instructors || []
+            if (linked.length > 0) {
+                return linked.map((instructor) => instructor.full_name).filter(Boolean).join(', ')
+            }
+            return video.instructor?.full_name || ''
+        }
+
         const csvData = filteredVideos.map((video: VideoWithRelations) => {
             const category = (categoriesQuery.data as CategoryWithRelations[] || []).find(cat => cat.id === video.category_id)
             return {
                 title: video.title,
                 category: category?.name || '',
-                instructor: '', // Instructor data not available in current schema
+                instructor: getInstructorNames(video),
                 status: video.processing_status,
                 tier: video.tier_required,
                 uploadDate: video.created_at,
@@ -667,7 +681,12 @@ export default function VideoLibraryPage() {
 
                 {/* Video Table */}
                 <VideoTable
-                    videos={filteredVideos.map(video => ({
+                    videos={filteredVideos.map(video => {
+                        const linkedInstructors = (video as { instructors?: Array<{ full_name?: string | null }> }).instructors || []
+                        const instructorName = linkedInstructors.length > 0
+                            ? linkedInstructors.map((instructor) => instructor.full_name).filter(Boolean).join(', ')
+                            : video.instructor?.full_name || ''
+                        return {
                         id: video.id,
                         title: video.title,
                         description: video.description || '',
@@ -680,14 +699,14 @@ export default function VideoLibraryPage() {
                         disciplineId: video.category?.discipline_id || '',
                         categoryName: video.category?.name || 'Uncategorized',
                         disciplineName: video.category?.discipline?.name || 'N/A',
-                        instructor: video.instructor?.full_name || '',
+                        instructor: instructorName,
                         uploadDate: video.created_at,
                         lastModified: video.updated_at || video.created_at,
                         viewCount: video.view_count || 0,
                         completionRate: 0, // This would need to be calculated from user_progress
                         tags: video.tags || [],
                         streamId: video.cloudflare_video_id || undefined
-                    }))}
+                    }})}
                     selectedVideos={selectedVideos}
                     onSelectionChange={setSelectedVideos}
                     categories={(categoriesQuery.data as CategoryWithRelations[] || []).map(cat => ({

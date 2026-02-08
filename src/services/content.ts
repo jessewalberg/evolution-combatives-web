@@ -28,7 +28,9 @@ import type {
     VideoWithRelations,
     SubscriptionTier,
     VideoDifficulty,
-    ProcessingStatus
+    ProcessingStatus,
+    InstructorInsert,
+    InstructorUpdate
 } from 'shared/types/database'
 
 /**
@@ -43,6 +45,7 @@ export interface VideoCreateData {
     categoryId: string
     disciplineId?: string // Not used in DB, but may come from frontend
     instructorId?: string | null
+    instructorIds?: string[]
     duration?: number
     thumbnailUrl?: string | null
     subscriptionTier?: SubscriptionTier
@@ -68,6 +71,8 @@ export type {
     Discipline,
     Category,
     Instructor,
+    InstructorInsert,
+    InstructorUpdate,
     DisciplineInsert,
     DisciplineUpdate,
     CategoryInsert,
@@ -133,6 +138,11 @@ interface VideoSupabaseResponse extends Video {
         disciplines?: Discipline
     }
     instructors?: Instructor
+    video_instructors?: Array<{
+        instructor?: Instructor | null
+        instructor_id?: string | null
+        is_primary?: boolean | null
+    }>
 }
 
 /**
@@ -140,16 +150,71 @@ interface VideoSupabaseResponse extends Video {
  * Converts plural keys (categories, disciplines, instructors) to singular (category, discipline, instructor)
  */
 function transformVideoRelations(video: VideoSupabaseResponse): VideoWithRelations {
+    const linkedInstructors = (video.video_instructors || [])
+        .map((link) => link.instructor)
+        .filter((instructor): instructor is Instructor => !!instructor)
+
+    const primaryInstructor =
+        linkedInstructors[0] ||
+        video.instructors ||
+        undefined
+
     const transformed: VideoWithRelations = {
         ...video,
         category: video.categories ? {
             ...video.categories,
             discipline: video.categories.disciplines
         } : undefined,
-        instructor: video.instructors
+        instructor: primaryInstructor
     }
 
-    return transformed
+    return {
+        ...transformed,
+        instructors: linkedInstructors
+    } as VideoWithRelations
+}
+
+const getUntypedTable = (supabase: ReturnType<typeof createAdminClient>, table: string) =>
+    (supabase as unknown as { from: (tableName: string) => any }).from(table)
+
+const normalizeInstructorIds = (value?: string[] | string | null): string[] => {
+    if (!value) return []
+    const list = Array.isArray(value) ? value : [value]
+    return [...new Set(list.map((id) => id.trim()).filter(Boolean))]
+}
+
+const syncVideoInstructors = async (
+    supabase: ReturnType<typeof createAdminClient>,
+    videoId: string,
+    instructorIds?: string[]
+) => {
+    if (!instructorIds) return
+
+    const normalizedIds = normalizeInstructorIds(instructorIds)
+    const table = getUntypedTable(supabase, 'video_instructors')
+
+    const { error: deleteError } = await table
+        .delete()
+        .eq('video_id', videoId)
+
+    if (deleteError) {
+        throw handleSupabaseError(deleteError)
+    }
+
+    if (normalizedIds.length === 0) {
+        return
+    }
+
+    const rows = normalizedIds.map((instructorId, index) => ({
+        video_id: videoId,
+        instructor_id: instructorId,
+        is_primary: index === 0
+    }))
+
+    const { error: insertError } = await table.insert(rows)
+    if (insertError) {
+        throw handleSupabaseError(insertError)
+    }
 }
 
 // Query Functions
@@ -243,6 +308,11 @@ export const contentQueries = {
                 categories!category_id(
                     *,
                     disciplines!discipline_id(*)
+                ),
+                video_instructors(
+                    instructor_id,
+                    is_primary,
+                    instructor:instructors(*)
                 )
             `, { count: 'exact' })
             .range(from, to)
@@ -250,15 +320,62 @@ export const contentQueries = {
 
         // Apply filters
         if (filters.search) {
-            query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+            const searchTerm = filters.search.trim()
+            const instructorIdRows = await supabase
+                .from('instructors')
+                .select('id')
+                .ilike('full_name', `%${searchTerm}%`)
+
+            const matchingInstructorIds = (instructorIdRows.data || []).map((row) => row.id)
+            let matchingVideoIds: string[] = []
+
+            if (matchingInstructorIds.length > 0) {
+                const linkedVideos = await getUntypedTable(supabase, 'video_instructors')
+                    .select('video_id')
+                    .in('instructor_id', matchingInstructorIds)
+                matchingVideoIds = [...new Set((linkedVideos.data || []).map((row: { video_id: string }) => row.video_id))]
+            }
+
+            const searchParts = [
+                `title.ilike.%${searchTerm}%`,
+                `description.ilike.%${searchTerm}%`,
+            ]
+
+            if (matchingVideoIds.length > 0) {
+                searchParts.push(`id.in.(${matchingVideoIds.join(',')})`)
+            }
+
+            if (matchingInstructorIds.length > 0) {
+                searchParts.push(`instructor_id.in.(${matchingInstructorIds.join(',')})`)
+            }
+
+            query = query.or(searchParts.join(','))
         }
         if (filters.categoryId) {
             query = query.eq('category_id', filters.categoryId)
         }
-        // Instructor relationship removed - instructor_id column may not exist
-        // if (filters.instructorId) {
-        //     query = query.eq('instructor_id', filters.instructorId)
-        // }
+        if (filters.instructorId) {
+            const linkedVideos = await getUntypedTable(supabase, 'video_instructors')
+                .select('video_id')
+                .eq('instructor_id', filters.instructorId)
+            const linkedVideoIds = (linkedVideos.data || []).map((row: { video_id: string }) => row.video_id)
+
+            const legacyVideoIdsResponse = await supabase
+                .from('videos')
+                .select('id')
+                .eq('instructor_id', filters.instructorId)
+            const legacyVideoIds = (legacyVideoIdsResponse.data || []).map((row) => row.id)
+
+            const allVideoIds = [...new Set([...linkedVideoIds, ...legacyVideoIds])]
+            if (allVideoIds.length === 0) {
+                return {
+                    data: [],
+                    totalCount: 0,
+                    hasMore: false
+                }
+            }
+            query = query.in('id', allVideoIds)
+        }
         if (filters.subscriptionTier) {
             query = query.eq('tier_required', filters.subscriptionTier)
         }
@@ -301,6 +418,11 @@ export const contentQueries = {
                 categories!category_id(
                     *,
                     disciplines!discipline_id(*)
+                ),
+                video_instructors(
+                    instructor_id,
+                    is_primary,
+                    instructor:instructors(*)
                 )
             `)
             .eq('id', videoId)
@@ -319,14 +441,19 @@ export const contentQueries = {
     /**
      * Fetch all instructors
      */
-    async fetchInstructors(): Promise<Instructor[]> {
+    async fetchInstructors(activeOnly = true): Promise<Instructor[]> {
         const supabase = createAdminClient()
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('instructors')
             .select('*')
-            .eq('is_active', true)
             .order('full_name', { ascending: true })
+
+        if (activeOnly) {
+            query = query.eq('is_active', true)
+        }
+
+        const { data, error } = await query
 
         if (error) {
             throw handleSupabaseError(error)
@@ -391,6 +518,12 @@ export const contentMutations = {
 
         const supabase = createAdminClient()
 
+        const normalizedInstructorIds = normalizeInstructorIds(
+            videoData.instructorIds && videoData.instructorIds.length > 0
+                ? videoData.instructorIds
+                : videoData.instructorId || null
+        )
+
         // Transform camelCase to snake_case for database insertion
         const dbVideoData: VideoInsert = {
             id: videoData.id,
@@ -398,7 +531,7 @@ export const contentMutations = {
             description: videoData.description || null,
             slug: videoData.slug,
             category_id: videoData.categoryId, // Transform camelCase to snake_case
-            instructor_id: videoData.instructorId || null,
+            instructor_id: normalizedInstructorIds[0] || null,
             cloudflare_video_id: videoData.id, // Use the Cloudflare video ID
             duration_seconds: videoData.duration || 0,
             thumbnail_url: videoData.thumbnailUrl || null,
@@ -421,6 +554,8 @@ export const contentMutations = {
             throw handleSupabaseError(error)
         }
 
+        await syncVideoInstructors(supabase, data.id, normalizedInstructorIds)
+
         return data
     },
 
@@ -428,7 +563,7 @@ export const contentMutations = {
      * Update video information
      * NOTE: This function requires admin access and should only be called server-side
      */
-    async updateVideo(videoId: string, updates: VideoUpdate): Promise<Video> {
+    async updateVideo(videoId: string, updates: VideoUpdate & { instructorIds?: string[] }): Promise<Video> {
         // Check if we're in a browser environment
         if (typeof window !== 'undefined') {
             throw new Error('updateVideo requires admin access and cannot be used in browser environment - use server-side API routes instead')
@@ -436,10 +571,19 @@ export const contentMutations = {
 
         const supabase = createAdminClient()
 
+        const normalizedInstructorIds = normalizeInstructorIds(
+            updates.instructorIds && updates.instructorIds.length > 0
+                ? updates.instructorIds
+                : updates.instructor_id || null
+        )
+
+        const { instructorIds: _instructorIds, ...dbUpdates } = updates
+
         const { data, error } = await supabase
             .from('videos')
             .update({
-                ...updates,
+                ...dbUpdates,
+                instructor_id: normalizedInstructorIds[0] || null,
                 updated_at: new Date().toISOString()
             })
             .eq('id', videoId)
@@ -449,6 +593,8 @@ export const contentMutations = {
         if (error) {
             throw handleSupabaseError(error)
         }
+
+        await syncVideoInstructors(supabase, videoId, normalizedInstructorIds)
 
         return data
     },
@@ -672,6 +818,96 @@ export const contentMutations = {
 
         if (categoryError) {
             throw handleSupabaseError(categoryError)
+        }
+    },
+
+    /**
+     * Create new instructor
+     * NOTE: This function requires admin access and should only be called server-side
+     */
+    async createInstructor(instructorData: InstructorInsert): Promise<Instructor> {
+        if (typeof window !== 'undefined') {
+            throw new Error('createInstructor requires admin access and cannot be used in browser environment - use server-side API routes instead')
+        }
+
+        const supabase = createAdminClient()
+
+        const { data, error } = await supabase
+            .from('instructors')
+            .insert({
+                ...instructorData,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .select()
+            .single()
+
+        if (error) {
+            throw handleSupabaseError(error)
+        }
+
+        return data
+    },
+
+    /**
+     * Update instructor
+     * NOTE: This function requires admin access and should only be called server-side
+     */
+    async updateInstructor(instructorId: string, updates: InstructorUpdate): Promise<Instructor> {
+        if (typeof window !== 'undefined') {
+            throw new Error('updateInstructor requires admin access and cannot be used in browser environment - use server-side API routes instead')
+        }
+
+        const supabase = createAdminClient()
+
+        const { data, error } = await supabase
+            .from('instructors')
+            .update({
+                ...updates,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', instructorId)
+            .select()
+            .single()
+
+        if (error) {
+            throw handleSupabaseError(error)
+        }
+
+        return data
+    },
+
+    /**
+     * Delete instructor
+     * NOTE: This function requires admin access and should only be called server-side
+     */
+    async deleteInstructor(instructorId: string): Promise<void> {
+        if (typeof window !== 'undefined') {
+            throw new Error('deleteInstructor requires admin access and cannot be used in browser environment - use server-side API routes instead')
+        }
+
+        const supabase = createAdminClient()
+
+        // Clear legacy single-instructor references before deletion.
+        const { error: clearLegacyError } = await supabase
+            .from('videos')
+            .update({
+                instructor_id: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('instructor_id', instructorId)
+
+        if (clearLegacyError) {
+            throw handleSupabaseError(clearLegacyError)
+        }
+
+        const { error } = await supabase
+            .from('instructors')
+            .delete()
+            .eq('id', instructorId)
+
+        if (error) {
+            throw handleSupabaseError(error)
         }
     },
 

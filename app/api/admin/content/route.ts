@@ -3,6 +3,43 @@ import { createAdminClient } from '../../../../src/lib/supabase'
 import { handleSupabaseError } from '../../../../src/lib/shared/utils/supabase-errors'
 import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 
+const normalizeInstructorIds = (value?: unknown): string[] => {
+    if (!value) return []
+    if (Array.isArray(value)) {
+        return [...new Set(value.map((id) => String(id).trim()).filter(Boolean))]
+    }
+    return [...new Set([String(value).trim()].filter(Boolean))]
+}
+
+const syncVideoInstructors = async (
+    supabase: ReturnType<typeof createAdminClient>,
+    videoId: string,
+    instructorIds: string[]
+) => {
+    const table = (supabase as unknown as { from: (table: string) => any }).from('video_instructors')
+
+    const { error: deleteError } = await table
+        .delete()
+        .eq('video_id', videoId)
+
+    if (deleteError) {
+        throw handleSupabaseError(deleteError)
+    }
+
+    if (instructorIds.length === 0) return
+
+    const rows = instructorIds.map((instructorId, index) => ({
+        video_id: videoId,
+        instructor_id: instructorId,
+        is_primary: index === 0
+    }))
+
+    const { error: insertError } = await table.insert(rows)
+    if (insertError) {
+        throw handleSupabaseError(insertError)
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         // Authenticate user and check permissions
@@ -44,10 +81,14 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ success: true, data: stats })
 
             case 'createVideo':
+                {
+                const normalizedInstructorIds = normalizeInstructorIds(data.videoData?.instructorIds || data.videoData?.instructor_id)
+                const { instructorIds: _instructorIds, ...videoData } = data.videoData || {}
                 const { data: newVideo, error: createError } = await supabase
                     .from('videos')
                     .insert({
-                        ...data.videoData,
+                        ...videoData,
+                        instructor_id: normalizedInstructorIds[0] || null,
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     })
@@ -58,13 +99,20 @@ export async function POST(request: NextRequest) {
                     throw handleSupabaseError(createError)
                 }
 
+                await syncVideoInstructors(supabase, newVideo.id, normalizedInstructorIds)
+
                 return NextResponse.json({ success: true, data: newVideo })
+                }
 
             case 'updateVideo':
+                {
+                const normalizedInstructorIds = normalizeInstructorIds(data.updates?.instructorIds || data.updates?.instructor_id)
+                const { instructorIds: _instructorIds, ...updateData } = data.updates || {}
                 const { data: updatedVideo, error: updateError } = await supabase
                     .from('videos')
                     .update({
-                        ...data.updates,
+                        ...updateData,
+                        instructor_id: normalizedInstructorIds[0] || null,
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', data.videoId)
@@ -75,7 +123,10 @@ export async function POST(request: NextRequest) {
                     throw handleSupabaseError(updateError)
                 }
 
+                await syncVideoInstructors(supabase, data.videoId, normalizedInstructorIds)
+
                 return NextResponse.json({ success: true, data: updatedVideo })
+                }
 
             case 'deleteVideo':
                 // Start transaction-like cleanup

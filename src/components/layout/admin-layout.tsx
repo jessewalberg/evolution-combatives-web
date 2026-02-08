@@ -99,6 +99,12 @@ const navigation: NavItem[] = [
                 icon: DocumentTextIcon,
                 roles: ['super_admin', 'content_admin', 'content_support_admin'],
             },
+            {
+                name: 'Instructors',
+                href: ROUTES.DASHBOARD.CONTENT.INSTRUCTORS,
+                icon: UserGroupIcon,
+                roles: ['super_admin', 'content_admin', 'content_support_admin'],
+            },
         ],
     },
     {
@@ -576,6 +582,13 @@ const Header: React.FC<HeaderProps> = ({
                             >
                                 <DocumentTextIcon className="h-4 w-4 text-current mr-3" />
                                 Create Category
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={() => window.location.href = ROUTES.DASHBOARD.CONTENT.INSTRUCTORS}
+                                className="cursor-pointer"
+                            >
+                                <UserGroupIcon className="h-4 w-4 text-current mr-3" />
+                                Manage Instructors
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

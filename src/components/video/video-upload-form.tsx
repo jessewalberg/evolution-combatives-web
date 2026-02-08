@@ -63,7 +63,7 @@ interface VideoMetadata {
     tags: string[]
     customThumbnail?: File
     duration?: number
-    instructor?: string
+    instructorIds?: string[]
 }
 
 /**
@@ -129,6 +129,11 @@ interface VideoUploadFormProps {
     disciplines?: Array<{ id: string; name: string }>
 
     /**
+     * Available instructors for selection
+     */
+    instructors?: Array<{ id: string; fullName: string }>
+
+    /**
      * Upload success callback
      */
     onSuccess?: (videoId: string) => void
@@ -176,6 +181,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
     ({
         categories = [],
         disciplines = [],
+        instructors = [],
         onSuccess,
         onError,
         onUploadStart,
@@ -287,6 +293,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                         disciplineId: '',
                         subscriptionTier: 'none',
                         tags: [],
+                        instructorIds: [],
                     }
                 }
 
@@ -427,6 +434,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                     categoryName: categories.find(c => c.id === upload.metadata?.categoryId)?.name || '',
                     disciplineId: upload.metadata.disciplineId,
                     disciplineName: disciplines.find(d => d.id === upload.metadata?.disciplineId)?.name || '',
+                    instructorIds: upload.metadata.instructorIds || [],
                     uploadDate: new Date().toISOString(),
                     lastModified: new Date().toISOString(),
                     viewCount: 0,
@@ -894,6 +902,30 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
                                                                     Category is required
                                                                 </p>
                                                             )}
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                                Instructors
+                                                            </label>
+                                                            <select
+                                                                multiple
+                                                                value={upload.metadata?.instructorIds || []}
+                                                                onChange={(e) => {
+                                                                    const selected = Array.from(e.currentTarget.selectedOptions).map(option => option.value)
+                                                                    updateMetadata(upload.id, { instructorIds: selected })
+                                                                }}
+                                                                disabled={upload.status === 'complete' || isLoading}
+                                                                className="w-full min-h-[120px] px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                            >
+                                                                {instructors.map(instructor => (
+                                                                    <option key={instructor.id} value={instructor.id}>
+                                                                        {instructor.fullName}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                                                Hold Cmd/Ctrl to select multiple instructors.
+                                                            </p>
                                                         </div>
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
