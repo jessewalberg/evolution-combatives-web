@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useCallback, useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createBrowserClient } from '../../../src/lib/supabase-browser'
 import { Card } from '../../../src/components/ui/card'
@@ -24,6 +24,16 @@ function AuthConfirmContent() {
         status: 'loading',
         message: 'Verifying your email...'
     })
+
+    const navigateToTarget = useCallback((target: string) => {
+        // Use full browser navigation for deep links and absolute URLs.
+        if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(target)) {
+            window.location.href = target
+            return
+        }
+
+        router.push(target)
+    }, [router])
 
     useEffect(() => {
         const handleEmailVerification = async () => {
@@ -78,7 +88,7 @@ function AuthConfirmContent() {
                             setVerificationState({
                                 status: 'already_verified',
                                 message: 'Your email has been verified! You can now sign in to your account.',
-                                redirectUrl: '/login',
+                                redirectUrl: redirect_to || '/login',
                                 debugInfo: JSON.stringify({
                                     ...debugInfo,
                                     note: 'Email verification succeeded, but session creation failed due to PKCE. User should login manually.',
@@ -96,14 +106,18 @@ function AuthConfirmContent() {
                     }
 
                     if (data.session) {
+                        const redirectTarget = redirect_to || '/dashboard'
                         setVerificationState({
                             status: 'success',
-                            message: 'Email verified successfully! Redirecting to dashboard...'
+                            message: redirect_to
+                                ? 'Email verified successfully! Redirecting to the app...'
+                                : 'Email verified successfully! Redirecting to dashboard...',
+                            redirectUrl: redirectTarget
                         })
 
-                        // Redirect to dashboard after brief delay
+                        // Redirect after brief delay.
                         setTimeout(() => {
-                            router.push('/dashboard')
+                            navigateToTarget(redirectTarget)
                         }, 2000)
                     }
                     return
@@ -136,14 +150,18 @@ function AuthConfirmContent() {
                     }
 
                     if (data.session) {
+                        const redirectTarget = redirect_to || '/dashboard'
                         setVerificationState({
                             status: 'success',
-                            message: 'Email verified successfully! Redirecting to dashboard...'
+                            message: redirect_to
+                                ? 'Email verified successfully! Redirecting to the app...'
+                                : 'Email verified successfully! Redirecting to dashboard...',
+                            redirectUrl: redirectTarget
                         })
 
-                        // Redirect to dashboard
+                        // Redirect after brief delay.
                         setTimeout(() => {
-                            router.push('/dashboard')
+                            navigateToTarget(redirectTarget)
                         }, 2000)
                     } else {
                         setVerificationState({
@@ -172,14 +190,18 @@ function AuthConfirmContent() {
                     }
 
                     if (data.session) {
+                        const redirectTarget = redirect_to || '/dashboard'
                         setVerificationState({
                             status: 'success',
-                            message: 'Email verified successfully! Redirecting to dashboard...'
+                            message: redirect_to
+                                ? 'Email verified successfully! Redirecting to the app...'
+                                : 'Email verified successfully! Redirecting to dashboard...',
+                            redirectUrl: redirectTarget
                         })
 
-                        // Redirect to dashboard
+                        // Redirect after brief delay.
                         setTimeout(() => {
-                            router.push('/dashboard')
+                            navigateToTarget(redirectTarget)
                         }, 2000)
                     } else {
                         setVerificationState({
@@ -208,7 +230,7 @@ function AuthConfirmContent() {
         }
 
         handleEmailVerification()
-    }, [searchParams, router])
+    }, [searchParams, navigateToTarget])
 
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
@@ -287,18 +309,19 @@ function AuthConfirmContent() {
                     <div className="space-y-3">
                         {verificationState.status === 'success' && (
                             <p className="text-sm text-muted-foreground">
-                                Redirecting to dashboard...
+                                {verificationState.redirectUrl?.includes('://') ? 'Redirecting to app...' : 'Redirecting...'}
                             </p>
                         )}
 
                         {verificationState.status === 'already_verified' && verificationState.redirectUrl && (
                             <Button
-                                onClick={() => router.push(verificationState.redirectUrl!)}
+                                onClick={() => navigateToTarget(verificationState.redirectUrl!)}
                                 variant="primary"
                                 size="lg"
                                 className="w-full"
                             >
                                 {verificationState.redirectUrl.includes('login') ? 'Go to Login' :
+                                    verificationState.redirectUrl.includes('://') ? 'Open App' :
                                     verificationState.redirectUrl.includes('dashboard') ? 'Go to Dashboard' : 'Continue'}
                             </Button>
                         )}
