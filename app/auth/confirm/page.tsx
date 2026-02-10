@@ -24,6 +24,19 @@ function AuthConfirmContent() {
         status: 'loading',
         message: 'Verifying your email...'
     })
+    const [showManualOpen, setShowManualOpen] = useState(false)
+
+    const safeDecode = useCallback((value: string) => {
+        try {
+            return decodeURIComponent(value)
+        } catch {
+            return value
+        }
+    }, [])
+
+    const isDeepLinkTarget = useCallback((target: string) => {
+        return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(target) && !/^https?:/i.test(target)
+    }, [])
 
     const navigateToTarget = useCallback((target: string) => {
         // Use full browser navigation for deep links and absolute URLs.
@@ -36,17 +49,47 @@ function AuthConfirmContent() {
     }, [router])
 
     useEffect(() => {
+        const timeoutIds: number[] = []
+
+        const scheduleRedirect = (redirectTarget: string) => {
+            if (isDeepLinkTarget(redirectTarget)) {
+                // Attempt automatic handoff to app first.
+                navigateToTarget(redirectTarget)
+
+                // If browser remains visible, automatic deep-link likely got blocked.
+                // Show manual action so the user can tap to open.
+                timeoutIds.push(window.setTimeout(() => {
+                    if (document.visibilityState === 'visible') {
+                        setShowManualOpen(true)
+                    }
+                }, 1800))
+                return
+            }
+
+            timeoutIds.push(window.setTimeout(() => {
+                navigateToTarget(redirectTarget)
+            }, 1200))
+        }
+
         const handleEmailVerification = async () => {
             try {
                 const supabase = createBrowserClient()
 
                 // Query params
-                const redirect_to = searchParams.get('redirect_to')
                 const error = searchParams.get('error')
                 const error_description = searchParams.get('error_description')
 
                 // Parse hash fragment (after #)
                 const hashParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.hash.slice(1) : '')
+
+                // Resolve redirect target from either query or hash (provider/flow dependent)
+                const rawRedirectTarget =
+                    searchParams.get('redirect_to')
+                    || searchParams.get('redirectTo')
+                    || hashParams.get('redirect_to')
+                    || hashParams.get('redirectTo')
+                    || null
+                const redirect_to = rawRedirectTarget ? safeDecode(rawRedirectTarget) : null
 
                 // Debug info
                 const debugInfo = {
@@ -114,11 +157,7 @@ function AuthConfirmContent() {
                                 : 'Email verified successfully! Redirecting to dashboard...',
                             redirectUrl: redirectTarget
                         })
-
-                        // Redirect after brief delay.
-                        setTimeout(() => {
-                            navigateToTarget(redirectTarget)
-                        }, 2000)
+                        scheduleRedirect(redirectTarget)
                     }
                     return
                 }
@@ -158,11 +197,7 @@ function AuthConfirmContent() {
                                 : 'Email verified successfully! Redirecting to dashboard...',
                             redirectUrl: redirectTarget
                         })
-
-                        // Redirect after brief delay.
-                        setTimeout(() => {
-                            navigateToTarget(redirectTarget)
-                        }, 2000)
+                        scheduleRedirect(redirectTarget)
                     } else {
                         setVerificationState({
                             status: 'error',
@@ -198,11 +233,7 @@ function AuthConfirmContent() {
                                 : 'Email verified successfully! Redirecting to dashboard...',
                             redirectUrl: redirectTarget
                         })
-
-                        // Redirect after brief delay.
-                        setTimeout(() => {
-                            navigateToTarget(redirectTarget)
-                        }, 2000)
+                        scheduleRedirect(redirectTarget)
                     } else {
                         setVerificationState({
                             status: 'error',
@@ -230,7 +261,10 @@ function AuthConfirmContent() {
         }
 
         handleEmailVerification()
-    }, [searchParams, navigateToTarget])
+        return () => {
+            timeoutIds.forEach((id) => window.clearTimeout(id))
+        }
+    }, [searchParams, navigateToTarget, safeDecode, isDeepLinkTarget])
 
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
@@ -308,9 +342,26 @@ function AuthConfirmContent() {
                     {/* Actions */}
                     <div className="space-y-3">
                         {verificationState.status === 'success' && (
-                            <p className="text-sm text-muted-foreground">
-                                {verificationState.redirectUrl?.includes('://') ? 'Redirecting to app...' : 'Redirecting...'}
-                            </p>
+                            <div className="space-y-3">
+                                <p className="text-sm text-muted-foreground">
+                                    {verificationState.redirectUrl?.includes('://') ? 'Redirecting to app...' : 'Redirecting...'}
+                                </p>
+                                {showManualOpen && verificationState.redirectUrl && verificationState.redirectUrl.includes('://') && (
+                                    <>
+                                        <Button
+                                            onClick={() => navigateToTarget(verificationState.redirectUrl!)}
+                                            variant="primary"
+                                            size="lg"
+                                            className="w-full"
+                                        >
+                                            Open App
+                                        </Button>
+                                        <p className="text-xs text-muted-foreground">
+                                            If nothing happens, tap the button above to continue in the app.
+                                        </p>
+                                    </>
+                                )}
+                            </div>
                         )}
 
                         {verificationState.status === 'already_verified' && verificationState.redirectUrl && (
