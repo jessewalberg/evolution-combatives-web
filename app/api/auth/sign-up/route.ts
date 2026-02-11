@@ -145,8 +145,7 @@ export async function POST(request: NextRequest) {
             options: {
                 data: {
                     full_name: validatedData.fullName
-                },
-                emailRedirectTo: `${request.nextUrl.origin}/auth/confirm`
+                }
             }
         })
 
@@ -203,7 +202,7 @@ export async function POST(request: NextRequest) {
         // Return success response
         const response = NextResponse.json({
             success: true,
-            message: 'Account created successfully. Please check your email to confirm your account.',
+            message: 'Account created successfully. Please enter the verification code sent to your email.',
             user: {
                 id: authData.user.id,
                 email: authData.user.email

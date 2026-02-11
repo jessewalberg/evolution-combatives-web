@@ -53,6 +53,8 @@ function LoginContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const redirectTo = searchParams.get('redirectTo') || '/dashboard'
+    const initialEmail = searchParams.get('email') || ''
+    const authMessage = searchParams.get('message') || ''
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLocked, setIsLocked] = useState(false)
@@ -70,7 +72,7 @@ function LoginContent() {
     } = useForm({
         resolver: zodResolver(loginSchema),
         defaultValues: {
-            email: '',
+            email: initialEmail,
             password: '',
             rememberMe: false
         }
@@ -107,6 +109,20 @@ function LoginContent() {
 
         checkSession()
     }, [supabase, router, redirectTo])
+
+    useEffect(() => {
+        if (authMessage === 'check_email') {
+            toast.info('Check your email', {
+                description: 'Enter the verification code from your email to finish setup.'
+            })
+        }
+
+        if (authMessage === 'email_verified') {
+            toast.success('Email verified', {
+                description: 'You can now sign in with your credentials.'
+            })
+        }
+    }, [authMessage])
 
     // Rate limiting functions
     const getLoginAttempts = (): LoginAttempt[] => {
@@ -207,7 +223,7 @@ function LoginContent() {
                     })
                 } else if (authError.message.includes('Email not confirmed')) {
                     setError('root', {
-                        message: 'Please check your email and click the confirmation link before signing in.'
+                        message: 'Please verify your email with the 6-digit code before signing in.'
                     })
                 } else {
                     setError('root', {

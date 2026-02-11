@@ -119,8 +119,7 @@ function SignUpContent() {
                 options: {
                     data: {
                         full_name: data.fullName
-                    },
-                    emailRedirectTo: `${window.location.origin}/auth/confirm`
+                    }
                 }
             })
 
@@ -151,12 +150,12 @@ function SignUpContent() {
 
             // Show success message
             toast.success('Account created!', {
-                description: 'Please check your email to confirm your account before signing in.'
+                description: 'Please enter the 6-digit verification code from your email.'
             })
 
-            // Redirect to login with message
+            // Redirect to verification page
             setTimeout(() => {
-                router.push('/login?message=check_email')
+                router.push(`/verify-email?email=${encodeURIComponent(data.email)}`)
             }, 2000)
 
         } catch (error) {
