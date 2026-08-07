@@ -8,7 +8,7 @@ export interface ApiUser {
     email: string
 }
 
-const ROLE_PERMISSIONS: Record<string, Set<string>> = {
+export const ROLE_PERMISSIONS: Record<string, Set<string>> = {
     super_admin: new Set([
         'admin.all',
         'content.read', 'content.write', 'content.delete',
