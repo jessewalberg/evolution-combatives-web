@@ -81,10 +81,13 @@ function buildSupabase(videoFound = true) {
 }
 
 describe('POST /api/webhooks/cloudflare', () => {
+  let supabase: ReturnType<typeof buildSupabase>
+
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET = WEBHOOK_SECRET
-    mockCreateAdminClient.mockReturnValue(buildSupabase() as never)
+    supabase = buildSupabase()
+    mockCreateAdminClient.mockReturnValue(supabase as never)
   })
 
   it('returns 401 for invalid signature', async () => {
@@ -102,9 +105,10 @@ describe('POST /api/webhooks/cloudflare', () => {
 
     expect(res.status).toBe(401)
     expect(body.error).toBe('Invalid signature')
+    expect(supabase.update).not.toHaveBeenCalled()
   })
 
-  it('processes video.ready with valid HMAC signature', async () => {
+  it('processes video.ready by writing status, publish flag, and stream metadata', async () => {
     const event = buildEvent({ eventType: 'video.ready' })
     const payload = JSON.stringify(event)
     const signature = signPayload(payload)
@@ -128,10 +132,23 @@ describe('POST /api/webhooks/cloudflare', () => {
       eventType: 'video.ready',
       videoUid: 'cf-video-1',
     })
-    expect(mockCreateAdminClient).toHaveBeenCalled()
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processing_status: 'ready',
+        is_published: true,
+        duration_seconds: 120,
+        resolution: '1920x1080',
+        hls_url: 'https://hls',
+        dash_url: 'https://dash',
+        thumbnail_url: 'https://thumb',
+        preview_url: 'https://preview',
+        file_size: 1024,
+      })
+    )
+    expect(supabase.updateEq).toHaveBeenCalledWith('id', 'db-video-1')
   })
 
-  it('processes video.processing.failed event', async () => {
+  it('processes video.processing.failed by writing error status and reason', async () => {
     const event = buildEvent({
       eventType: 'video.processing.failed',
       status: { state: 'error', errorReasonCode: 'E001', errorReasonText: 'Transcode failed' },
@@ -151,11 +168,20 @@ describe('POST /api/webhooks/cloudflare', () => {
     )
 
     expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processing_status: 'error',
+        is_published: false,
+        error_code: 'E001',
+        error_message: 'Transcode failed',
+      })
+    )
   })
 
   it('returns 500 when video not found in database', async () => {
     vi.useFakeTimers()
-    mockCreateAdminClient.mockReturnValue(buildSupabase(false) as never)
+    supabase = buildSupabase(false)
+    mockCreateAdminClient.mockReturnValue(supabase as never)
     const event = buildEvent()
     const payload = JSON.stringify(event)
     const signature = signPayload(payload)
@@ -178,6 +204,7 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(500)
     expect(body.error).toBe('Webhook processing failed')
     expect(body.message).toContain('not found')
+    expect(supabase.update).not.toHaveBeenCalled()
   })
 
   it('returns 401 when signature header missing', async () => {
@@ -193,7 +220,7 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(401)
   })
 
-  it('processes video.upload.complete', async () => {
+  it('processes video.upload.complete by marking status processing and unpublished', async () => {
     const event = buildEvent({ eventType: 'video.upload.complete' })
     const payload = JSON.stringify(event)
     mockHeaders.mockResolvedValue(
@@ -207,9 +234,12 @@ describe('POST /api/webhooks/cloudflare', () => {
       })
     )
     expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'processing', is_published: false })
+    )
   })
 
-  it('processes video.processing.started', async () => {
+  it('processes video.processing.started by marking status processing and unpublished', async () => {
     const event = buildEvent({ eventType: 'video.processing.started' })
     const payload = JSON.stringify(event)
     mockHeaders.mockResolvedValue(
@@ -223,9 +253,12 @@ describe('POST /api/webhooks/cloudflare', () => {
       })
     )
     expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'processing', is_published: false })
+    )
   })
 
-  it('processes video.processing.complete', async () => {
+  it('processes video.processing.complete by writing ready status and metadata', async () => {
     const event = buildEvent({ eventType: 'video.processing.complete' })
     const payload = JSON.stringify(event)
     mockHeaders.mockResolvedValue(
@@ -239,9 +272,17 @@ describe('POST /api/webhooks/cloudflare', () => {
       })
     )
     expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processing_status: 'ready',
+        is_published: true,
+        duration_seconds: 120,
+        resolution: '1920x1080',
+      })
+    )
   })
 
-  it('processes video.deleted', async () => {
+  it('processes video.deleted by marking status deleted and unpublished', async () => {
     const event = buildEvent({ eventType: 'video.deleted' })
     const payload = JSON.stringify(event)
     mockHeaders.mockResolvedValue(
@@ -255,9 +296,12 @@ describe('POST /api/webhooks/cloudflare', () => {
       })
     )
     expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'deleted', is_published: false })
+    )
   })
 
-  it('handles unknown event types via default branch', async () => {
+  it('handles unknown event types via default branch, writing queued status', async () => {
     const event = buildEvent({ eventType: 'video.unknown' as never })
     const payload = JSON.stringify(event)
     mockHeaders.mockResolvedValue(
@@ -271,6 +315,9 @@ describe('POST /api/webhooks/cloudflare', () => {
       })
     )
     expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'queued', is_published: false })
+    )
   })
 })
 
