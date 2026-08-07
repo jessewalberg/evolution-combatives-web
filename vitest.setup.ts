@@ -26,3 +26,12 @@ Object.defineProperty(process.env, 'NODE_ENV', {
 if (!globalThis.fetch) {
   globalThis.fetch = vi.fn()
 }
+
+// Headless UI (Menu/Popover) uses ResizeObserver; jsdom does not provide it.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver =
+  globalThis.ResizeObserver ?? (ResizeObserverStub as typeof ResizeObserver)
