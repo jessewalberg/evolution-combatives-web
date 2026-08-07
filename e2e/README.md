@@ -1,6 +1,6 @@
 # Playwright E2E
 
-Phase 3 of the testing initiative (GitHub issue #19). These tests run against the **same shared Supabase project and Stripe test-mode keys** used by Vercel preview/staging — not a disposable test project. Treat data hygiene as mandatory.
+Phase 3 of the testing initiative (GitHub issue #19). These tests run against the **same shared Supabase project and Stripe test-mode keys** used by Vercel preview/staging - not a disposable test project. Treat data hygiene as mandatory.
 
 ## Prerequisites
 
@@ -85,7 +85,7 @@ E2E_WEB_SERVER_COMMAND="pnpm dev" pnpm test:e2e
 
 Every test that creates data must:
 
-1. Use unique identifiers (`e2e/helpers/unique.ts` — timestamp + UUID suffixes).
+1. Use unique identifiers (`e2e/helpers/unique.ts` - timestamp + UUID suffixes).
 2. Tear down in `afterEach` / `afterAll` via the app's admin/content APIs when they exist (`DELETE /api/content/...`, `POST /api/admin/content` bulk delete).
 3. Fall back to the Supabase service-role client only when no product API exists (auth users, subscription rows, Q&A questions/answers).
 

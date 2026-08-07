@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 /**
  * Dashboard sidebar navigation.
- * Analytics and Q&A are disabled/comingSoon in admin-layout.tsx — assert disabled state,
+ * Analytics and Q&A are disabled/comingSoon in admin-layout.tsx - assert disabled state,
  * do not expect navigation.
  */
 test.describe('Dashboard navigation', () => {
@@ -15,7 +15,7 @@ test.describe('Dashboard navigation', () => {
     await expect(page).toHaveURL(/\/dashboard/)
 
     // Content children (Videos / Categories / Disciplines)
-    // Expand Content if needed — children may already be visible for super_admin
+    // Expand Content if needed - children may already be visible for super_admin
     const contentTrigger = page.getByRole('button', { name: /^content$/i }).or(
       page.getByRole('link', { name: /^content$/i })
     )

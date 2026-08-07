@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 /**
- * CSRF regression — API-level Playwright request tests.
+ * CSRF regression - API-level Playwright request tests.
  * Mutating /api/* without X-CSRF-Token must be rejected (403).
  */
 test.describe('CSRF protection', () => {

@@ -7,7 +7,7 @@ import { deleteAuthUser, deleteQuestion } from '../helpers/api'
  * Q&A routes exist even though sidebar marks Q&A as comingSoon.
  * Fixtures use service-role inserts; teardown deletes answers + question + asker user.
  */
-test.describe('Q&A — list, detail, answer / moderate', () => {
+test.describe('Q&A - list, detail, answer / moderate', () => {
   let askerId: string | undefined
   let questionId: string | undefined
   let questionTitle: string | undefined
@@ -37,7 +37,7 @@ test.describe('Q&A — list, detail, answer / moderate', () => {
       .from('questions')
       .insert({
         title: questionTitle,
-        content: 'E2E fixture question body — how do I practice this technique?',
+        content: 'E2E fixture question body - how do I practice this technique?',
         status: 'pending',
         priority: 'medium',
         category: 'general',

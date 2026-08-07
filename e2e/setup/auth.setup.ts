@@ -6,7 +6,7 @@ const authFile = path.join(__dirname, '../.auth/admin.json')
 
 /**
  * Logs in once via the real /login UI and persists storageState for dependent projects.
- * Requires E2E_ADMIN_EMAIL + E2E_ADMIN_PASSWORD (op:// / GitHub secrets — never hardcoded).
+ * Requires E2E_ADMIN_EMAIL + E2E_ADMIN_PASSWORD (op:// / GitHub secrets - never hardcoded).
  */
 setup('authenticate as admin', async ({ page }) => {
   const email = process.env.E2E_ADMIN_EMAIL
