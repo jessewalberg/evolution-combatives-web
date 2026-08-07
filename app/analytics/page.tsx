@@ -178,8 +178,8 @@ export default function AnalyticsPage() {
 
                 supabase
                     .from('user_progress')
-                    .select('id, video_id, watched_seconds, completed, last_watched')
-                    .gte('last_watched', startDate.toISOString())
+                    .select('id, video_id, progress_seconds, completed, last_watched_at')
+                    .gte('last_watched_at', startDate.toISOString())
             ])
 
             if (usersResult.error) throw usersResult.error
@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
                 new Date(u.last_login_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
             ).length
 
-            const totalWatchTime = progress.reduce((sum, p) => sum + (p.watched_seconds || 0), 0)
+            const totalWatchTime = progress.reduce((sum, p) => sum + (p.progress_seconds || 0), 0)
             const avgWatchTime = progress.length > 0 ? totalWatchTime / progress.length : 0
 
             // Generate time series data (mock data for demonstration)
