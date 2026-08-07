@@ -54,9 +54,11 @@ export const isPostgrestError = (error: unknown): error is PostgrestError => {
     return (
         typeof error === 'object' &&
         error !== null &&
+        !(error instanceof EvolutionCombativesError) &&
         'code' in error &&
         'message' in error &&
-        'details' in error
+        'details' in error &&
+        'hint' in error
     )
 }
 
@@ -79,6 +81,12 @@ export const isNetworkError = (error: unknown): boolean => {
  * Format error message for user display
  */
 export const formatErrorMessage = (error: unknown): string => {
+    // Check custom errors before Postgrest shape matching — EvolutionCombativesError
+    // also has code/message/details and must not be treated as a DB error.
+    if (error instanceof EvolutionCombativesError) {
+        return error.message
+    }
+
     if (isAuthError(error)) {
         return formatAuthErrorMessage(error)
     }
@@ -89,10 +97,6 @@ export const formatErrorMessage = (error: unknown): string => {
 
     if (isNetworkError(error)) {
         return 'Network connection error. Please check your internet connection and try again.'
-    }
-
-    if (error instanceof EvolutionCombativesError) {
-        return error.message
     }
 
     if (error instanceof Error) {
