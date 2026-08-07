@@ -370,7 +370,9 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
          * Filter and sort users
          */
         const filteredAndSortedUsers = useMemo(() => {
-            let filtered = users
+            // Copy so in-place .sort() does not mutate props or return a stable
+            // reference that would skip the paginatedUsers memo update.
+            let filtered = [...users]
 
             // Apply search filter
             if (searchDebounce) {
