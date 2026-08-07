@@ -162,6 +162,49 @@ describe('middleware', () => {
     })
   })
 
+  describe('rate limiting - driven to 429', () => {
+    it('returns 429 when the general API rate limit is exceeded', async () => {
+      const clientIp = '192.168.100.1'
+      const headers = { 'x-forwarded-for': clientIp }
+
+      for (let i = 0; i < 1000; i++) {
+        const res = await middleware(
+          createNextRequest('/api/content/videos', { headers })
+        )
+        expect(res.status).not.toBe(429)
+      }
+
+      const blocked = await middleware(
+        createNextRequest('/api/content/videos', { headers })
+      )
+
+      expect(blocked.status).toBe(429)
+      const body = await blocked.json()
+      expect(body.error).toBe('Rate limit exceeded')
+      expect(blocked.headers.get('Retry-After')).toBeTruthy()
+    })
+
+    it('returns 429 when the admin API rate limit is exceeded', async () => {
+      const clientIp = '192.168.100.2'
+      const headers = { 'x-forwarded-for': clientIp }
+
+      for (let i = 0; i < 500; i++) {
+        const res = await middleware(
+          createNextRequest('/api/admin/users', { headers })
+        )
+        expect(res.status).not.toBe(429)
+      }
+
+      const blocked = await middleware(
+        createNextRequest('/api/admin/users', { headers })
+      )
+
+      expect(blocked.status).toBe(429)
+      const body = await blocked.json()
+      expect(body.error).toBe('Rate limit exceeded')
+    })
+  })
+
   describe('authentication', () => {
     it('redirects unauthenticated protected pages to login with redirectTo', async () => {
       mockCreateMiddlewareClient.mockImplementation(() => {
