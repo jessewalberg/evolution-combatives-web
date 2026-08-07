@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess } from '@/test/helpers/auth'
 import { POST } from './route'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
@@ -27,12 +28,6 @@ import { createAdminClient } from '../../../../src/lib/supabase'
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
 function request(body: Record<string, unknown>) {
   return createNextRequest('/api/video-processing/sync-single', {
     method: 'POST',
@@ -53,7 +48,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('returns 400 when videoId missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(request({}))
     const body = await res.json()
 
@@ -62,7 +57,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('returns 404 when video not found', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -78,7 +73,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('returns 400 when cloudflare id missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -103,7 +98,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('updates video when cloudflare status is ready', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const updateEq = vi.fn().mockResolvedValue({ error: null })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
@@ -128,6 +123,7 @@ describe('POST /api/video-processing/sync-single', () => {
     const res = await POST(request({ videoId: 'v1' }))
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.result.updated).toBe(true)
@@ -135,7 +131,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('updates video when cloudflare status is error', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -166,7 +162,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('does not update when still processing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const update = vi.fn()
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
@@ -196,7 +192,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('returns 500 when update fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -225,7 +221,7 @@ describe('POST /api/video-processing/sync-single', () => {
   })
 
   it('returns 500 when cloudflare throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({

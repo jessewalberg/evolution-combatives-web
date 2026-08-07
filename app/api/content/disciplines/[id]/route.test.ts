@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { GET, PUT, DELETE } from './route'
 
 vi.mock('../../../../../src/lib/api-auth', () => ({
@@ -25,29 +25,17 @@ const mockDeleteDiscipline = vi.mocked(contentMutations.deleteDiscipline)
 
 const params = { params: Promise.resolve({ id: 'd1' }) }
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
-function authFail(status: 401 | 403 = 401) {
-  mockAuth.mockResolvedValue({
-    error: NextResponse.json({ success: false, error: 'denied' }, { status }),
-  })
-}
-
 describe('GET /api/content/disciplines/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    authFail()
+    authFail(mockAuth, 401)
     const res = await GET(createNextRequest('/api/content/disciplines/d1'), params)
     expect(res.status).toBe(401)
   })
 
   it('returns 404 when not found', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchDisciplines.mockResolvedValue([{ id: 'other' }] as never)
 
     const res = await GET(createNextRequest('/api/content/disciplines/d1'), params)
@@ -56,20 +44,21 @@ describe('GET /api/content/disciplines/[id]', () => {
   })
 
   it('returns discipline on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const discipline = { id: 'd1', name: 'Jiu Jitsu' }
     mockFetchDisciplines.mockResolvedValue([discipline] as never)
 
     const res = await GET(createNextRequest('/api/content/disciplines/d1'), params)
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.read')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: discipline })
     expect(mockFetchDisciplines).toHaveBeenCalledWith(true)
   })
 
   it('returns 500 when fetch throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchDisciplines.mockRejectedValue(new Error('fail'))
 
     const res = await GET(createNextRequest('/api/content/disciplines/d1'), params)
@@ -81,7 +70,7 @@ describe('PUT /api/content/disciplines/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    authFail(403)
+    authFail(mockAuth, 403)
     const res = await PUT(
       createNextRequest('/api/content/disciplines/d1', {
         method: 'PUT',
@@ -93,7 +82,7 @@ describe('PUT /api/content/disciplines/[id]', () => {
   })
 
   it('updates discipline', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const updated = { id: 'd1', name: 'Updated' }
     mockUpdateDiscipline.mockResolvedValue(updated as never)
 
@@ -115,6 +104,7 @@ describe('PUT /api/content/disciplines/[id]', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: updated })
     expect(mockUpdateDiscipline).toHaveBeenCalledWith(
@@ -124,7 +114,7 @@ describe('PUT /api/content/disciplines/[id]', () => {
   })
 
   it('returns 500 when update throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockUpdateDiscipline.mockRejectedValue(new Error('update fail'))
 
     const res = await PUT(
@@ -142,7 +132,7 @@ describe('DELETE /api/content/disciplines/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    authFail()
+    authFail(mockAuth, 401)
     const res = await DELETE(
       createNextRequest('/api/content/disciplines/d1', { method: 'DELETE' }),
       params
@@ -151,7 +141,7 @@ describe('DELETE /api/content/disciplines/[id]', () => {
   })
 
   it('deletes discipline', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockDeleteDiscipline.mockResolvedValue(undefined as never)
 
     const res = await DELETE(
@@ -160,13 +150,14 @@ describe('DELETE /api/content/disciplines/[id]', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true })
     expect(mockDeleteDiscipline).toHaveBeenCalledWith('d1')
   })
 
   it('returns 500 when delete throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockDeleteDiscipline.mockRejectedValue(new Error('blocked'))
 
     const res = await DELETE(

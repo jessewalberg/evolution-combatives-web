@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess } from '@/test/helpers/auth'
 import { POST } from './route'
 
 vi.mock('../../../../../src/lib/api-auth', () => ({
@@ -16,12 +17,6 @@ import { contentMutations } from '../../../../../src/services/content'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockReorder = vi.mocked(contentMutations.reorderContent)
-
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
 
 describe('POST /api/content/categories/reorder', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -40,7 +35,7 @@ describe('POST /api/content/categories/reorder', () => {
   })
 
   it('returns 400 when reorderData is not an array', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(
       createNextRequest('/api/content/categories/reorder', {
         method: 'POST',
@@ -53,7 +48,7 @@ describe('POST /api/content/categories/reorder', () => {
   })
 
   it('returns 400 when item missing id or sort_order', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(
       createNextRequest('/api/content/categories/reorder', {
         method: 'POST',
@@ -66,7 +61,7 @@ describe('POST /api/content/categories/reorder', () => {
   })
 
   it('reorders categories successfully', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockReorder.mockResolvedValue()
 
     const reorderData = [
@@ -81,13 +76,14 @@ describe('POST /api/content/categories/reorder', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, message: 'Categories reordered successfully' })
     expect(mockReorder).toHaveBeenCalledWith('categories', reorderData)
   })
 
   it('returns 500 when reorder throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockReorder.mockRejectedValue(new Error('reorder failed'))
 
     const res = await POST(

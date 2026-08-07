@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { GET, POST } from './route'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
@@ -19,43 +19,32 @@ const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockFetchCategories = vi.mocked(contentQueries.fetchCategories)
 const mockCreateCategory = vi.mocked(contentMutations.createCategory)
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
-function authFail(status: 401 | 403) {
-  mockAuth.mockResolvedValue({
-    error: NextResponse.json({ success: false, error: 'denied' }, { status }),
-  })
-}
-
 describe('GET /api/content/categories', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns 401 when auth fails', async () => {
-    authFail(401)
+    authFail(mockAuth, 401)
     const res = await GET()
     expect(res.status).toBe(401)
     expect(mockFetchCategories).not.toHaveBeenCalled()
   })
 
   it('returns categories on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const categories = [{ id: 'c1', name: 'Fundamentals' }]
     mockFetchCategories.mockResolvedValue(categories as never)
 
     const res = await GET()
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.read')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: categories })
     expect(mockFetchCategories).toHaveBeenCalledWith(undefined, true)
   })
 
   it('returns 500 when fetch throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchCategories.mockRejectedValue(new Error('db down'))
 
     const res = await GET()
@@ -70,7 +59,7 @@ describe('POST /api/content/categories', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns 403 when auth fails', async () => {
-    authFail(403)
+    authFail(mockAuth, 403)
     const req = createNextRequest('/api/content/categories', {
       method: 'POST',
       body: JSON.stringify({ name: 'x', slug: 'x', discipline_id: 'd1' }),
@@ -80,7 +69,7 @@ describe('POST /api/content/categories', () => {
   })
 
   it('returns 400 when required fields are missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const req = createNextRequest('/api/content/categories', {
       method: 'POST',
       body: JSON.stringify({ name: 'Cat', slug: 'cat' }),
@@ -93,7 +82,7 @@ describe('POST /api/content/categories', () => {
   })
 
   it('returns 400 when name is missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const req = createNextRequest('/api/content/categories', {
       method: 'POST',
       body: JSON.stringify({ slug: 'cat', discipline_id: 'd1' }),
@@ -104,7 +93,7 @@ describe('POST /api/content/categories', () => {
   })
 
   it('returns 400 when slug is missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const req = createNextRequest('/api/content/categories', {
       method: 'POST',
       body: JSON.stringify({ name: 'Cat', discipline_id: 'd1' }),
@@ -115,7 +104,7 @@ describe('POST /api/content/categories', () => {
   })
 
   it('creates category on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const created = { id: 'c1', name: 'Cat', slug: 'cat', discipline_id: 'd1' }
     mockCreateCategory.mockResolvedValue(created as never)
 
@@ -131,6 +120,7 @@ describe('POST /api/content/categories', () => {
     const res = await POST(req)
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(201)
     expect(body).toEqual({ success: true, data: created })
     expect(mockCreateCategory).toHaveBeenCalledWith(
@@ -147,7 +137,7 @@ describe('POST /api/content/categories', () => {
   })
 
   it('respects custom optional fields and is_active false', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateCategory.mockResolvedValue({ id: 'c2' } as never)
 
     const req = createNextRequest('/api/content/categories', {
@@ -179,7 +169,7 @@ describe('POST /api/content/categories', () => {
   })
 
   it('returns 500 when create throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateCategory.mockRejectedValue(new Error('create failed'))
 
     const req = createNextRequest('/api/content/categories', {

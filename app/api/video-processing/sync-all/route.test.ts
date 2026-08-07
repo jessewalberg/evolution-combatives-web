@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { POST } from './route'
+import { authSuccess } from '@/test/helpers/auth'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
   validateApiAuthWithSession: vi.fn(),
@@ -26,12 +27,6 @@ import { createAdminClient } from '../../../../src/lib/supabase'
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
 describe('POST /api/video-processing/sync-all', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -45,7 +40,7 @@ describe('POST /api/video-processing/sync-all', () => {
   })
 
   it('returns 500 when fetch fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -62,7 +57,7 @@ describe('POST /api/video-processing/sync-all', () => {
   })
 
   it('syncs ready and error videos and skips missing cloudflare ids', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const updateEq = vi.fn().mockResolvedValue({ error: null })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
@@ -113,6 +108,7 @@ describe('POST /api/video-processing/sync-all', () => {
     const res = await POST()
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.results.checked).toBe(4)
@@ -121,7 +117,7 @@ describe('POST /api/video-processing/sync-all', () => {
   })
 
   it('records update failures', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -154,7 +150,7 @@ describe('POST /api/video-processing/sync-all', () => {
   })
 
   it('returns 500 on unexpected throw', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateAdminClient.mockImplementation(() => {
       throw new Error('boom')
     })

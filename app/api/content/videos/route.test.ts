@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { GET, POST } from './route'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
@@ -25,20 +25,6 @@ const mockFetchVideos = vi.mocked(contentQueries.fetchVideos)
 const mockCreateVideo = vi.mocked(contentMutations.createVideo)
 const mockUpdateVideo = vi.mocked(contentMutations.updateVideo)
 
-const authUser = { userId: 'u1', role: 'content_admin', email: 'admin@test.com' }
-
-function authSuccess() {
-  mockAuth.mockResolvedValue({ user: authUser })
-}
-
-function authFail(status: 401 | 403) {
-  mockAuth.mockResolvedValue({
-    error: NextResponse.json(
-      { success: false, error: status === 401 ? 'Authentication required' : 'Insufficient permissions' },
-      { status }
-    ),
-  })
-}
 
 describe('GET /api/content/videos', () => {
   beforeEach(() => {
@@ -46,7 +32,7 @@ describe('GET /api/content/videos', () => {
   })
 
   it('returns auth error when session validation fails', async () => {
-    authFail(401)
+    authFail(mockAuth, 401)
     const req = createNextRequest('/api/content/videos')
     const res = await GET(req)
     expect(res.status).toBe(401)
@@ -54,7 +40,7 @@ describe('GET /api/content/videos', () => {
   })
 
   it('returns videos on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const payload = { data: [{ id: 'v1', title: 'Test' }], totalCount: 1, hasMore: false }
     mockFetchVideos.mockResolvedValue(payload as never)
 
@@ -62,6 +48,7 @@ describe('GET /api/content/videos', () => {
     const res = await GET(req)
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.read')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: payload })
     expect(mockFetchVideos).toHaveBeenCalledWith(
@@ -71,7 +58,7 @@ describe('GET /api/content/videos', () => {
   })
 
   it('returns 500 when fetchVideos throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchVideos.mockRejectedValue(new Error('db down'))
 
     const res = await GET(createNextRequest('/api/content/videos'))
@@ -88,7 +75,7 @@ describe('POST /api/content/videos', () => {
   })
 
   it('returns auth error when session validation fails', async () => {
-    authFail(403)
+    authFail(mockAuth, 403)
     const req = createNextRequest('/api/content/videos', {
       method: 'POST',
       body: JSON.stringify({ action: 'create', videoData: {} }),
@@ -98,7 +85,7 @@ describe('POST /api/content/videos', () => {
   })
 
   it('creates a video', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const video = { id: 'v1', title: 'New Video' }
     mockCreateVideo.mockResolvedValue(video as never)
 
@@ -112,13 +99,14 @@ describe('POST /api/content/videos', () => {
     const res = await POST(req)
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: video })
     expect(mockCreateVideo).toHaveBeenCalled()
   })
 
   it('updates a video', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const updated = { id: 'v1', title: 'Updated' }
     mockUpdateVideo.mockResolvedValue(updated as never)
 
@@ -139,7 +127,7 @@ describe('POST /api/content/videos', () => {
   })
 
   it('returns 400 for invalid action', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const req = createNextRequest('/api/content/videos', {
       method: 'POST',
       body: JSON.stringify({ action: 'delete' }),
@@ -152,7 +140,7 @@ describe('POST /api/content/videos', () => {
   })
 
   it('returns 500 when mutation throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateVideo.mockRejectedValue(new Error('insert failed'))
 
     const req = createNextRequest('/api/content/videos', {
