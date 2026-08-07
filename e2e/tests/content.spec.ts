@@ -215,9 +215,10 @@ test.describe('Content - videos processing / publish / bulk / CSV', () => {
         async () => {
           const afterArchive = await api.listVideos(title)
           if (!afterArchive.ok) return null
-          const archivedRows =
-            (afterArchive.body.data as Array<{ id: string; processing_status: string }>) ||
-            []
+          const result = afterArchive.body.data as {
+            data?: Array<{ id: string; processing_status: string }>
+          }
+          const archivedRows = result.data || []
           return archivedRows.find((v) => v.id === video.id)?.processing_status ?? null
         },
         { timeout: 20_000 }
