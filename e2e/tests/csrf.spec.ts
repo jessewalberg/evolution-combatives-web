@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
+import { NextRequest } from 'next/server'
 import { fetchCsrfHeaders } from '../helpers/csrf'
+import { getCSRFCookieName, isSecureRequest } from '../../src/lib/csrf-protection'
 
 /**
  * CSRF regression - API-level Playwright request tests.
@@ -8,6 +10,24 @@ import { fetchCsrfHeaders } from '../helpers/csrf'
 test.describe('CSRF protection', () => {
   // These tests intentionally do not need a browser session cookie for the negative case.
   test.use({ storageState: { cookies: [], origins: [] } })
+
+  test('GET /api/csrf-token uses a cookie compatible with HTTP CI', async ({
+    request,
+  }) => {
+    const response = await request.get('/api/csrf-token')
+    expect(response.ok()).toBeTruthy()
+
+    const setCookie = response.headers()['set-cookie']
+    expect(setCookie).toMatch(/^csrf-token=/)
+    expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
+  })
+
+  test('HTTPS requests retain the host-only Secure cookie name', () => {
+    const request = new NextRequest('https://admin.example.com/api/csrf-token')
+
+    expect(isSecureRequest(request)).toBe(true)
+    expect(getCSRFCookieName(request)).toBe('__Host-csrf-token')
+  })
 
   test('POST /api/content/disciplines without CSRF token is rejected', async ({
     request,
