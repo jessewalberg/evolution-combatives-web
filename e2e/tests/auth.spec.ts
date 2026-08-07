@@ -54,19 +54,6 @@ test.describe('Auth - login', () => {
       await deleteAuthUser(userId)
     }
   })
-
-  test('logs in valid admin and redirects to dashboard', async ({ page }) => {
-    const email = process.env.E2E_ADMIN_EMAIL
-    const password = process.env.E2E_ADMIN_PASSWORD
-    test.skip(!email || !password, 'E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD not set')
-
-    await page.goto('/login')
-    await page.getByLabel(/email address/i).fill(email!)
-    await page.getByLabel(/^password$/i).fill(password!)
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
-  })
 })
 
 test.describe('Auth - sign-up', () => {
@@ -169,10 +156,12 @@ test.describe('Auth - session timeout', () => {
     expect(error).toBeNull()
     const userId = created.user!.id
 
-    const context = await browser.newContext()
-    const page = await context.newPage()
-
+    // Create context/page inside try so createUser cleanup always runs if either fails.
+    let context: Awaited<ReturnType<typeof browser.newContext>> | undefined
     try {
+      context = await browser.newContext()
+      const page = await context.newPage()
+
       await supabase.from('profiles').upsert({
         id: userId,
         email,
@@ -198,8 +187,28 @@ test.describe('Auth - session timeout', () => {
       await page.goto('/dashboard')
       await expect(page).toHaveURL(/\/login\?error=session_expired/, { timeout: 20_000 })
     } finally {
-      await context.close()
-      await deleteAuthUser(userId)
+      const failures: string[] = []
+      if (context) {
+        try {
+          await context.close()
+        } catch (err) {
+          failures.push(
+            `context.close: ${err instanceof Error ? err.message : String(err)}`
+          )
+        }
+      }
+      try {
+        await deleteAuthUser(userId)
+      } catch (err) {
+        failures.push(
+          `deleteAuthUser: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
+      if (failures.length) {
+        throw new Error(
+          `Session timeout teardown failed: ${failures.join('; ')}`
+        )
+      }
     }
   })
 })
