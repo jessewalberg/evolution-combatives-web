@@ -52,13 +52,31 @@ test.describe('Q&A - list, detail, answer / moderate', () => {
   })
 
   test.afterEach(async () => {
+    const failures: string[] = []
+
     if (questionId) {
-      await deleteQuestion(questionId)
+      try {
+        await deleteQuestion(questionId)
+      } catch (err) {
+        failures.push(
+          `deleteQuestion: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
       questionId = undefined
     }
     if (askerId) {
-      await deleteAuthUser(askerId)
+      try {
+        await deleteAuthUser(askerId)
+      } catch (err) {
+        failures.push(
+          `deleteAuthUser: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
       askerId = undefined
+    }
+
+    if (failures.length) {
+      throw new Error(`Q&A teardown failed: ${failures.join('; ')}`)
     }
   })
 
