@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { GET } from './route'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
   validateApiAuthWithSession: vi.fn(),
@@ -94,23 +94,20 @@ describe('GET /api/dashboard/metrics', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'denied' }, { status: 401 }),
-    })
+    authFail(mockAuth, 401)
 
     const res = await GET()
     expect(res.status).toBe(401)
   })
 
   it('returns computed metrics', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'super_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue(buildSupabase() as never)
 
     const res = await GET()
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('analytics.read')
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.data).toMatchObject({
@@ -126,9 +123,7 @@ describe('GET /api/dashboard/metrics', () => {
   })
 
   it('returns 500 when users query fails', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'super_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue(buildSupabase({ usersError: true }) as never)
 
     const res = await GET()
@@ -136,9 +131,7 @@ describe('GET /api/dashboard/metrics', () => {
   })
 
   it('returns 500 when subscriptions query fails', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'super_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue(buildSupabase({ subscriptionsError: true }) as never)
 
     const res = await GET()
@@ -146,9 +139,7 @@ describe('GET /api/dashboard/metrics', () => {
   })
 
   it('returns 500 when videos query fails', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'super_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue(buildSupabase({ videosError: true }) as never)
 
     const res = await GET()

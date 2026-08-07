@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess } from '@/test/helpers/auth'
 import { GET, POST } from './route'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
@@ -19,12 +20,6 @@ const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockFetchDisciplines = vi.mocked(contentQueries.fetchDisciplines)
 const mockCreateDiscipline = vi.mocked(contentMutations.createDiscipline)
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
 describe('GET /api/content/disciplines', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -37,20 +32,21 @@ describe('GET /api/content/disciplines', () => {
   })
 
   it('returns disciplines on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const disciplines = [{ id: 'd1', name: 'Jiu Jitsu' }]
     mockFetchDisciplines.mockResolvedValue(disciplines as never)
 
     const res = await GET()
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.read')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: disciplines })
     expect(mockFetchDisciplines).toHaveBeenCalledWith(true)
   })
 
   it('returns 500 when fetch throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchDisciplines.mockRejectedValue(new Error('fetch fail'))
 
     const res = await GET()
@@ -75,7 +71,7 @@ describe('POST /api/content/disciplines', () => {
   })
 
   it('returns 400 when required fields missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const req = createNextRequest('/api/content/disciplines', {
       method: 'POST',
       body: JSON.stringify({ name: 'Wrestling' }),
@@ -88,7 +84,7 @@ describe('POST /api/content/disciplines', () => {
   })
 
   it('returns 400 when name is missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const req = createNextRequest('/api/content/disciplines', {
       method: 'POST',
       body: JSON.stringify({ slug: 'wrestling' }),
@@ -99,7 +95,7 @@ describe('POST /api/content/disciplines', () => {
   })
 
   it('creates discipline on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const created = { id: 'd1', name: 'Wrestling', slug: 'wrestling' }
     mockCreateDiscipline.mockResolvedValue(created as never)
 
@@ -110,6 +106,7 @@ describe('POST /api/content/disciplines', () => {
     const res = await POST(req)
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(201)
     expect(body).toEqual({ success: true, data: created })
     expect(mockCreateDiscipline).toHaveBeenCalledWith(
@@ -124,7 +121,7 @@ describe('POST /api/content/disciplines', () => {
   })
 
   it('respects custom optional fields', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateDiscipline.mockResolvedValue({ id: 'd2' } as never)
 
     const req = createNextRequest('/api/content/disciplines', {
@@ -156,7 +153,7 @@ describe('POST /api/content/disciplines', () => {
   })
 
   it('returns 500 when create throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCreateDiscipline.mockRejectedValue(new Error('create fail'))
 
     const req = createNextRequest('/api/content/disciplines', {

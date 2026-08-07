@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess } from '@/test/helpers/auth'
 import { POST } from './route'
 
 vi.mock('../../../../../src/lib/api-auth', () => ({
@@ -16,12 +17,6 @@ import { contentMutations } from '../../../../../src/services/content'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockMerge = vi.mocked(contentMutations.mergeCategories)
-
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
 
 describe('POST /api/content/categories/merge', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -40,7 +35,7 @@ describe('POST /api/content/categories/merge', () => {
   })
 
   it('returns 400 when targetId or sourceIds missing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(
       createNextRequest('/api/content/categories/merge', {
         method: 'POST',
@@ -53,7 +48,7 @@ describe('POST /api/content/categories/merge', () => {
   })
 
   it('returns 400 when sourceIds is empty', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(
       createNextRequest('/api/content/categories/merge', {
         method: 'POST',
@@ -66,7 +61,7 @@ describe('POST /api/content/categories/merge', () => {
   })
 
   it('returns 400 when target is in source list', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(
       createNextRequest('/api/content/categories/merge', {
         method: 'POST',
@@ -79,7 +74,7 @@ describe('POST /api/content/categories/merge', () => {
   })
 
   it('merges categories successfully', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockMerge.mockResolvedValue()
 
     const res = await POST(
@@ -90,13 +85,14 @@ describe('POST /api/content/categories/merge', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, message: 'Categories merged successfully' })
     expect(mockMerge).toHaveBeenCalledWith('t1', ['s1', 's2'])
   })
 
   it('returns 500 when merge throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockMerge.mockRejectedValue(new Error('merge failed'))
 
     const res = await POST(

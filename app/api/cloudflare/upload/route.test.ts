@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { POST } from './route'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
@@ -33,25 +33,13 @@ import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
-function authFail() {
-  mockAuth.mockResolvedValue({
-    error: NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 }),
-  })
-}
-
 describe('POST /api/cloudflare/upload', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('returns auth error when unauthorized', async () => {
-    authFail()
+    authFail(mockAuth, 401)
     const res = await POST(
       createNextRequest('/api/cloudflare/upload', {
         method: 'POST',
@@ -62,7 +50,7 @@ describe('POST /api/cloudflare/upload', () => {
   })
 
   it('handles getUploadUrl', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockGetUploadUrl.mockResolvedValue({ uploadURL: 'https://upload', uid: 'cf-1' })
 
     const res = await POST(
@@ -73,13 +61,14 @@ describe('POST /api/cloudflare/upload', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: { uploadURL: 'https://upload', uid: 'cf-1' } })
     expect(mockGetUploadUrl).toHaveBeenCalledWith({ maxDurationSeconds: 3600 })
   })
 
   it('handles checkUploadStatus', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockCheckUploadStatus.mockResolvedValue({ status: 'ready', progress: 100 })
 
     const res = await POST(
@@ -96,7 +85,7 @@ describe('POST /api/cloudflare/upload', () => {
   })
 
   it('handles generateAdminPreviewUrl', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockGenerateAdminPreviewUrl.mockResolvedValue('https://preview')
 
     const res = await POST(
@@ -111,7 +100,7 @@ describe('POST /api/cloudflare/upload', () => {
   })
 
   it('handles generateThumbnailUrl', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockGenerateThumbnailUrl.mockResolvedValue('https://thumb')
 
     const res = await POST(
@@ -131,7 +120,7 @@ describe('POST /api/cloudflare/upload', () => {
   })
 
   it('handles retryProcessing', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockRetryProcessing.mockResolvedValue(undefined)
 
     const res = await POST(
@@ -147,7 +136,7 @@ describe('POST /api/cloudflare/upload', () => {
   })
 
   it('returns 400 for invalid action', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const res = await POST(
       createNextRequest('/api/cloudflare/upload', {
         method: 'POST',
@@ -161,7 +150,7 @@ describe('POST /api/cloudflare/upload', () => {
   })
 
   it('returns 500 when service throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockGetUploadUrl.mockRejectedValue(new Error('CF down'))
 
     const res = await POST(

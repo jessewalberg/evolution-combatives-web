@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { GET } from './route'
 
 vi.mock('../../../../../src/lib/api-auth', () => ({
@@ -21,9 +21,7 @@ describe('GET /api/content/videos/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'denied' }, { status: 401 }),
-    })
+    authFail(mockAuth, 401)
 
     const res = await GET(createNextRequest('/api/content/videos/v1'), {
       params: Promise.resolve({ id: 'v1' }),
@@ -32,9 +30,7 @@ describe('GET /api/content/videos/[id]', () => {
   })
 
   it('returns 400 when video id is empty', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth)
 
     const res = await GET(createNextRequest('/api/content/videos/'), {
       params: Promise.resolve({ id: '' }),
@@ -46,9 +42,7 @@ describe('GET /api/content/videos/[id]', () => {
   })
 
   it('returns 404 when video not found', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth)
     mockFetchVideoById.mockResolvedValue(null as never)
 
     const res = await GET(createNextRequest('/api/content/videos/missing'), {
@@ -61,9 +55,7 @@ describe('GET /api/content/videos/[id]', () => {
   })
 
   it('returns video on success', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth)
     const video = { id: 'v1', title: 'Test Video' }
     mockFetchVideoById.mockResolvedValue(video as never)
 
@@ -72,15 +64,14 @@ describe('GET /api/content/videos/[id]', () => {
     })
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.read')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: video })
     expect(mockFetchVideoById).toHaveBeenCalledWith('v1')
   })
 
   it('returns 500 when fetch throws', async () => {
-    mockAuth.mockResolvedValue({
-      user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-    })
+    authSuccess(mockAuth)
     mockFetchVideoById.mockRejectedValue(new Error('db down'))
 
     const res = await GET(createNextRequest('/api/content/videos/v1'), {

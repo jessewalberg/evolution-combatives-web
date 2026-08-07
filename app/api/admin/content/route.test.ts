@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { POST } from './route'
 
 vi.mock('../../../../src/lib/api-auth', () => ({
@@ -16,18 +16,6 @@ import { createAdminClient } from '../../../../src/lib/supabase'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
-
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'super_admin', email: 'admin@test.com' },
-  })
-}
-
-function authFail() {
-  mockAuth.mockResolvedValue({
-    error: NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 }),
-  })
-}
 
 function headSelect(count: number) {
   // head:true count queries may still chain .eq() for filters
@@ -90,7 +78,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 401 when auth fails', async () => {
-    authFail()
+    authFail(mockAuth, 401)
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',
@@ -101,7 +89,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles fetchContentStats', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',
@@ -110,6 +98,7 @@ describe('POST /api/admin/content', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.data).toMatchObject({
@@ -122,7 +111,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles createVideo', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',
@@ -140,7 +129,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles updateVideo', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',
@@ -158,7 +147,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles deleteVideo', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',
@@ -172,7 +161,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 400 for invalid action', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',
@@ -186,7 +175,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles bulkUpdateVideoStatus with mixed results', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     let call = 0
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
@@ -220,7 +209,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles bulkDeleteVideos', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'user_progress') {
@@ -250,7 +239,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles bulkDeleteVideos failure path', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'user_progress') {
@@ -277,7 +266,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles getVideoAnalytics', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -318,7 +307,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 500 when createVideo fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         insert: vi.fn().mockReturnValue({
@@ -343,7 +332,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 500 when deleteVideo progress cleanup fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'user_progress') {
@@ -368,7 +357,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 500 when updateVideo fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         update: vi.fn().mockReturnValue({
@@ -399,7 +388,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 500 when deleteVideo video delete fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'user_progress') {
@@ -428,7 +417,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 500 when getVideoAnalytics fetch fails', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -453,7 +442,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles getVideoAnalytics with empty progress', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -489,7 +478,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles getVideoAnalytics when user_progress is null', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -522,7 +511,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles bulkDeleteVideos catch path when delete throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'user_progress') {
@@ -558,7 +547,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('handles bulkUpdateVideoStatus all success', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         update: vi.fn().mockReturnValue({
@@ -588,7 +577,7 @@ describe('POST /api/admin/content', () => {
   })
 
   it('returns 500 when request body is invalid JSON', async () => {
-    authSuccess()
+    authSuccess(mockAuth, { role: 'super_admin' })
     const res = await POST(
       createNextRequest('/api/admin/content', {
         method: 'POST',

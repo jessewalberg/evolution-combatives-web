@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess, authFail } from '@/test/helpers/auth'
 import { GET, PUT, DELETE } from './route'
 
 vi.mock('../../../../../src/lib/api-auth', () => ({
@@ -25,29 +25,17 @@ const mockDeleteCategory = vi.mocked(contentMutations.deleteCategory)
 
 const params = { params: Promise.resolve({ id: 'cat-1' }) }
 
-function authSuccess() {
-  mockAuth.mockResolvedValue({
-    user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
-  })
-}
-
-function authFail(status: 401 | 403 = 401) {
-  mockAuth.mockResolvedValue({
-    error: NextResponse.json({ success: false, error: 'denied' }, { status }),
-  })
-}
-
 describe('GET /api/content/categories/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    authFail()
+    authFail(mockAuth, 401)
     const res = await GET(createNextRequest('/api/content/categories/cat-1'), params)
     expect(res.status).toBe(401)
   })
 
   it('returns 404 when category not found', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchCategories.mockResolvedValue([{ id: 'other' }] as never)
 
     const res = await GET(createNextRequest('/api/content/categories/cat-1'), params)
@@ -58,19 +46,20 @@ describe('GET /api/content/categories/[id]', () => {
   })
 
   it('returns category on success', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const category = { id: 'cat-1', name: 'Fundamentals' }
     mockFetchCategories.mockResolvedValue([category] as never)
 
     const res = await GET(createNextRequest('/api/content/categories/cat-1'), params)
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.read')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: category })
   })
 
   it('returns 500 when fetch throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockFetchCategories.mockRejectedValue(new Error('db error'))
 
     const res = await GET(createNextRequest('/api/content/categories/cat-1'), params)
@@ -83,7 +72,7 @@ describe('PUT /api/content/categories/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    authFail(403)
+    authFail(mockAuth, 403)
     const res = await PUT(
       createNextRequest('/api/content/categories/cat-1', {
         method: 'PUT',
@@ -95,7 +84,7 @@ describe('PUT /api/content/categories/[id]', () => {
   })
 
   it('updates category with provided fields', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     const updated = { id: 'cat-1', name: 'Updated' }
     mockUpdateCategory.mockResolvedValue(updated as never)
 
@@ -118,6 +107,7 @@ describe('PUT /api/content/categories/[id]', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, data: updated })
     expect(mockUpdateCategory).toHaveBeenCalledWith(
@@ -132,7 +122,7 @@ describe('PUT /api/content/categories/[id]', () => {
   })
 
   it('returns 500 when update throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockUpdateCategory.mockRejectedValue(new Error('update failed'))
 
     const res = await PUT(
@@ -150,7 +140,7 @@ describe('DELETE /api/content/categories/[id]', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns auth error', async () => {
-    authFail()
+    authFail(mockAuth, 401)
     const res = await DELETE(
       createNextRequest('/api/content/categories/cat-1', { method: 'DELETE' }),
       params
@@ -159,7 +149,7 @@ describe('DELETE /api/content/categories/[id]', () => {
   })
 
   it('deletes category', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockDeleteCategory.mockResolvedValue(undefined as never)
 
     const res = await DELETE(
@@ -168,13 +158,14 @@ describe('DELETE /api/content/categories/[id]', () => {
     )
     const body = await res.json()
 
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, message: 'Category deleted successfully' })
     expect(mockDeleteCategory).toHaveBeenCalledWith('cat-1')
   })
 
   it('returns 500 when delete throws', async () => {
-    authSuccess()
+    authSuccess(mockAuth)
     mockDeleteCategory.mockRejectedValue(new Error('has videos'))
 
     const res = await DELETE(
