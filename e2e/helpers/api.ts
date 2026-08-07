@@ -201,13 +201,47 @@ export async function contentApiFromPage(page: Page) {
  */
 export async function deleteAuthUser(userId: string): Promise<void> {
   const supabase = createServiceRoleClient()
-  await supabase.from('subscriptions').delete().eq('user_id', userId)
-  await supabase.from('answers').delete().eq('admin_id', userId)
-  await supabase.from('questions').delete().eq('user_id', userId)
-  await supabase.from('profiles').delete().eq('id', userId)
-  const { error } = await supabase.auth.admin.deleteUser(userId)
-  if (error) {
-    throw new Error(`Failed to delete auth user ${userId}: ${error.message}`)
+  const failures: string[] = []
+
+  const { error: subscriptionsError } = await supabase
+    .from('subscriptions')
+    .delete()
+    .eq('user_id', userId)
+  if (subscriptionsError) {
+    failures.push(`subscriptions: ${subscriptionsError.message}`)
+  }
+
+  const { error: answersError } = await supabase
+    .from('answers')
+    .delete()
+    .eq('admin_id', userId)
+  if (answersError) {
+    failures.push(`answers: ${answersError.message}`)
+  }
+
+  const { error: questionsError } = await supabase
+    .from('questions')
+    .delete()
+    .eq('user_id', userId)
+  if (questionsError) {
+    failures.push(`questions: ${questionsError.message}`)
+  }
+
+  const { error: profilesError } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', userId)
+  if (profilesError) {
+    failures.push(`profiles: ${profilesError.message}`)
+  }
+
+  const { error: authError } = await supabase.auth.admin.deleteUser(userId)
+  if (authError) {
+    failures.push(`auth.users: ${authError.message}`)
+  }
+
+  if (failures.length) {
+    throw new Error(`Failed to delete auth user ${userId}: ${failures.join('; ')}`)
   }
 }
 
@@ -225,5 +259,40 @@ export async function deleteQuestion(questionId: string): Promise<void> {
   const { error } = await supabase.from('questions').delete().eq('id', questionId)
   if (error) {
     throw new Error(`Failed to delete question ${questionId}: ${error.message}`)
+  }
+}
+
+/**
+ * Expire a Stripe Checkout Session created by a test (test-mode).
+ * Ignores the idempotent case where the session is already expired or completed.
+ */
+export async function expireStripeCheckoutSession(sessionId: string): Promise<void> {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    throw new Error('STRIPE_SECRET_KEY is required to expire Checkout Sessions in E2E teardown')
+  }
+
+  // Lazy import so specs that never create a session do not require Stripe at load time.
+  const Stripe = (await import('stripe')).default
+  const stripe = new Stripe(secretKey)
+
+  try {
+    await stripe.checkout.sessions.expire(sessionId)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: string }).code)
+        : ''
+    // Already expired / completed / terminal - safe to ignore
+    if (
+      /already (?:been )?(?:expired|complete)|cannot be expired|resource_missing/i.test(
+        message
+      ) ||
+      code === 'resource_missing'
+    ) {
+      return
+    }
+    throw new Error(`Failed to expire Checkout Session ${sessionId}: ${message}`)
   }
 }
