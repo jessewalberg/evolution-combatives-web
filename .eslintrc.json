@@ -5,10 +5,15 @@
     "next/typescript",
     "prettier"
   ],
-  "rules": {
-    "@typescript-eslint/no-unused-vars": [
-      "error",
-      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
-    ]
-  }
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "test/**/*.ts", "test/**/*.tsx"],
+      "rules": {
+        "@typescript-eslint/no-unused-vars": [
+          "error",
+          { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+        ]
+      }
+    }
+  ]
 }
