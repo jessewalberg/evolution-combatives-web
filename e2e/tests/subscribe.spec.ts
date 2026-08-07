@@ -51,14 +51,38 @@ test.describe('Subscription deep-link flow', () => {
   })
 
   test.afterEach(async () => {
+    const failures: string[] = []
+
     if (checkoutSessionId) {
-      await expireStripeCheckoutSession(checkoutSessionId)
+      try {
+        await expireStripeCheckoutSession(checkoutSessionId)
+      } catch (err) {
+        failures.push(
+          `expireStripeCheckoutSession: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
       checkoutSessionId = undefined
     }
     if (userId) {
-      await deleteSubscriptionByUserId(userId)
-      await deleteAuthUser(userId)
+      try {
+        await deleteSubscriptionByUserId(userId)
+      } catch (err) {
+        failures.push(
+          `deleteSubscriptionByUserId: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
+      try {
+        await deleteAuthUser(userId)
+      } catch (err) {
+        failures.push(
+          `deleteAuthUser: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
       userId = undefined
+    }
+
+    if (failures.length) {
+      throw new Error(`Subscribe teardown failed: ${failures.join('; ')}`)
     }
   })
 
@@ -95,9 +119,10 @@ test.describe('Subscription deep-link flow', () => {
     const body = await response.json()
 
     if (response.ok()) {
+      // Capture before asserts so afterEach can expire even if an expect throws.
+      checkoutSessionId = body.sessionId as string
       expect(body.url).toMatch(/stripe\.com|checkout/i)
       expect(body.sessionId).toBeTruthy()
-      checkoutSessionId = body.sessionId as string
 
       // Navigate success page (webhook may or may not have fired yet)
       await page.goto(`/subscription-success?tier=tier1&session_id=${body.sessionId}`)
