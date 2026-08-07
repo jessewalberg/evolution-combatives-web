@@ -21,6 +21,7 @@ export default defineConfig({
         'src/lib/**/*.{ts,tsx}',
         'src/services/**/*.{ts,tsx}',
         'src/hooks/**/*.{ts,tsx}',
+        'src/components/**/*.{ts,tsx}',
         'middleware.ts',
         'app/api/**/*.{ts,tsx}',
       ],
