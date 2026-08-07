@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { fetchCsrfHeaders } from '../helpers/csrf'
 
 /**
  * CSRF regression - API-level Playwright request tests.
@@ -40,20 +41,14 @@ test.describe('CSRF protection', () => {
   test('control: POST with valid CSRF token is not rejected as CSRF failure', async ({
     request,
   }) => {
-    const tokenRes = await request.get('/api/csrf-token')
-    expect(tokenRes.ok()).toBeTruthy()
-    const { csrfToken } = (await tokenRes.json()) as { csrfToken: string }
-    expect(csrfToken).toHaveLength(64)
+    const headers = await fetchCsrfHeaders(request)
 
     const response = await request.post('/api/content/disciplines', {
       data: {
         name: 'CSRF Control Should Not Persist',
         slug: 'csrf-control-no-persist',
       },
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken,
-      },
+      headers,
     })
 
     // CSRF middleware returns 403 + "CSRF token validation failed".

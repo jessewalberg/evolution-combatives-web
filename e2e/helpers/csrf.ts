@@ -19,8 +19,15 @@ export async function fetchCsrfHeaders(
     throw new Error('CSRF token response missing csrfToken')
   }
 
+  const setCookie = response.headers()['set-cookie']
+  const csrfCookie = setCookie?.split(';', 1)[0]
+  if (!csrfCookie) {
+    throw new Error('CSRF token response missing cookie')
+  }
+
   return {
     [CSRF_HEADER]: body.csrfToken,
+    Cookie: csrfCookie,
     'Content-Type': 'application/json',
   }
 }

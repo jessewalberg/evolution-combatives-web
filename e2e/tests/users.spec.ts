@@ -47,7 +47,7 @@ test.describe('Users - list, filter, detail, edit', () => {
     await page.goto('/users')
     await expect(page.getByText(/user management/i)).toBeVisible({ timeout: 20_000 })
 
-    const search = page.getByPlaceholder(/search users/i)
+    const search = page.getByPlaceholder('Search users...', { exact: true })
     await search.fill(fixtureEmail!)
     await expect(page.getByText(fixtureName!).first()).toBeVisible({ timeout: 20_000 })
 

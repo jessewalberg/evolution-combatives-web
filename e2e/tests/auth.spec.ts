@@ -104,7 +104,9 @@ test.describe('Auth - forgot / reset password', () => {
     await page.getByLabel(/admin email address/i).fill(uniqueEmail('forgot'))
     await page.getByRole('button', { name: /send reset email/i }).click()
 
-    await expect(page.getByText(/check your email/i)).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.getByRole('heading', { name: /check your email/i })
+    ).toBeVisible({ timeout: 15_000 })
   })
 
   test('reset-password without recovery tokens shows invalid link state', async ({ page }) => {
@@ -124,7 +126,7 @@ test.describe('Auth - confirm branches', () => {
   test('PKCE code branch surfaces exchange error for invalid code', async ({ page }) => {
     await page.goto('/auth/confirm?code=not-a-real-pkce-code')
     await expect(
-      page.getByText(/failed to verify|code verifier|invalid|error/i).first()
+      page.getByRole('heading', { name: /verification failed/i })
     ).toBeVisible({ timeout: 15_000 })
   })
 
@@ -133,7 +135,7 @@ test.describe('Auth - confirm branches', () => {
   }) => {
     await page.goto('/auth/confirm?token_hash=invalid-hash&type=email')
     await expect(
-      page.getByText(/verification failed|email verification failed|invalid|expired|error/i).first()
+      page.getByRole('heading', { name: /verification failed/i })
     ).toBeVisible({ timeout: 15_000 })
   })
 })
