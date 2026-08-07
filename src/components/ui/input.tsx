@@ -134,10 +134,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         containerClassName,
         labelClassName,
         disabled,
+        id,
         ...props
     }, ref) => {
         // Determine variant based on error state
         const finalVariant = error ? 'error' : disabled ? 'disabled' : variant
+        const generatedId = React.useId()
+        const inputId = id ?? generatedId
 
         return (
             <div className={cn('w-full', containerClassName)}>
@@ -150,7 +153,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                             disabled && 'text-neutral-500',
                             labelClassName
                         )}
-                        htmlFor={props.id}
+                        htmlFor={inputId}
                     >
                         {label}
                     </label>
@@ -167,6 +170,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
                     {/* Input */}
                     <input
+                        id={inputId}
                         type={type}
                         className={cn(
                             inputVariants({ variant: finalVariant, size }),
@@ -402,4 +406,4 @@ export {
     SearchInput,
     PasswordInput,
     inputVariants
-} 
+}
