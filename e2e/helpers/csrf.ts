@@ -25,9 +25,15 @@ export async function fetchCsrfHeaders(
     throw new Error('CSRF token response missing cookie')
   }
 
+  const csrfCookieName = csrfCookie.slice(0, csrfCookie.indexOf('='))
+  const storageState = await request.storageState()
+  const existingCookies = storageState.cookies
+    .filter((cookie) => cookie.name !== csrfCookieName)
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+
   return {
     [CSRF_HEADER]: body.csrfToken,
-    Cookie: csrfCookie,
+    Cookie: [...existingCookies, csrfCookie].join('; '),
     'Content-Type': 'application/json',
   }
 }
