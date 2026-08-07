@@ -13,13 +13,15 @@ jobs:
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    # Fork PRs cannot access repository secrets — skip rather than fail noisily.
+    # Fork PRs cannot access repository secrets - skip rather than fail noisily.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 60
 
     env:
       CI: true
-      NODE_ENV: production
+      # NODE_ENV must NOT be production at job scope: pnpm install would skip
+      # devDependencies (including @playwright/test). Production mode for the
+      # app server is set in playwright.config.ts webServer.env instead.
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
