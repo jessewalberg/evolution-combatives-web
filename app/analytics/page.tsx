@@ -162,7 +162,7 @@ export default function AnalyticsPage() {
             ] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('id, created_at, last_sign_in_at')
+                    .select('id, created_at, last_login_at')
                     .gte('created_at', startDate.toISOString())
                     .order('created_at', { ascending: false }),
 
@@ -173,13 +173,13 @@ export default function AnalyticsPage() {
 
                 supabase
                     .from('videos')
-                    .select('id, title, created_at, view_count, duration')
+                    .select('id, title, created_at, view_count, duration_seconds')
                     .order('view_count', { ascending: false }),
 
                 supabase
                     .from('user_progress')
-                    .select('id, video_id, progress_seconds, watch_time, completed, created_at')
-                    .gte('created_at', startDate.toISOString())
+                    .select('id, video_id, watched_seconds, completed, last_watched')
+                    .gte('last_watched', startDate.toISOString())
             ])
 
             if (usersResult.error) throw usersResult.error
@@ -201,11 +201,11 @@ export default function AnalyticsPage() {
             )
 
             const activeUsers = users.filter(u =>
-                u.last_sign_in_at &&
-                new Date(u.last_sign_in_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                u.last_login_at &&
+                new Date(u.last_login_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
             ).length
 
-            const totalWatchTime = progress.reduce((sum, p) => sum + (p.watch_time || 0), 0)
+            const totalWatchTime = progress.reduce((sum, p) => sum + (p.watched_seconds || 0), 0)
             const avgWatchTime = progress.length > 0 ? totalWatchTime / progress.length : 0
 
             // Generate time series data (mock data for demonstration)
@@ -851,4 +851,4 @@ export default function AnalyticsPage() {
             </Card>
         </div>
     )
-} 
+}

@@ -36,6 +36,7 @@ test.describe('Q&A - list, detail, answer / moderate', () => {
     const { data: question, error: qErr } = await supabase
       .from('questions')
       .insert({
+        question: 'E2E fixture question body - how do I practice this technique?',
         title: questionTitle,
         content: 'E2E fixture question body - how do I practice this technique?',
         status: 'pending',
