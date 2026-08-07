@@ -4,11 +4,11 @@ import { createServiceRoleClient } from '../helpers/supabase-admin'
 import { deleteAuthUser } from '../helpers/api'
 
 /**
- * Unauthenticated auth flows — clear storageState so setup admin session is not reused.
+ * Unauthenticated auth flows - clear storageState so setup admin session is not reused.
  */
 test.use({ storageState: { cookies: [], origins: [] } })
 
-test.describe('Auth — login', () => {
+test.describe('Auth - login', () => {
   test('rejects invalid credentials with inline error', async ({ page }) => {
     await page.goto('/login')
     await page.getByLabel(/email address/i).fill(`invalid-${uniqueSuffix()}@example.com`)
@@ -69,7 +69,7 @@ test.describe('Auth — login', () => {
   })
 })
 
-test.describe('Auth — sign-up', () => {
+test.describe('Auth - sign-up', () => {
   test('submits sign-up form and shows confirmation messaging', async ({ page }) => {
     const email = uniqueEmail('signup')
     const password = `E2eSign1!${uniqueSuffix().slice(0, 6)}`
@@ -83,15 +83,24 @@ test.describe('Auth — sign-up', () => {
       await page.getByLabel(/confirm password/i).fill(password)
       await page.getByRole('button', { name: /create account/i }).click()
 
+      // Track the auth user as soon as it exists server-side, before UI asserts,
+      // so finally can clean up even if the confirmation-message assertion fails.
+      const supabase = createServiceRoleClient()
+      const deadline = Date.now() + 20_000
+      while (!createdUserId && Date.now() < deadline) {
+        const { data } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+        const found = data.users.find((u) => u.email === email)
+        if (found) {
+          createdUserId = found.id
+          break
+        }
+        await page.waitForTimeout(500)
+      }
+      expect(createdUserId, `Supabase user for ${email} was not created`).toBeTruthy()
+
       await expect(
         page.getByText(/check your email|account created|confirm/i).first()
       ).toBeVisible({ timeout: 20_000 })
-
-      const supabase = createServiceRoleClient()
-      const { data } = await supabase.auth.admin.listUsers()
-      const found = data.users.find((u) => u.email === email)
-      createdUserId = found?.id
-      expect(createdUserId).toBeTruthy()
     } finally {
       if (createdUserId) {
         await deleteAuthUser(createdUserId)
@@ -100,7 +109,7 @@ test.describe('Auth — sign-up', () => {
   })
 })
 
-test.describe('Auth — forgot / reset password', () => {
+test.describe('Auth - forgot / reset password', () => {
   test('forgot-password shows success state without revealing account existence', async ({
     page,
   }) => {
@@ -117,7 +126,7 @@ test.describe('Auth — forgot / reset password', () => {
   })
 })
 
-test.describe('Auth — confirm branches', () => {
+test.describe('Auth - confirm branches', () => {
   test('missing params shows invalid verification link error', async ({ page }) => {
     await page.goto('/auth/confirm')
     await expect(
@@ -142,65 +151,60 @@ test.describe('Auth — confirm branches', () => {
   })
 })
 
-test.describe('Auth — session timeout', () => {
+test.describe('Auth - session timeout', () => {
   test('expired last_login_at redirects to login?error=session_expired', async ({
-    page,
-    context,
+    browser,
   }) => {
-    const email = process.env.E2E_ADMIN_EMAIL
-    const password = process.env.E2E_ADMIN_PASSWORD
-    test.skip(!email || !password, 'E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD not set')
-
+    // Dedicated throwaway admin - never mutate the shared E2E_ADMIN account.
+    const email = uniqueEmail('session')
+    const password = `E2eSess1!${uniqueSuffix().slice(0, 6)}`
     const supabase = createServiceRoleClient()
-    const { data: list } = await supabase.auth.admin.listUsers()
-    const admin = list.users.find((u) => u.email === email)
-    expect(admin).toBeTruthy()
 
-    const stale = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
-    const { data: prior } = await supabase
-      .from('profiles')
-      .select('last_login_at')
-      .eq('id', admin!.id)
-      .single()
+    const { data: created, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: 'E2E Session Timeout' },
+    })
+    expect(error).toBeNull()
+    const userId = created.user!.id
+
+    const context = await browser.newContext()
+    const page = await context.newPage()
 
     try {
-      await supabase
-        .from('profiles')
-        .update({ last_login_at: stale })
-        .eq('id', admin!.id)
+      await supabase.from('profiles').upsert({
+        id: userId,
+        email,
+        full_name: 'E2E Session Timeout',
+        admin_role: 'super_admin',
+        last_login_at: new Date().toISOString(),
+      })
 
       await page.goto('/login')
-      await page.getByLabel(/email address/i).fill(email!)
-      await page.getByLabel(/^password$/i).fill(password!)
+      await page.getByLabel(/email address/i).fill(email)
+      await page.getByLabel(/^password$/i).fill(password)
       await page.getByRole('button', { name: /^sign in$/i }).click()
-      // Login updates last_login_at — so force stale again after login cookie exists
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
 
-      await supabase
+      // Login updates last_login_at - force stale after the session cookie exists
+      const stale = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+      const { error: staleError } = await supabase
         .from('profiles')
         .update({ last_login_at: stale })
-        .eq('id', admin!.id)
+        .eq('id', userId)
+      expect(staleError).toBeNull()
 
       await page.goto('/dashboard')
       await expect(page).toHaveURL(/\/login\?error=session_expired/, { timeout: 20_000 })
     } finally {
-      if (prior?.last_login_at) {
-        await supabase
-          .from('profiles')
-          .update({ last_login_at: prior.last_login_at })
-          .eq('id', admin!.id)
-      } else {
-        await supabase
-          .from('profiles')
-          .update({ last_login_at: new Date().toISOString() })
-          .eq('id', admin!.id)
-      }
-      await context.clearCookies()
+      await context.close()
+      await deleteAuthUser(userId)
     }
   })
 })
 
-test.describe('Auth — role-based access denial', () => {
+test.describe('Auth - role-based access denial', () => {
   test('support_admin is redirected away from super_admin-only /analytics', async ({
     browser,
   }) => {

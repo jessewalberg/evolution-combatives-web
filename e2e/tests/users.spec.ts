@@ -3,7 +3,7 @@ import { uniqueEmail, uniqueSuffix, uniqueTitle } from '../helpers/unique'
 import { createServiceRoleClient } from '../helpers/supabase-admin'
 import { deleteAuthUser } from '../helpers/api'
 
-test.describe('Users — list, filter, detail, edit', () => {
+test.describe('Users - list, filter, detail, edit', () => {
   let fixtureUserId: string | undefined
   let fixtureEmail: string | undefined
   let fixtureName: string | undefined
@@ -51,33 +51,33 @@ test.describe('Users — list, filter, detail, edit', () => {
     await search.fill(fixtureEmail!)
     await expect(page.getByText(fixtureName!).first()).toBeVisible({ timeout: 20_000 })
 
-    // Open detail — row click or view link
-    const rowLink = page.getByRole('link', { name: new RegExp(fixtureName!, 'i') }).first()
-    if (await rowLink.isVisible().catch(() => false)) {
-      await rowLink.click()
-    } else {
-      await page.goto(`/users/${fixtureUserId}`)
-    }
+    // Open detail via the row's View profile action (icon button with title)
+    const row = page.locator('tr', { hasText: fixtureEmail! })
+    const viewProfile = row.getByRole('button', { name: /view profile/i })
+    await expect(viewProfile).toBeVisible()
+    await viewProfile.click()
 
     await expect(page).toHaveURL(new RegExp(`/users/${fixtureUserId}`))
     await expect(page.getByText(fixtureEmail!).first()).toBeVisible({ timeout: 15_000 })
 
     const editButton = page.getByRole('button', { name: /edit profile/i })
-    if (await editButton.isVisible().catch(() => false)) {
-      await editButton.click()
-      const updatedName = `${fixtureName} Edited`
-      const nameInput = page.getByLabel(/full name/i)
-      await nameInput.fill(updatedName)
-      await page.getByRole('button', { name: /save changes/i }).click()
-      await expect(page.getByText(updatedName).first()).toBeVisible({ timeout: 15_000 })
+    await expect(editButton).toBeVisible()
+    await editButton.click()
 
-      const supabase = createServiceRoleClient()
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', fixtureUserId!)
-        .single()
-      expect(profile?.full_name).toBe(updatedName)
-    }
+    const updatedName = `${fixtureName} Edited`
+    // Label is not htmlFor-associated; use the edit form placeholder.
+    const nameInput = page.getByPlaceholder(/enter full name/i)
+    await expect(nameInput).toBeVisible()
+    await nameInput.fill(updatedName)
+    await page.getByRole('button', { name: /save changes/i }).click()
+    await expect(page.getByText(updatedName).first()).toBeVisible({ timeout: 15_000 })
+
+    const supabase = createServiceRoleClient()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', fixtureUserId!)
+      .single()
+    expect(profile?.full_name).toBe(updatedName)
   })
 })

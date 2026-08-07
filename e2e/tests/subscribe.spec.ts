@@ -1,11 +1,15 @@
 import { test, expect } from '@playwright/test'
 import { uniqueEmail, uniqueSuffix } from '../helpers/unique'
 import { createServiceRoleClient } from '../helpers/supabase-admin'
-import { deleteAuthUser, deleteSubscriptionByUserId } from '../helpers/api'
+import {
+  deleteAuthUser,
+  deleteSubscriptionByUserId,
+  expireStripeCheckoutSession,
+} from '../helpers/api'
 import { fetchCsrfHeaders } from '../helpers/csrf'
 
 /**
- * Subscription deep-link → Stripe Checkout (test mode).
+ * Subscription deep-link -> Stripe Checkout (test mode).
  *
  * Completing a real Stripe Checkout card charge in headed CI is optional and environment-
  * dependent. This suite:
@@ -13,6 +17,7 @@ import { fetchCsrfHeaders } from '../helpers/csrf'
  * 2. Creates a Checkout session via API (with CSRF) and asserts a Stripe-hosted URL
  * 3. Loads /subscription-success and asserts UI
  * 4. Tears down any subscription rows created for the fixture user
+ * 5. Expires any Stripe Checkout Session created (test-mode) so it is not left open
  *
  * Full browser card completion against checkout.stripe.com is flagged in the PR as
  * optionally runnable when Stripe test keys are populated; webhook-driven row creation
@@ -21,6 +26,7 @@ import { fetchCsrfHeaders } from '../helpers/csrf'
 test.describe('Subscription deep-link flow', () => {
   let userId: string | undefined
   let email: string | undefined
+  let checkoutSessionId: string | undefined
 
   test.beforeEach(async () => {
     const supabase = createServiceRoleClient()
@@ -45,6 +51,10 @@ test.describe('Subscription deep-link flow', () => {
   })
 
   test.afterEach(async () => {
+    if (checkoutSessionId) {
+      await expireStripeCheckoutSession(checkoutSessionId)
+      checkoutSessionId = undefined
+    }
     if (userId) {
       await deleteSubscriptionByUserId(userId)
       await deleteAuthUser(userId)
@@ -87,6 +97,7 @@ test.describe('Subscription deep-link flow', () => {
     if (response.ok()) {
       expect(body.url).toMatch(/stripe\.com|checkout/i)
       expect(body.sessionId).toBeTruthy()
+      checkoutSessionId = body.sessionId as string
 
       // Navigate success page (webhook may or may not have fired yet)
       await page.goto(`/subscription-success?tier=tier1&session_id=${body.sessionId}`)
@@ -94,11 +105,17 @@ test.describe('Subscription deep-link flow', () => {
         timeout: 15_000,
       })
     } else {
-      // Surface configuration gaps without silently skipping
+      // Fixture always creates a fresh valid user + matching email + no active
+      // subscription. The only legitimate non-2xx outcomes are env/config gaps
+      // from create-checkout/route.ts. Any other message means the fixture or
+      // request itself is broken and must fail the test.
+      const errorMessage = String(body.error || '')
       expect(
-        String(body.error || ''),
-        `create-checkout failed: ${JSON.stringify(body)}`
-      ).toMatch(/price id|not configured|stripe|user|email/i)
+        errorMessage,
+        `create-checkout failed with unexpected error: ${JSON.stringify(body)}`
+      ).toMatch(
+        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
+      )
     }
   })
 })

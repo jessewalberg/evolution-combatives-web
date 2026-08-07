@@ -3,13 +3,20 @@ import { randomUUID } from 'crypto'
 import { contentApi } from '../helpers/api'
 import { uniqueSlug, uniqueTitle } from '../helpers/unique'
 
-test.describe('Content — disciplines CRUD', () => {
+test.describe('Content - disciplines CRUD', () => {
   const created: { disciplineIds: string[] } = { disciplineIds: [] }
 
   test.afterEach(async ({ request }) => {
     const api = await contentApi(request)
+    const failures: string[] = []
     for (const id of [...created.disciplineIds].reverse()) {
-      await api.deleteDiscipline(id)
+      const result = await api.deleteDiscipline(id)
+      if (!result.ok) {
+        failures.push(`discipline ${id}: HTTP ${result.status}`)
+      }
+    }
+    if (failures.length) {
+      throw new Error(`Discipline teardown failed: ${failures.join('; ')}`)
     }
     created.disciplineIds = []
   })
@@ -39,7 +46,7 @@ test.describe('Content — disciplines CRUD', () => {
   })
 })
 
-test.describe('Content — categories merge / reorder', () => {
+test.describe('Content - categories merge / reorder', () => {
   const created = {
     disciplineId: '' as string,
     categoryIds: [] as string[],
@@ -47,14 +54,24 @@ test.describe('Content — categories merge / reorder', () => {
 
   test.afterEach(async ({ request }) => {
     const api = await contentApi(request)
+    const failures: string[] = []
     for (const id of [...created.categoryIds].reverse()) {
-      await api.deleteCategory(id)
+      const result = await api.deleteCategory(id)
+      if (!result.ok) {
+        failures.push(`category ${id}: HTTP ${result.status}`)
+      }
+    }
+    if (created.disciplineId) {
+      const result = await api.deleteDiscipline(created.disciplineId)
+      if (!result.ok) {
+        failures.push(`discipline ${created.disciplineId}: HTTP ${result.status}`)
+      }
+    }
+    if (failures.length) {
+      throw new Error(`Category teardown failed: ${failures.join('; ')}`)
     }
     created.categoryIds = []
-    if (created.disciplineId) {
-      await api.deleteDiscipline(created.disciplineId)
-      created.disciplineId = ''
-    }
+    created.disciplineId = ''
   })
 
   test('create categories, reorder, merge source into target, verify via GET', async ({
@@ -91,7 +108,7 @@ test.describe('Content — categories merge / reorder', () => {
     expect(merge.ok).toBeTruthy()
     expect(merge.body.success).toBe(true)
 
-    // Source removed by merge — only tear down target + discipline
+    // Source removed by merge - only tear down target + discipline
     created.categoryIds = [target.id]
 
     const list = await request.get('/api/content/categories')
@@ -103,7 +120,7 @@ test.describe('Content — categories merge / reorder', () => {
   })
 })
 
-test.describe('Content — videos processing / publish / bulk / CSV', () => {
+test.describe('Content - videos processing / publish / bulk / CSV', () => {
   const created = {
     disciplineId: '' as string,
     categoryId: '' as string,
@@ -112,21 +129,34 @@ test.describe('Content — videos processing / publish / bulk / CSV', () => {
 
   test.afterEach(async ({ request }) => {
     const api = await contentApi(request)
+    const failures: string[] = []
     if (created.videoIds.length) {
-      await api.bulkDeleteVideos(created.videoIds)
-      created.videoIds = []
+      const result = await api.bulkDeleteVideos(created.videoIds)
+      if (!result.ok) {
+        failures.push(`videos [${created.videoIds.join(',')}]: HTTP ${result.status}`)
+      }
     }
     if (created.categoryId) {
-      await api.deleteCategory(created.categoryId)
-      created.categoryId = ''
+      const result = await api.deleteCategory(created.categoryId)
+      if (!result.ok) {
+        failures.push(`category ${created.categoryId}: HTTP ${result.status}`)
+      }
     }
     if (created.disciplineId) {
-      await api.deleteDiscipline(created.disciplineId)
-      created.disciplineId = ''
+      const result = await api.deleteDiscipline(created.disciplineId)
+      if (!result.ok) {
+        failures.push(`discipline ${created.disciplineId}: HTTP ${result.status}`)
+      }
     }
+    if (failures.length) {
+      throw new Error(`Video teardown failed: ${failures.join('; ')}`)
+    }
+    created.videoIds = []
+    created.categoryId = ''
+    created.disciplineId = ''
   })
 
-  test('create processing video, publish, archive, CSV export, bulk delete', async ({
+  test('create processing video, publish, Archive bulk action, CSV export, bulk delete', async ({
     page,
     request,
   }) => {
@@ -168,23 +198,40 @@ test.describe('Content — videos processing / publish / bulk / CSV', () => {
     const listed = await api.listVideos(title)
     expect(listed.ok).toBeTruthy()
 
-    const archive = await api.bulkUpdateVideoStatus([video.id], {
-      processing_status: 'error',
-      is_published: false,
-    })
-    expect(archive.ok).toBeTruthy()
-
+    // Drive the real Archive UI bulk action. Today the app's Archive handlers
+    // set processing_status to 'error' ("closest to archived") - there is no
+    // true 'archived' status wired into bulkUpdateVideoStatus. Assert that
+    // imperfect representation explicitly rather than inventing a different value.
     await page.goto('/dashboard/content/videos')
+    await page.getByPlaceholder(/search videos/i).fill(title)
+    await expect(page.getByText(title).first()).toBeVisible({ timeout: 20_000 })
+
+    const videoRow = page.locator('tr', { hasText: title })
+    await videoRow.locator('input[type="checkbox"]').check()
+    await page.getByRole('button', { name: /^archive$/i }).click()
+
+    await expect
+      .poll(
+        async () => {
+          const afterArchive = await api.listVideos(title)
+          if (!afterArchive.ok) return null
+          const archivedRows =
+            (afterArchive.body.data as Array<{ id: string; processing_status: string }>) ||
+            []
+          return archivedRows.find((v) => v.id === video.id)?.processing_status ?? null
+        },
+        { timeout: 20_000 }
+      )
+      .toBe('error')
+
     await expect(page.getByRole('button', { name: /^export$/i })).toBeVisible({
       timeout: 20_000,
     })
 
-    const downloadPromise = page.waitForEvent('download', { timeout: 15_000 }).catch(() => null)
+    const downloadPromise = page.waitForEvent('download', { timeout: 15_000 })
     await page.getByRole('button', { name: /^export$/i }).click()
     const download = await downloadPromise
-    if (download) {
-      expect(download.suggestedFilename()).toMatch(/\.csv$/i)
-    }
+    expect(download.suggestedFilename()).toMatch(/\.csv$/i)
 
     const del = await api.bulkDeleteVideos([video.id])
     expect(del.ok).toBeTruthy()
