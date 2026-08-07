@@ -346,7 +346,7 @@ export default function QAManagementPage() {
             if (error) throw error
 
             // Update question status to answered
-            await supabase
+            const { error: questionError } = await supabase
                 .from('questions')
                 .update({
                     status: 'answered',
@@ -354,6 +354,10 @@ export default function QAManagementPage() {
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', questionId)
+                .select('id')
+                .single()
+
+            if (questionError) throw questionError
 
             return data
         },

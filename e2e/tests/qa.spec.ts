@@ -98,17 +98,31 @@ test.describe('Q&A - list, detail, answer / moderate', () => {
     await expect(page.getByText(answerText).first()).toBeVisible({ timeout: 20_000 })
 
     const supabase = createServiceRoleClient()
-    const { data: answers } = await supabase
-      .from('answers')
-      .select('id, content')
-      .eq('question_id', questionId!)
-    expect((answers || []).some((a) => a.content === answerText)).toBeTruthy()
+    await expect
+      .poll(
+        async () => {
+          const [answersResult, questionResult] = await Promise.all([
+            supabase
+              .from('answers')
+              .select('id, content')
+              .eq('question_id', questionId!),
+            supabase
+              .from('questions')
+              .select('status')
+              .eq('id', questionId!)
+              .single(),
+          ])
 
-    const { data: question } = await supabase
-      .from('questions')
-      .select('status')
-      .eq('id', questionId!)
-      .single()
-    expect(question?.status).toBe('answered')
+          if (answersResult.error) throw answersResult.error
+          if (questionResult.error) throw questionResult.error
+
+          return {
+            answerPersisted: answersResult.data.some((a) => a.content === answerText),
+            status: questionResult.data.status,
+          }
+        },
+        { timeout: 20_000 }
+      )
+      .toEqual({ answerPersisted: true, status: 'answered' })
   })
 })

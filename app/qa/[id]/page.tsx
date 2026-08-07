@@ -263,7 +263,7 @@ export default function QuestionDetailPage() {
             if (answerError) throw answerError
 
             // Update question status
-            await supabase
+            const { error: questionError } = await supabase
                 .from('questions')
                 .update({
                     status: 'answered',
@@ -271,6 +271,10 @@ export default function QuestionDetailPage() {
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', questionId)
+                .select('id')
+                .single()
+
+            if (questionError) throw questionError
 
             // Track response metrics
             if (canViewMetrics) {
