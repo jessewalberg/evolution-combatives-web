@@ -36,7 +36,7 @@ const mockCustomersRetrieve = mockStripe.customers.retrieve as unknown as Mock
 describe('POST /api/debug/sync-subscription', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('does not enforce auth middleware — proceeds to Stripe lookup', async () => {
+  it('does not enforce auth middleware - proceeds to Stripe lookup', async () => {
     mockSubscriptionsRetrieve.mockResolvedValue({
       id: 'sub_123',
       status: 'active',
@@ -94,7 +94,7 @@ describe('POST /api/debug/sync-subscription', () => {
     )
     const body = await res.json()
 
-    // Not 401 — handler has no auth gate
+    // Not 401 - handler has no auth gate
     expect(res.status).not.toBe(401)
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
