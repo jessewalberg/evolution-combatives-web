@@ -117,16 +117,33 @@ describe('withRetry', () => {
     expect(op).toHaveBeenCalledTimes(1)
   })
 
-  it('retries with exponential backoff then succeeds', async () => {
+  it('retries with delay scaling linearly by attempt (delay * attempt), then succeeds', async () => {
+    // Three data points are needed to actually distinguish linear growth
+    // (delay * attempt = 1000, 2000, 3000) from doubling exponential growth
+    // (delay * 2^(attempt-1) = 1000, 2000, 4000) - they agree on the first
+    // two terms and only diverge at the third. The source code comment
+    // calls this exponential backoff, but the implementation
+    // (delay * attempt in supabase-errors.ts) is actually linear; this test
+    // documents the real behavior rather than the comment.
     const op = vi
       .fn()
       .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockRejectedValueOnce(new Error('fetch failed'))
       .mockResolvedValueOnce('ok')
 
-    const promise = withRetry(op, 3, 1000, 'retry-test')
+    const promise = withRetry(op, 4, 1000, 'retry-test')
+
     await vi.advanceTimersByTimeAsync(1000)
-    await expect(promise).resolves.toBe('ok')
     expect(op).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(op).toHaveBeenCalledTimes(3)
+
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(op).toHaveBeenCalledTimes(4)
+
+    await expect(promise).resolves.toBe('ok')
   })
 
   it('does not retry auth errors', async () => {
