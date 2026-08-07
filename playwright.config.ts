@@ -4,7 +4,7 @@ import path from 'path'
 
 /**
  * Load gitignored local E2E secrets. CI injects the same names via GitHub Actions secrets.
- * Never commit .env.test.local — covered by .gitignore ".env.*.local".
+ * Never commit .env.test.local - covered by .gitignore ".env.*.local".
  */
 dotenv.config({ path: path.resolve(__dirname, '.env.test.local') })
 
@@ -47,6 +47,14 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /.*\.setup\.ts/,
+      // Auth setup fills E2E_ADMIN_PASSWORD via page.fill(). Playwright traces
+      // and videos record plaintext fill values (password fields are not masked).
+      // Disable both so a retry/failure cannot upload the real admin password
+      // as a CI artifact. Leave global trace/video as-is for chromium/webkit.
+      use: {
+        trace: 'off',
+        video: 'off',
+      },
     },
     {
       name: 'chromium',
