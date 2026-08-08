@@ -213,9 +213,24 @@ describe('VideoLibraryPage', () => {
     await user.click(screen.getByRole('button', { name: /Export/i }))
 
     expect(createObjectURLSpy).toHaveBeenCalled()
-    const blobArg = createObjectURLSpy.mock.calls[0][0]
+    const blobArg = createObjectURLSpy.mock.calls[0][0] as Blob
     expect(blobArg).toBeInstanceOf(Blob)
-    expect((blobArg as Blob).type).toBe('text/csv')
+    expect(blobArg.type).toBe('text/csv')
+
+    const csvText = await blobArg.text()
+    const lines = csvText.split('\n')
+    expect(lines[0]).toBe('Title,Category,Instructor,Status,Tier,Upload Date,Views')
+    expect(lines).toContain(
+      '"Guard Pass Fundamentals","Fundamentals","","ready","tier1","2024-05-01T00:00:00.000Z","100"'
+    )
+    expect(lines).toContain(
+      '"Mount Escape Drill","Escapes","","processing","tier2","2024-04-01T00:00:00.000Z","50"'
+    )
+    expect(lines).toContain(
+      '"Armbar Setup","Fundamentals","","ready","tier1","2024-03-01T00:00:00.000Z","25"'
+    )
+    expect(csvText).not.toContain('undefined')
+
     expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url')
   })
 

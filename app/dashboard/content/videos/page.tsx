@@ -408,11 +408,20 @@ export default function VideoLibraryPage() {
             }
         })
 
-        const headers = ['Title', 'Category', 'Instructor', 'Status', 'Tier', 'Upload Date', 'Views']
+        const headers = ['Title', 'Category', 'Instructor', 'Status', 'Tier', 'Upload Date', 'Views'] as const
+        const headerToKey = {
+            Title: 'title',
+            Category: 'category',
+            Instructor: 'instructor',
+            Status: 'status',
+            Tier: 'tier',
+            'Upload Date': 'uploadDate',
+            Views: 'viewCount',
+        } as const satisfies Record<(typeof headers)[number], keyof (typeof csvData)[number]>
         const csvContent = [
             headers.join(','),
             ...csvData.map((row) => headers.map(header => {
-                const key = header.toLowerCase().replace(' ', '') as keyof typeof row
+                const key = headerToKey[header]
                 return `"${row[key]}"`
             }).join(','))
         ].join('\n')
