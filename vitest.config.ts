@@ -21,6 +21,7 @@ export default defineConfig({
         'src/lib/**/*.{ts,tsx}',
         'src/services/**/*.{ts,tsx}',
         'src/hooks/**/*.{ts,tsx}',
+        'src/components/**/*.{ts,tsx}',
         'middleware.ts',
         'app/api/**/*.{ts,tsx}',
       ],
@@ -33,11 +34,24 @@ export default defineConfig({
         'src/lib/shared/services/index.ts',
         'src/lib/shared/types/index.ts',
       ],
+      // Vitest's top-level scalar thresholds (lines/statements/branches/functions)
+      // always apply as a "global" check over every included file, even ones
+      // also matched by a more specific glob entry - a glob entry adds an
+      // additional, separate check, it does not carve that file set out of the
+      // global aggregate. So the top-level scalar keys are intentionally left
+      // unset here, and the pre-issue-18 gate is instead expressed as a single
+      // glob-keyed threshold whose brace-expanded pattern covers exactly the
+      // previously gated paths as one combined aggregate (matching the old
+      // 85/85/75/75 gate, which passed even though middleware.ts alone sits
+      // below 85/75 - it only clears the bar combined with the other paths).
+      // src/components/** is deliberately not part of this glob, and there is
+      // no top-level scalar threshold, so it is measured and reported via
+      // `include` above but not gated.
+      // Issue #18: coverage on src/components/** is reported, not yet hard-gated
+      // - revisit the threshold once real numbers exist from this issue.
       thresholds: {
-        lines: 85,
-        statements: 85,
-        branches: 75,
-        functions: 75,
+        '{src/lib/**/*.{ts,tsx},src/services/**/*.{ts,tsx},src/hooks/**/*.{ts,tsx},middleware.ts,app/api/**/*.{ts,tsx}}':
+          { lines: 85, statements: 85, branches: 75, functions: 75 },
       },
       reportOnFailure: true,
     },
