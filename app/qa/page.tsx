@@ -229,26 +229,26 @@ export default function QAManagementPage() {
                 .from('questions')
                 .select(`
                     *,
-                    user:profiles!questions_user_id_fkey(
+                    user:profiles!questions_user_profile_id_fkey(
                         id,
                         full_name,
                         email,
                         avatar_url,
-                        subscriptions(tier, status)
+                        subscription_tier
                     ),
                     video:videos(
                         id,
                         title,
                         thumbnail_url,
-                        duration,
-                        category(
+                        duration:duration_seconds,
+                        category:categories!videos_category_id_fkey(
                             name,
-                            discipline(name)
+                            discipline:disciplines!categories_discipline_id_fkey(name)
                         )
                     ),
                     answers(
                         *,
-                        admin:profiles!answers_admin_id_fkey(
+                        admin:profiles!answers_admin_profile_id_fkey(
                             full_name,
                             email,
                             avatar_url
@@ -292,8 +292,7 @@ export default function QAManagementPage() {
             let questions = (data || []).map(question => ({
                 ...question,
                 user: question.user ? {
-                    ...question.user,
-                    subscription_tier: question.user.subscriptions?.[0]?.tier || null
+                    ...question.user
                 } : undefined
             }))
 
@@ -347,13 +346,18 @@ export default function QAManagementPage() {
             if (error) throw error
 
             // Update question status to answered
-            await supabase
+            const { error: questionError } = await supabase
                 .from('questions')
                 .update({
                     status: 'answered',
+                    answered: true,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', questionId)
+                .select('id')
+                .single()
+
+            if (questionError) throw questionError
 
             return data
         },
@@ -1052,4 +1056,4 @@ export default function QAManagementPage() {
             )}
         </div>
     )
-} 
+}

@@ -79,3 +79,11 @@ CLAUDE_DEVELOPMENT_RULES.md
 
 .next
 tsconfig.tsbuildinfo
+
+# Playwright E2E
+e2e/.auth/*.json
+!e2e/.auth/.gitkeep
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

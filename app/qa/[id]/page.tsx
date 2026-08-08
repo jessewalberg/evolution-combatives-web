@@ -146,30 +146,29 @@ export default function QuestionDetailPage() {
                 .from('questions')
                 .select(`
                     *,
-                    user:profiles!questions_user_id_fkey(
+                    user:profiles!questions_user_profile_id_fkey(
                         id,
                         full_name,
                         email,
                         avatar_url,
                         created_at,
-                        last_sign_in_at,
-                        subscriptions(tier, status, created_at)
+                        subscription_tier,
+                        last_sign_in_at:last_login_at
                     ),
                     video:videos(
                         id,
                         title,
                         description,
                         thumbnail_url,
-                        stream_url,
-                        duration,
-                        category(
+                        duration:duration_seconds,
+                        category:categories!videos_category_id_fkey(
                             name,
-                            discipline(name)
+                            discipline:disciplines!categories_discipline_id_fkey(name)
                         )
                     ),
                     answers(
                         *,
-                        admin:profiles!answers_admin_id_fkey(
+                        admin:profiles!answers_admin_profile_id_fkey(
                             full_name,
                             email,
                             avatar_url
@@ -181,16 +180,7 @@ export default function QuestionDetailPage() {
 
             if (error) throw error
 
-            // Process subscription data
-            const processedData = {
-                ...data,
-                user: {
-                    ...data.user,
-                    subscription_tier: data.user.subscriptions?.[0]?.tier || null
-                }
-            }
-
-            return processedData
+            return data
         },
         enabled: !!questionId && !!user && !!profile?.admin_role
     })
@@ -273,13 +263,18 @@ export default function QuestionDetailPage() {
             if (answerError) throw answerError
 
             // Update question status
-            await supabase
+            const { error: questionError } = await supabase
                 .from('questions')
                 .update({
                     status: 'answered',
+                    answered: true,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', questionId)
+                .select('id')
+                .single()
+
+            if (questionError) throw questionError
 
             // Track response metrics
             if (canViewMetrics) {
@@ -884,4 +879,4 @@ export default function QuestionDetailPage() {
             </div>
         </div>
     )
-} 
+}

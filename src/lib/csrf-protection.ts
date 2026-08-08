@@ -6,7 +6,18 @@
 import { NextRequest } from 'next/server'
 
 const CSRF_TOKEN_HEADER = 'X-CSRF-Token'
-const CSRF_COOKIE_NAME = process.env.NODE_ENV === 'production' ? '__Host-csrf-token' : 'csrf-token'
+
+/**
+ * Use a host-only Secure cookie for HTTPS and a regular cookie for local HTTP.
+ */
+export function isSecureRequest(request: NextRequest): boolean {
+    const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+    return forwardedProtocol ? forwardedProtocol === 'https' : request.nextUrl.protocol === 'https:'
+}
+
+export function getCSRFCookieName(request: NextRequest): string {
+    return isSecureRequest(request) ? '__Host-csrf-token' : 'csrf-token'
+}
 
 /**
  * Generate a secure CSRF token
@@ -23,7 +34,7 @@ export function generateCSRFToken(): string {
 export async function validateCSRFToken(request: NextRequest): Promise<boolean> {
     try {
         const tokenFromHeader = request.headers.get(CSRF_TOKEN_HEADER)
-        const tokenFromCookie = request.cookies.get(CSRF_COOKIE_NAME)?.value
+        const tokenFromCookie = request.cookies.get(getCSRFCookieName(request))?.value
 
         if (!tokenFromHeader || !tokenFromCookie) {
             return false

@@ -111,8 +111,7 @@ function AuthConfirmContent() {
 
                     if (verifyError) {
                         // Check if already verified
-                        if (verifyError.message?.includes('already been verified') ||
-                            verifyError.message?.includes('expired')) {
+                        if (verifyError.message?.includes('already been verified')) {
                             setVerificationState({
                                 status: 'already_verified',
                                 message: 'Your email has already been verified. You can now sign in.',
@@ -384,4 +383,4 @@ export default function AuthConfirmPage() {
             <AuthConfirmContent />
         </Suspense>
     )
-} 
+}
