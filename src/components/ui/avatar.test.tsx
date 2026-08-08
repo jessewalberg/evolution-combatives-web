@@ -87,7 +87,7 @@ describe('Avatar', () => {
     avatar.focus()
     await user.keyboard('{Enter}')
     // native div with role=button doesn't auto-activate on Enter in all environments;
-    // click path is covered above — verify tabIndex for keyboard access
+    // click path is covered above - verify tabIndex for keyboard access
     expect(avatar).toHaveAttribute('tabIndex', '0')
   })
 

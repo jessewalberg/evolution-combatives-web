@@ -108,7 +108,7 @@ describe('AdminLayout', () => {
     expect(screen.getByText('Evolution')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Quick Add/i })).toBeInTheDocument()
 
-    // Desktop collapse toggle (hidden lg:flex) — XMark when expanded
+    // Desktop collapse toggle (hidden lg:flex) - XMark when expanded
     const headerButtons = screen
       .getAllByRole('button')
       .filter((btn) => btn.className.includes('hidden lg:flex'))
@@ -171,7 +171,7 @@ describe('AdminLayout', () => {
       ],
     })
 
-    // Scope to breadcrumb <nav> — sidebar also has a "Dashboard" link
+    // Scope to breadcrumb <nav> - sidebar also has a "Dashboard" link
     const breadcrumbNav = screen
       .getAllByRole('navigation')
       .find((nav) => within(nav).queryByText('Videos'))

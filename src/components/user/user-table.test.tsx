@@ -217,7 +217,7 @@ describe('UserTable', () => {
     expect(screen.queryByText('Carol Clark')).not.toBeInTheDocument()
     expect(screen.queryByText('Dave Davis')).not.toBeInTheDocument()
 
-    // Clear and filter by admin role (panel stays open after clear — do not toggle Filters again)
+    // Clear and filter by admin role (panel stays open after clear - do not toggle Filters again)
     await user.click(screen.getByRole('button', { name: /Clear all filters/i }))
     await waitFor(() => {
       expect(screen.getByText('Bob Baker')).toBeInTheDocument()
