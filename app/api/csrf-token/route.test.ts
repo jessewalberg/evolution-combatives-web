@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createNextRequest } from '@/test/helpers/next-request'
 import { GET } from './route'
 
-vi.mock('../../../src/lib/csrf-protection', () => ({
-  generateCSRFToken: vi.fn(),
-}))
+vi.mock('../../../src/lib/csrf-protection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/lib/csrf-protection')>()
+  return {
+    ...actual,
+    generateCSRFToken: vi.fn(),
+  }
+})
 
 import { generateCSRFToken } from '../../../src/lib/csrf-protection'
 
@@ -15,7 +20,7 @@ describe('GET /api/csrf-token', () => {
   it('returns token and sets cookie', async () => {
     mockGenerate.mockReturnValue('csrf-test-token')
 
-    const res = await GET()
+    const res = await GET(createNextRequest('/api/csrf-token'))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -30,7 +35,7 @@ describe('GET /api/csrf-token', () => {
       throw new Error('rng fail')
     })
 
-    const res = await GET()
+    const res = await GET(createNextRequest('/api/csrf-token'))
     const body = await res.json()
 
     expect(res.status).toBe(500)
