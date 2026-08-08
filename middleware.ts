@@ -144,7 +144,8 @@ function isPublicRoute(pathname: string): boolean {
     return ROUTE_CONFIG.public.some(route => {
         if (route === pathname) return true
         if (route.endsWith('*')) {
-            return pathname.startsWith(route.slice(0, -1))
+            const prefix = route.slice(0, -1)
+            return pathname === prefix || pathname.startsWith(prefix + '/')
         }
         return false
     })
