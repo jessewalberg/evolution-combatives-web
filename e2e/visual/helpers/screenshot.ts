@@ -29,9 +29,11 @@ export async function expectVisualScreenshot(
   await expect(page).toHaveScreenshot(`${name}.png`, {
     animations: 'disabled',
     caret: 'hide',
-    // Viewport-only captures stay stable across runs; fullPage heights flake
-    // when content/layout settles differently (especially mobile emulation).
-    fullPage: options?.fullPage ?? false,
+    // Full-page by default so "populated" baselines actually show the
+    // populated content below the fold, not just the viewport-height crop.
+    // The 390px-mobile table overflow this used to work around is fixed at
+    // the source (Card overflow-x-auto on the users/qa tables) instead.
+    fullPage: options?.fullPage ?? true,
     mask: options?.mask,
   })
 }
