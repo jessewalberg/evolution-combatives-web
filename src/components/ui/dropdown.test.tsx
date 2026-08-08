@@ -105,11 +105,11 @@ describe('ContentActionsDropdown', () => {
     const onEdit = vi.fn()
     const onDelete = vi.fn()
     render(<ContentActionsDropdown onEdit={onEdit} onDelete={onDelete} />)
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: 'Content actions' }))
     await user.click(await screen.findByRole('menuitem', { name: /Edit/ }))
     expect(onEdit).toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: 'Content actions' }))
     await user.click(await screen.findByRole('menuitem', { name: /Delete/ }))
     expect(onDelete).toHaveBeenCalled()
   })
