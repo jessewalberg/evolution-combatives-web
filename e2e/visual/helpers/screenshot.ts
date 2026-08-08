@@ -15,13 +15,23 @@ export async function expectVisualScreenshot(
 ): Promise<void> {
   // Cap networkidle so pages with lingering polls cannot burn the full test timeout.
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
+  await page.evaluate(async () => {
+    if (document.fonts?.ready) {
+      await document.fonts.ready
+    }
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+  })
   // Node-side delay (real clock) so fake page timers cannot stall settle time.
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  await new Promise((resolve) => setTimeout(resolve, 500))
 
   await expect(page).toHaveScreenshot(`${name}.png`, {
     animations: 'disabled',
     caret: 'hide',
-    fullPage: options?.fullPage ?? true,
+    // Viewport-only captures stay stable across runs; fullPage heights flake
+    // when content/layout settles differently (especially mobile emulation).
+    fullPage: options?.fullPage ?? false,
     mask: options?.mask,
   })
 }

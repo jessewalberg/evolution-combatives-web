@@ -12,8 +12,7 @@ test.describe('@visual qa', () => {
     await page
       .getByText(/firearm retention/i)
       .first()
-      .waitFor({ timeout: 30_000 })
-      .catch(() => undefined)
+      .waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `qa-list-populated-${vp}`)
   })
 
@@ -21,7 +20,10 @@ test.describe('@visual qa', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/qa')
-    await page.waitForTimeout(500)
+    await page.getByRole('heading', { name: 'Q&A Management', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `qa-list-empty-${vp}`)
   })
 
@@ -32,8 +34,7 @@ test.describe('@visual qa', () => {
     await page
       .getByText(/firearm retention/i)
       .first()
-      .waitFor({ timeout: 30_000 })
-      .catch(() => undefined)
+      .waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `qa-detail-${vp}`)
   })
 })

@@ -8,11 +8,10 @@ test.describe('@visual dashboard', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'populated' })
     await page.goto('/dashboard')
-    await page
-      .getByRole('heading', { name: /dashboard|overview|welcome/i })
-      .first()
-      .waitFor({ state: 'visible', timeout: 30_000 })
-      .catch(() => undefined)
+    await page.getByRole('heading', { name: 'Dashboard Overview', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `dashboard-home-populated-${vp}`, {
       mask: commonTimeMasks(page),
     })
@@ -22,7 +21,10 @@ test.describe('@visual dashboard', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/dashboard')
-    await page.waitForTimeout(500)
+    await page.getByRole('heading', { name: 'Dashboard Overview', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `dashboard-home-empty-${vp}`, {
       mask: commonTimeMasks(page),
     })

@@ -12,8 +12,7 @@ test.describe('@visual users', () => {
     await page
       .getByText(/jane officer|officer@test/i)
       .first()
-      .waitFor({ timeout: 30_000 })
-      .catch(() => undefined)
+      .waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `users-list-populated-${vp}`)
   })
 
@@ -21,7 +20,10 @@ test.describe('@visual users', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/users')
-    await page.waitForTimeout(500)
+    await page.getByRole('heading', { name: 'User Management', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `users-list-empty-${vp}`)
   })
 
@@ -32,8 +34,7 @@ test.describe('@visual users', () => {
     await page
       .getByText(/jane officer/i)
       .first()
-      .waitFor({ timeout: 30_000 })
-      .catch(() => undefined)
+      .waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `users-detail-${vp}`)
   })
 })

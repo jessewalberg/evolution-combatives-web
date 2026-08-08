@@ -13,7 +13,10 @@ test.describe('@visual analytics', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'populated' })
     await page.goto('/analytics')
-    await page.waitForTimeout(1000)
+    await page
+      .getByRole('heading', { name: /analytics/i })
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
     const chartMask = page.locator('.recharts-responsive-container, .recharts-wrapper')
     await expectVisualScreenshot(page, `analytics-populated-${vp}`, {
       mask: [chartMask],
@@ -24,7 +27,10 @@ test.describe('@visual analytics', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/analytics')
-    await page.waitForTimeout(1000)
+    await page
+      .getByRole('heading', { name: /analytics/i })
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
     const chartMask = page.locator('.recharts-responsive-container, .recharts-wrapper')
     await expectVisualScreenshot(page, `analytics-empty-${vp}`, {
       mask: [chartMask],

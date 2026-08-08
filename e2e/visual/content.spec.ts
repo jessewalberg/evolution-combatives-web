@@ -6,8 +6,9 @@ import { viewportLabel } from './helpers/viewport'
 
 /**
  * Content management pages under /dashboard/content/*.
- * Video edit uses server-only contentQueries in the browser and renders an
- * error state - still captured so regressions on that shell are visible.
+ * Every readiness wait below is a real (non-swallowed) assertion so a page
+ * that crashes or never finishes loading fails the test loudly instead of
+ * silently screenshotting broken content.
  */
 
 test.describe('@visual content', () => {
@@ -15,7 +16,7 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'populated' })
     await page.goto('/dashboard/content/disciplines')
-    await page.getByText(/law enforcement/i).first().waitFor({ timeout: 30_000 }).catch(() => undefined)
+    await page.getByText(/law enforcement/i).first().waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `disciplines-populated-${vp}`)
   })
 
@@ -23,15 +24,29 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/dashboard/content/disciplines')
-    await page.waitForTimeout(500)
+    await page.getByRole('heading', { name: 'Disciplines', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `disciplines-empty-${vp}`)
+  })
+
+  test('disciplines error @visual', async ({ page }, testInfo) => {
+    const vp = viewportLabel(testInfo.project.name)
+    await prepareVisualPage(page, { mode: 'error' })
+    await page.goto('/dashboard/content/disciplines')
+    await page.getByText(/failed to load disciplines/i).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
+    await expectVisualScreenshot(page, `disciplines-error-${vp}`)
   })
 
   test('categories populated @visual', async ({ page }, testInfo) => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'populated' })
     await page.goto('/dashboard/content/categories')
-    await page.getByText(/ground control/i).first().waitFor({ timeout: 30_000 }).catch(() => undefined)
+    await page.getByText(/ground control/i).first().waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `categories-populated-${vp}`)
   })
 
@@ -39,8 +54,22 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/dashboard/content/categories')
-    await page.waitForTimeout(500)
+    await page.getByRole('heading', { name: 'Categories', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `categories-empty-${vp}`)
+  })
+
+  test('categories error @visual', async ({ page }, testInfo) => {
+    const vp = viewportLabel(testInfo.project.name)
+    await prepareVisualPage(page, { mode: 'error' })
+    await page.goto('/dashboard/content/categories')
+    await page.getByText(/failed to load categories/i).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
+    await expectVisualScreenshot(page, `categories-error-${vp}`)
   })
 
   test('videos populated @visual', async ({ page }, testInfo) => {
@@ -50,8 +79,7 @@ test.describe('@visual content', () => {
     await page
       .getByText(/defensive tactics/i)
       .first()
-      .waitFor({ timeout: 30_000 })
-      .catch(() => undefined)
+      .waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `videos-populated-${vp}`)
   })
 
@@ -59,7 +87,10 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/dashboard/content/videos')
-    await page.waitForTimeout(500)
+    await page.getByRole('heading', { name: 'Video Library', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `videos-empty-${vp}`)
   })
 
@@ -67,7 +98,10 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'populated' })
     await page.goto('/dashboard/content/processing')
-    await page.waitForTimeout(800)
+    await page.getByRole('heading', { name: 'Video Processing Monitor', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `processing-populated-${vp}`)
   })
 
@@ -75,7 +109,10 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'empty' })
     await page.goto('/dashboard/content/processing')
-    await page.waitForTimeout(800)
+    await page.getByRole('heading', { name: 'Video Processing Monitor', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `processing-empty-${vp}`)
   })
 
@@ -87,7 +124,6 @@ test.describe('@visual content', () => {
       .getByRole('heading', { name: /upload/i })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 })
-      .catch(() => undefined)
     await expectVisualScreenshot(page, `video-upload-${vp}`)
   })
 
@@ -95,7 +131,10 @@ test.describe('@visual content', () => {
     const vp = viewportLabel(testInfo.project.name)
     await prepareVisualPage(page, { mode: 'populated' })
     await page.goto(`/dashboard/content/videos/${FIXTURE_IDS.video}/edit`)
-    await page.waitForTimeout(800)
+    await page.getByRole('heading', { name: 'Edit Video', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `video-edit-${vp}`)
   })
 
@@ -106,8 +145,7 @@ test.describe('@visual content', () => {
     await page
       .getByText(/defensive tactics/i)
       .first()
-      .waitFor({ timeout: 30_000 })
-      .catch(() => undefined)
+      .waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `video-preview-${vp}`)
   })
 })

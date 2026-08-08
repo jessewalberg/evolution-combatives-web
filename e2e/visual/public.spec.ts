@@ -18,12 +18,17 @@ test.describe('@visual public pages', () => {
   test('login @visual', async ({ page }, testInfo) => {
     const vp = viewportLabel(testInfo.project.name)
     await page.goto('/login')
+    await page.getByLabel(/email address/i).waitFor({ state: 'visible', timeout: 30_000 })
     await expectVisualScreenshot(page, `login-${vp}`)
   })
 
   test('sign-up @visual', async ({ page }, testInfo) => {
     const vp = viewportLabel(testInfo.project.name)
     await page.goto('/sign-up')
+    await page.getByRole('heading', { name: 'Create Account', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `sign-up-${vp}`)
   })
 
@@ -32,12 +37,20 @@ test.describe('@visual public pages', () => {
     await page.goto(
       `/subscribe?userId=${FIXTURE_IDS.regularUser}&email=officer@test.evolutioncombatives.com`
     )
+    await page.getByRole('heading', { name: 'Choose Your Training Level', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `subscribe-${vp}`)
   })
 
   test('subscription-success @visual', async ({ page }, testInfo) => {
     const vp = viewportLabel(testInfo.project.name)
     await page.goto('/subscription-success?tier=tier2&session_id=cs_test_visual_001')
+    await page.getByRole('heading', { name: 'Subscription Activated!', exact: true }).waitFor({
+      state: 'visible',
+      timeout: 30_000,
+    })
     await expectVisualScreenshot(page, `subscription-success-${vp}`)
   })
 })
