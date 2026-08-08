@@ -15,30 +15,34 @@ CREATE TABLE IF NOT EXISTS public.bookmarks (
 
 COMMENT ON COLUMN public.bookmarks.notes IS 'Optional user notes about why they saved this video';
 
-CREATE INDEX bookmarks_created_at_idx ON public.bookmarks USING btree (created_at DESC);
-CREATE INDEX bookmarks_user_id_idx ON public.bookmarks USING btree (user_id);
-CREATE INDEX bookmarks_video_id_idx ON public.bookmarks USING btree (video_id);
+CREATE INDEX IF NOT EXISTS bookmarks_created_at_idx ON public.bookmarks USING btree (created_at DESC);
+CREATE INDEX IF NOT EXISTS bookmarks_user_id_idx ON public.bookmarks USING btree (user_id);
+CREATE INDEX IF NOT EXISTS bookmarks_video_id_idx ON public.bookmarks USING btree (video_id);
 
 ALTER TABLE public.bookmarks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own bookmarks" ON public.bookmarks;
 CREATE POLICY "Users can view their own bookmarks"
 ON public.bookmarks
 FOR SELECT
 TO public
 USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own bookmarks" ON public.bookmarks;
 CREATE POLICY "Users can create their own bookmarks"
 ON public.bookmarks
 FOR INSERT
 TO public
 WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own bookmarks" ON public.bookmarks;
 CREATE POLICY "Users can update their own bookmarks"
 ON public.bookmarks
 FOR UPDATE
 TO public
 USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own bookmarks" ON public.bookmarks;
 CREATE POLICY "Users can delete their own bookmarks"
 ON public.bookmarks
 FOR DELETE
