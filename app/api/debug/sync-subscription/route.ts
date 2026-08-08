@@ -128,6 +128,8 @@ export async function POST(request: NextRequest) {
                 .from('subscriptions')
                 .insert({
                     user_id: user.id,
+                    platform: 'stripe',
+                    external_subscription_id: subscription.id,
                     tier: tier as 'tier1' | 'tier2' | 'tier3',
                     status: subscription.status as 'active' | 'canceled',
                     stripe_subscription_id: subscription.id,

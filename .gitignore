@@ -87,3 +87,6 @@ e2e/.auth/*.json
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Supabase CLI local state (pooler-url contains a live DB password)
+supabase/.temp/

@@ -141,6 +141,8 @@ describe('POST /api/webhooks/stripe', () => {
 
     expect(supabase.subscriptionsInsert).toHaveBeenCalledWith({
       user_id: 'user-1',
+      platform: 'stripe',
+      external_subscription_id: 'sub_1',
       tier: 'tier1',
       status: 'active',
       stripe_subscription_id: 'sub_1',
@@ -149,6 +151,7 @@ describe('POST /api/webhooks/stripe', () => {
       current_period_end: new Date(1702592000 * 1000).toISOString(),
       cancel_at_period_end: false,
       canceled_at: null,
+      updated_at: expect.any(String),
     })
     expect(supabase.profilesUpdate).toHaveBeenCalledWith({ subscription_tier: 'tier1' })
     expect(supabase.profilesUpdateEq).toHaveBeenCalledWith('id', 'user-1')
@@ -175,6 +178,7 @@ describe('POST /api/webhooks/stripe', () => {
       current_period_end: new Date(1702592000 * 1000).toISOString(),
       cancel_at_period_end: true,
       canceled_at: null,
+      updated_at: expect.any(String),
     })
     expect(supabase.subscriptionsUpdateEq).toHaveBeenCalledWith('stripe_subscription_id', 'sub_1')
     expect(supabase.profilesUpdate).not.toHaveBeenCalled()
@@ -230,7 +234,10 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(webhookRequest('{}', 'sig'))
     expect(res.status).toBe(200)
 
-    expect(supabase.subscriptionsUpdate).toHaveBeenCalledWith({ status: 'active' })
+    expect(supabase.subscriptionsUpdate).toHaveBeenCalledWith({
+      status: 'active',
+      updated_at: expect.any(String),
+    })
     expect(supabase.subscriptionsUpdateEq).toHaveBeenCalledWith('stripe_subscription_id', 'sub_1')
   })
 
@@ -242,7 +249,10 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(webhookRequest('{}', 'sig'))
     expect(res.status).toBe(200)
 
-    expect(supabase.subscriptionsUpdate).toHaveBeenCalledWith({ status: 'past_due' })
+    expect(supabase.subscriptionsUpdate).toHaveBeenCalledWith({
+      status: 'past_due',
+      updated_at: expect.any(String),
+    })
     expect(supabase.subscriptionsUpdateEq).toHaveBeenCalledWith('stripe_subscription_id', 'sub_1')
   })
 
