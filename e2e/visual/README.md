@@ -37,7 +37,7 @@ Authenticated pages use `visual-authed-*` and depend on the existing `setup` pro
 - Seeded `Math.random` (analytics / processing mock metrics).
 - Masked relative-time / "Last updated" regions and Recharts containers.
 - Third-party noise aborted (PostHog, Cloudflare Stream iframes, remote images, `/_next/image` proxy requests).
-- Viewport-only screenshots (not full-page) so capture height and width stay fixed per project.
+- Full-page screenshots by default so "populated" baselines capture real below-the-fold content, not just the initial viewport.
 - Every readiness wait before a screenshot is a real, non-swallowed Playwright assertion (`.waitFor({ state: 'visible' })` with no `.catch`).
 A page that crashes or never finishes loading fails the test loudly instead of silently screenshotting broken content.
 
@@ -112,8 +112,6 @@ These could genuinely differ and produce noise.
 Treat the first real `ubuntu-latest` CI run against these baselines as the actual validation; if it's noisy, regenerate via the `visual-baselines` workflow_dispatch job (Linux-on-Linux, no local Docker involved) and commit the result.
 - **Auth is not mocked.** The `visual-authed-*` projects' storageState comes from a real login against the live shared Supabase project (see `e2e/setup/auth.setup.ts`).
 This mirrors the existing E2E suite's already-accepted pattern (issue #19 / PR #21) rather than fully mocking authentication, which would be a much larger architecture change.
-- **Two content tables overflow their mobile viewport.** `users-list-*-mobile` and `qa-list-*-mobile` render wider than 390px because of real horizontal overflow in those tables at mobile widths (a pre-existing responsive-design defect, not introduced by this suite).
-Screenshots are viewport-only (not full-page) so the capture itself stays a fixed 390px, but the underlying overflow is a real bug worth its own follow-up issue.
 - **Processing page summary cards vs. table rows.** The processing page's summary stat cards use separate `count: 'exact', head: true` Supabase queries, while the job list below them uses row-level queries.
 The mock in `mock-api.ts` does not yet return distinct `Content-Range` count headers per filter, so the "populated" processing baseline's summary numbers may not perfectly reconcile with the visible row count.
 Follow-up: extend the `/rest/v1/videos**` mock to inspect the `Prefer: count=exact` header and filter params and return a matching `Content-Range`.
