@@ -100,6 +100,34 @@ describe('middleware', () => {
       expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
       expect(response.headers.get('X-Frame-Options')).toBe('DENY')
     })
+
+    it.each([
+      '/public/some-asset.png',
+      '/_next/static/chunk.js',
+      '/_next/image?url=%2Flogo.png',
+      '/.well-known/security.txt',
+    ])('allows wildcard public path %s without authentication', async (pathname) => {
+      const response = await middleware(
+        createNextRequest(pathname, { headers: withUniqueIp() })
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
+      expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+    })
+
+    it('treats /publicity as public via /public* prefix match', async () => {
+      // Pins existing behavior, not necessarily desired: isPublicRoute uses a
+      // plain startsWith check on wildcard entries (route.slice(0, -1)), so
+      // /public* also matches /publicity with no path-segment boundary.
+      const response = await middleware(
+        createNextRequest('/publicity', { headers: withUniqueIp() })
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
+      expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+    })
   })
 
   describe('CSRF protection', () => {
