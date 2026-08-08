@@ -456,7 +456,7 @@ interface BreadcrumbProps {
 
 const Breadcrumb: React.FC<BreadcrumbProps> = ({ items }) => {
     return (
-        <nav className="flex items-center space-x-2 text-sm">
+        <nav className="flex items-center space-x-2 text-sm min-w-0 overflow-hidden whitespace-nowrap">
             {items.map((item, index) => (
                 <React.Fragment key={index}>
                     {index > 0 && (
@@ -509,7 +509,7 @@ const Header: React.FC<HeaderProps> = ({
         <header className="bg-card border-b border-border px-4 py-3">
             <div className="flex items-center justify-between">
                 {/* Left side */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0">
                     <button
                         onClick={onMenuToggle}
                         className="lg:hidden relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors duration-200"
@@ -538,7 +538,7 @@ const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 {/* Right side */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                     {/* Theme Toggle */}
                     <ThemeToggle />
 
