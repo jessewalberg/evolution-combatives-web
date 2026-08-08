@@ -116,18 +116,24 @@ describe('middleware', () => {
       expect(response.headers.get('X-Frame-Options')).toBe('DENY')
     })
 
-    it('treats /publicity as public via /public* prefix match', async () => {
-      // Pins existing behavior, not necessarily desired: isPublicRoute uses a
-      // plain startsWith check on wildcard entries (route.slice(0, -1)), so
-      // /public* also matches /publicity with no path-segment boundary.
-      const response = await middleware(
-        createNextRequest('/publicity', { headers: withUniqueIp() })
-      )
+    it.each(['/publicity', '/public-admin'])(
+      'requires authentication for %s (does not match /public* without path boundary)',
+      async (pathname) => {
+        mockCreateMiddlewareClient.mockImplementation(() => {
+          const { client } = createSupabaseMiddlewareMock({ session: null })
+          return client
+        })
 
-      expect(response.status).toBe(200)
-      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
-      expect(response.headers.get('X-Frame-Options')).toBe('DENY')
-    })
+        const response = await middleware(
+          createNextRequest(pathname, { headers: withUniqueIp() })
+        )
+
+        expect(response.status).toBe(307)
+        const location = response.headers.get('location') ?? ''
+        expect(location).toContain('/login')
+        expect(location).toContain(`redirectTo=${encodeURIComponent(pathname)}`)
+      }
+    )
   })
 
   describe('CSRF protection', () => {
