@@ -232,6 +232,7 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
         role,
         onAvatarClick,
         onClick,
+        onKeyDown,
         loading,
         ...props
     }, ref) => {
@@ -243,15 +244,37 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
         const shouldShowInitials = !shouldShowImage && initials
         const shouldShowStatus = status && !loading
         const shouldShowRole = role && !loading
+        const isInteractive = Boolean(interactive || onAvatarClick)
 
         // Generate background color for initials
         const initialsBackground = React.useMemo(() => {
             return variant === 'default' && name ? getAvatarBackgroundColor(name) : ''
         }, [variant, name])
 
-        const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+        const handleActivate = (event: React.MouseEvent<HTMLDivElement>) => {
             onClick?.(event)
             onAvatarClick?.()
+        }
+
+        const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+            handleActivate(event)
+        }
+
+        const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+            onKeyDown?.(event)
+            if (event.defaultPrevented || !isInteractive) {
+                return
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                // Dispatch a real native click so onClick receives a genuine
+                // MouseEvent (matches native <button> Enter/Space behavior)
+                // instead of a fabricated/cast KeyboardEvent-as-MouseEvent.
+                // handleClick (wired to the div's onClick below) then runs
+                // the same activation path - do not call handleActivate here
+                // too, or activation would fire twice.
+                event.currentTarget.click()
+            }
         }
 
         const handleImageLoad = () => {
@@ -315,7 +338,8 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
                     loading && 'animate-pulse bg-neutral-700',
                     className
                 )}
-                onClick={interactive || onAvatarClick ? handleClick : onClick}
+                onClick={isInteractive ? handleClick : onClick}
+                onKeyDown={isInteractive ? handleKeyDown : onKeyDown}
                 role={interactive ? 'button' : undefined}
                 tabIndex={interactive ? 0 : undefined}
                 aria-label={alt || `Avatar for ${name}`}
