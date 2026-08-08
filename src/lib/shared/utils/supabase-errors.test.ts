@@ -34,6 +34,13 @@ describe('error type guards', () => {
     expect(isPostgrestError({ code: 'x', message: 'm' })).toBe(false)
   })
 
+  it('does not treat EvolutionCombativesError as PostgrestError', () => {
+    // EvolutionCombativesError also has code/message/details/hint fields; the
+    // instanceof guard must short-circuit before shape matching.
+    const custom = new EvolutionCombativesError('wrapped', 'CUSTOM', 'details', 'hint')
+    expect(isPostgrestError(custom)).toBe(false)
+  })
+
   it('detects network errors by message keywords', () => {
     expect(isNetworkError(new Error('fetch failed'))).toBe(true)
     expect(isNetworkError(new Error('network down'))).toBe(true)

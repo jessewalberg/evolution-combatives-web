@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   generateCSRFToken,
+  getCSRFCookieName,
+  isSecureRequest,
   validateCSRFToken,
   needsCSRFProtection,
   csrfProtection,
@@ -29,6 +31,36 @@ describe('needsCSRFProtection', () => {
     expect(needsCSRFProtection(createNextRequest('/api/webhooks/stripe', { method: 'POST' }))).toBe(false)
     expect(needsCSRFProtection(createNextRequest('/api/webhook/test', { method: 'POST' }))).toBe(false)
     expect(needsCSRFProtection(createNextRequest('/api/mobile/video/signed-url', { method: 'POST' }))).toBe(false)
+  })
+})
+
+describe('isSecureRequest / getCSRFCookieName', () => {
+  it('treats x-forwarded-proto https as secure and uses __Host-csrf-token', () => {
+    const request = createNextRequest('/api/x', {
+      headers: { 'x-forwarded-proto': 'https' },
+    })
+    expect(isSecureRequest(request)).toBe(true)
+    expect(getCSRFCookieName(request)).toBe('__Host-csrf-token')
+  })
+
+  it('treats http localhost without forwarded proto as insecure csrf-token', () => {
+    const request = createNextRequest('/api/x')
+    expect(isSecureRequest(request)).toBe(false)
+    expect(getCSRFCookieName(request)).toBe('csrf-token')
+  })
+
+  it('uses the first hop of a comma-separated x-forwarded-proto list', () => {
+    const httpsFirst = createNextRequest('/api/x', {
+      headers: { 'x-forwarded-proto': 'https, http' },
+    })
+    expect(isSecureRequest(httpsFirst)).toBe(true)
+    expect(getCSRFCookieName(httpsFirst)).toBe('__Host-csrf-token')
+
+    const httpFirst = createNextRequest('/api/x', {
+      headers: { 'x-forwarded-proto': 'http, https' },
+    })
+    expect(isSecureRequest(httpFirst)).toBe(false)
+    expect(getCSRFCookieName(httpFirst)).toBe('csrf-token')
   })
 })
 
@@ -87,6 +119,36 @@ describe('validateCSRFToken', () => {
         })
       )
     ).toBe(true)
+  })
+
+  it('round-trips under __Host-csrf-token when x-forwarded-proto is https', async () => {
+    const token = generateCSRFToken()
+    expect(
+      await validateCSRFToken(
+        createNextRequest('/api/x', {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': token,
+            'x-forwarded-proto': 'https',
+          },
+          cookies: { '__Host-csrf-token': token },
+        })
+      )
+    ).toBe(true)
+
+    // Same token under the insecure cookie name must fail on the secure branch
+    expect(
+      await validateCSRFToken(
+        createNextRequest('/api/x', {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': token,
+            'x-forwarded-proto': 'https',
+          },
+          cookies: { 'csrf-token': token },
+        })
+      )
+    ).toBe(false)
   })
 })
 

@@ -70,14 +70,18 @@ function profileChain(data: unknown) {
 
 describe('ROLE_PERMISSIONS drift detection', () => {
   it('keeps useAuth and api-auth permission maps in sync', () => {
-    const roles = ['super_admin', 'content_admin', 'support_admin'] as const
-    for (const role of roles) {
-      const hookSet = HookPermissions[role]
-      const apiSet = ApiPermissions[role]
-      expect(hookSet).toBeDefined()
-      expect(apiSet).toBeDefined()
-      expect([...hookSet].sort()).toEqual([...apiSet].sort())
-    }
+    const hookRoles = Object.keys(HookPermissions).sort()
+    const apiRoles = Object.keys(ApiPermissions).sort()
+    expect(hookRoles).toEqual(apiRoles)
+
+    const normalize = (map: Record<string, Set<string>>) =>
+      Object.fromEntries(
+        Object.keys(map)
+          .sort()
+          .map((role) => [role, [...map[role]].sort()])
+      )
+
+    expect(normalize(HookPermissions)).toEqual(normalize(ApiPermissions))
   })
 })
 

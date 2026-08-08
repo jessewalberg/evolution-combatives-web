@@ -122,6 +122,8 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         .from('subscriptions')
         .insert({
             user_id: userId,
+            platform: 'stripe',
+            external_subscription_id: subscription.id,
             tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
             status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
             stripe_subscription_id: subscription.id,
@@ -130,6 +132,7 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
             canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+            updated_at: new Date().toISOString(),
         });
 
     if (error) {
@@ -165,6 +168,7 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
             canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+            updated_at: new Date().toISOString(),
         })
         .eq('stripe_subscription_id', subscription.id);
 
@@ -204,6 +208,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
         .update({
             status: 'canceled',
             canceled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
         })
         .eq('stripe_subscription_id', subscription.id);
 
@@ -239,7 +244,7 @@ async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription) {
         // Update subscription status to active (in case it was past_due)
         await supabase
             .from('subscriptions')
-            .update({ status: 'active' })
+            .update({ status: 'active', updated_at: new Date().toISOString() })
             .eq('stripe_subscription_id', invoice.subscription as string);
 
         console.log(`Payment succeeded for subscription: ${invoice.subscription}`);
@@ -256,7 +261,7 @@ async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription) {
         // Update subscription status to past_due
         await supabase
             .from('subscriptions')
-            .update({ status: 'past_due' })
+            .update({ status: 'past_due', updated_at: new Date().toISOString() })
             .eq('stripe_subscription_id', invoice.subscription as string);
 
         console.log(`Payment failed for subscription: ${invoice.subscription}`);

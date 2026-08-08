@@ -750,7 +750,7 @@ const UserTable = React.forwardRef<HTMLDivElement, UserTableProps>(
                 </div>
 
                 {/* Table */}
-                <Card className="overflow-hidden">
+                <Card className="overflow-x-auto overflow-y-visible">
                     <Table>
                         <TableHeader>
                             <TableRow>

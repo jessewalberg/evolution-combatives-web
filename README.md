@@ -55,7 +55,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 ## 📦 Installation
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 22.22.2+ (or 24.15.0+, or 26+); see `package.json` `engines.node` 
 - pnpm 7+
 - Supabase account
 - Cloudflare Stream account

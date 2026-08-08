@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server'
-import { generateCSRFToken } from '../../../src/lib/csrf-protection'
+import { NextRequest, NextResponse } from 'next/server'
+import {
+    generateCSRFToken,
+    getCSRFCookieName,
+    isSecureRequest
+} from '../../../src/lib/csrf-protection'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         const token = generateCSRFToken()
         const maxAge = 60 * 60 * 24 // 24 hours in seconds
@@ -13,11 +17,10 @@ export async function GET() {
             expiresAt
         })
 
-        // Set secure cookie with CSRF token
-        const cookieName = process.env.NODE_ENV === 'production' ? '__Host-csrf-token' : 'csrf-token'
-        response.cookies.set(cookieName, token, {
+        // Match cookie security to the effective transport protocol.
+        response.cookies.set(getCSRFCookieName(request), token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: isSecureRequest(request),
             sameSite: 'strict',
             path: '/',
             maxAge

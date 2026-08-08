@@ -100,6 +100,40 @@ describe('middleware', () => {
       expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
       expect(response.headers.get('X-Frame-Options')).toBe('DENY')
     })
+
+    it.each([
+      '/public/some-asset.png',
+      '/_next/static/chunk.js',
+      '/_next/image?url=%2Flogo.png',
+      '/.well-known/security.txt',
+    ])('allows wildcard public path %s without authentication', async (pathname) => {
+      const response = await middleware(
+        createNextRequest(pathname, { headers: withUniqueIp() })
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
+      expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+    })
+
+    it.each(['/publicity', '/public-admin'])(
+      'requires authentication for %s (does not match /public* without path boundary)',
+      async (pathname) => {
+        mockCreateMiddlewareClient.mockImplementation(() => {
+          const { client } = createSupabaseMiddlewareMock({ session: null })
+          return client
+        })
+
+        const response = await middleware(
+          createNextRequest(pathname, { headers: withUniqueIp() })
+        )
+
+        expect(response.status).toBe(307)
+        const location = response.headers.get('location') ?? ''
+        expect(location).toContain('/login')
+        expect(location).toContain(`redirectTo=${encodeURIComponent(pathname)}`)
+      }
+    )
   })
 
   describe('CSRF protection', () => {
@@ -115,6 +149,25 @@ describe('middleware', () => {
       const body = await response.json()
       expect(body.error).toBe('CSRF token validation failed')
       expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
+    })
+
+    it('accepts matching __Host-csrf-token when x-forwarded-proto is https', async () => {
+      const token = generateCSRFToken()
+      const response = await middleware(
+        createNextRequest('/api/content/videos', {
+          method: 'POST',
+          headers: withUniqueIp({
+            'X-CSRF-Token': token,
+            'x-forwarded-proto': 'https',
+          }),
+          cookies: { '__Host-csrf-token': token },
+        })
+      )
+
+      // Past CSRF; may still redirect/auth-fail, but must not be 403 CSRF reject
+      expect(response.status).not.toBe(403)
+      const bodyText = await response.clone().text()
+      expect(bodyText).not.toContain('CSRF token validation failed')
     })
   })
 
