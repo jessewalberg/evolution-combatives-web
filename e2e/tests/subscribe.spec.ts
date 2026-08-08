@@ -143,4 +143,62 @@ test.describe('Subscription deep-link flow', () => {
       )
     }
   })
+
+  test('Subscribe button posts with CSRF and reaches Stripe or allowed error', async ({
+    page,
+  }) => {
+    await page.goto(
+      `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
+    )
+    await expect(page.getByText(/invalid request/i)).toHaveCount(0)
+
+    const subscribeButton = page.getByRole('button', { name: /subscribe to/i }).first()
+    await expect(subscribeButton).toBeVisible()
+
+    const checkoutResponsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/subscriptions/create-checkout') &&
+        res.request().method() === 'POST',
+      { timeout: 30_000 }
+    )
+
+    await subscribeButton.click()
+
+    const checkoutResponse = await checkoutResponsePromise
+
+    // UI path must send CSRF; a missing token would 403 before Stripe/domain logic
+    expect(checkoutResponse.status()).not.toBe(403)
+
+    const csrfErrorBanner = page.getByText(/csrf token validation failed/i)
+    await expect(csrfErrorBanner).toHaveCount(0)
+
+    // Don't read checkoutResponse.json() here: app/subscribe/page.tsx's own success
+    // handler reads this same response body and immediately does
+    // `window.location.href = data.url`, which can evict the buffered body before
+    // this test's CDP read completes ("Response body is not available for a
+    // response that was navigated away from" - flaky in CI). Assert success via
+    // UI-visible signals instead.
+    if (checkoutResponse.ok()) {
+      await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
+      const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
+      expect(
+        sessionId,
+        `could not extract Stripe session id from redirect URL: ${page.url()}`
+      ).toBeTruthy()
+      checkoutSessionId = sessionId
+    } else {
+      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API
+      // test), read from the page's own error banner rather than the response body.
+      const allowedErrors =
+        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
+      const actualErrorText = await page
+        .locator('p.text-red-600')
+        .textContent()
+        .catch(() => null)
+      await expect(
+        page.getByText(allowedErrors),
+        `UI create-checkout failed with unexpected error: ${JSON.stringify(actualErrorText)}`
+      ).toBeVisible({ timeout: 10_000 })
+    }
+  })
 })

@@ -64,11 +64,27 @@ function SubscribeContent() {
         setError(null);
 
         try {
+            const csrfResponse = await fetch('/api/csrf-token', {
+                credentials: 'include',
+            });
+
+            if (!csrfResponse.ok) {
+                throw new Error(`Failed to fetch CSRF token: ${csrfResponse.status} ${csrfResponse.statusText}`);
+            }
+
+            const csrfData = await csrfResponse.json();
+
+            if (!csrfData.success || !csrfData.csrfToken) {
+                throw new Error('Failed to get CSRF token from response');
+            }
+
             const response = await fetch('/api/subscriptions/create-checkout', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfData.csrfToken,
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     tier,
                     userId,
