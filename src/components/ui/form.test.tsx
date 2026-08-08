@@ -156,7 +156,7 @@ describe('Form layout helpers', () => {
     expect(screen.getByText('Col B')).toBeInTheDocument()
   })
 
-  it('Form applies loading styles when loading', () => {
+  it('Form applies loading semantics when loading', () => {
     function LoadingForm() {
       const form = useForm()
       return (
@@ -167,7 +167,6 @@ describe('Form layout helpers', () => {
     }
     render(<LoadingForm />)
     const form = screen.getByTestId('form-root')
-    expect(form.className).toMatch(/opacity-75/)
-    expect(form.className).toMatch(/pointer-events-none/)
+    expect(form).toHaveAttribute('aria-busy', 'true')
   })
 })
