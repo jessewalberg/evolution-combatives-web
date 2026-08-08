@@ -26,7 +26,7 @@ import { Badge } from '../../../../../../src/components/ui/badge'
 import { Spinner } from '../../../../../../src/components/ui/loading'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../../../../../src/components/ui/dialog'
 
-import { contentService, contentQueries } from '../../../../../../src/services/content'
+import { clientContentService } from '../../../../../../src/services/content-client'
 import { cloudflareApi } from '../../../../../../src/lib/cloudflare-api'
 import { queryKeys } from '../../../../../../src/lib/query-client'
 import type { VideoUpdate } from 'shared/types/database'
@@ -121,13 +121,13 @@ export default function VideoEditPage() {
     // Queries
     const videoQuery = useQuery({
         queryKey: queryKeys.videoDetail(videoId),
-        queryFn: () => contentQueries.fetchVideoById(videoId),
+        queryFn: () => clientContentService.fetchVideoById(videoId),
         enabled: !!videoId && !!user && !!profile?.admin_role,
     })
 
     const categoriesQuery = useQuery({
         queryKey: queryKeys.categoriesList(),
-        queryFn: () => contentQueries.fetchCategories(),
+        queryFn: () => clientContentService.fetchCategories(),
         enabled: !!user && !!profile?.admin_role,
     })
 
@@ -210,7 +210,7 @@ export default function VideoEditPage() {
                 }
             }
 
-            return contentService.mutations.updateVideo(videoId, updateData)
+            return clientContentService.updateVideo(videoId, updateData)
         },
         onMutate: async (newData) => {
             // Cancel any outgoing refetches
@@ -257,7 +257,7 @@ export default function VideoEditPage() {
     })
 
     const deleteVideoMutation = useMutation({
-        mutationFn: () => contentService.mutations.deleteVideo(videoId),
+        mutationFn: () => clientContentService.deleteVideo(videoId),
         onSuccess: () => {
             toast.success('Video deleted successfully')
             // Invalidate video list and navigate back
@@ -344,7 +344,7 @@ export default function VideoEditPage() {
         <div className="min-h-screen bg-neutral-950 p-6">
             <div className="max-w-6xl mx-auto space-y-6">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-y-3">
                     <div className="flex items-center space-x-4">
                         <Button variant="ghost" onClick={handleBackClick}>
                             <ArrowLeftIcon className="h-4 w-4 mr-2" />

@@ -559,7 +559,7 @@ export default function QAManagementPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-y-3">
                 <div>
                     <h1 className="text-3xl font-bold text-white">Q&A Management</h1>
                     <p className="text-neutral-400 mt-1">
@@ -807,7 +807,7 @@ export default function QAManagementPage() {
             )}
 
             {/* Questions Table */}
-            <Card className="overflow-hidden">
+            <Card className="overflow-x-auto overflow-y-visible">
                 {questionsQuery.isLoading ? (
                     <div className="p-8">
                         <LoadingOverlay isVisible={true} />
