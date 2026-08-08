@@ -143,4 +143,54 @@ test.describe('Subscription deep-link flow', () => {
       )
     }
   })
+
+  test('Subscribe button posts with CSRF and reaches Stripe or allowed error', async ({
+    page,
+  }) => {
+    await page.goto(
+      `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
+    )
+    await expect(page.getByText(/invalid request/i)).toHaveCount(0)
+
+    const subscribeButton = page.getByRole('button', { name: /subscribe to/i }).first()
+    await expect(subscribeButton).toBeVisible()
+
+    const checkoutResponsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/subscriptions/create-checkout') &&
+        res.request().method() === 'POST',
+      { timeout: 30_000 }
+    )
+
+    await subscribeButton.click()
+
+    const checkoutResponse = await checkoutResponsePromise
+
+    // UI path must send CSRF; a missing token would 403 before Stripe/domain logic
+    expect(checkoutResponse.status()).not.toBe(403)
+
+    const errorBanner = page.getByText(/csrf token validation failed/i)
+    await expect(errorBanner).toHaveCount(0)
+
+    if (checkoutResponse.ok()) {
+      const body = await checkoutResponse.json()
+      expect(body.sessionId).toBeTruthy()
+      checkoutSessionId = body.sessionId as string
+      expect(body.url).toMatch(/stripe\.com|checkout/i)
+
+      // App redirects via window.location.href to Stripe Checkout
+      await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
+    } else {
+      const body = await checkoutResponse.json().catch(() => ({} as { error?: string }))
+      const errorMessage = String(body.error || '')
+      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API test)
+      expect(
+        errorMessage,
+        `UI create-checkout failed with unexpected error: ${JSON.stringify(body)}`
+      ).toMatch(
+        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
+      )
+      await expect(page.getByText(errorMessage)).toBeVisible({ timeout: 10_000 })
+    }
+  })
 })
