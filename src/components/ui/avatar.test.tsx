@@ -3,33 +3,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Avatar, AvatarGroup } from './avatar'
 
-vi.mock('next/image', () => ({
-  default: ({
-    src,
-    alt,
-    onLoad,
-    onError,
-    ...props
-  }: {
-    src: string
-    alt: string
-    onLoad?: () => void
-    onError?: () => void
-    fill?: boolean
-    className?: string
-    sizes?: string
-  }) => (
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    <img
-      src={src}
-      alt={alt}
-      data-testid="avatar-image"
-      onLoad={onLoad}
-      onError={onError}
-      {...props}
-    />
-  ),
-}))
+vi.mock('next/image', async () => {
+  const { createNextImageMock } = await import('@/test/mocks/next-image')
+  return createNextImageMock()
+})
 
 describe('Avatar', () => {
   it('renders initials from name with accessible label', () => {
@@ -115,7 +92,7 @@ describe('Avatar', () => {
 
   it('renders image element when src is provided', () => {
     render(<Avatar name="With Image" src="/avatars/user.jpg" />)
-    expect(screen.getByTestId('avatar-image')).toHaveAttribute(
+    expect(screen.getByTestId('next-image')).toHaveAttribute(
       'src',
       '/avatars/user.jpg'
     )

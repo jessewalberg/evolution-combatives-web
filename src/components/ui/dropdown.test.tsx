@@ -14,12 +14,10 @@ import {
   SettingsDropdown,
 } from './dropdown'
 
-vi.mock('next/image', () => ({
-  default: ({ src, alt }: { src: string; alt: string }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} />
-  ),
-}))
+vi.mock('next/image', async () => {
+  const { createNextImageMock } = await import('@/test/mocks/next-image')
+  return createNextImageMock()
+})
 
 describe('DropdownMenu', () => {
   it('opens on trigger click and shows items', async () => {
