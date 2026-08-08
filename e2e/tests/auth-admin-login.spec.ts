@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test'
  * masked), so this file disables both at file level.
  *
  * Playwright rejects test.use({ trace/video }) inside any describe group (forces a
- * new worker). File-level use (or a dedicated config project) is required — same
+ * new worker). File-level use (or a dedicated config project) is required - same
  * constraint that led the setup project to override trace/video in playwright.config.
  */
 test.use({
