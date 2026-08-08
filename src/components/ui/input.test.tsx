@@ -106,7 +106,7 @@ describe('SearchInput', () => {
       />
     )
     await user.type(screen.getByLabelText('Search'), 'abc')
-    const clearButton = screen.getByRole('button')
+    const clearButton = screen.getByRole('button', { name: 'Clear search' })
     await user.click(clearButton)
     expect(onClear).toHaveBeenCalledTimes(1)
   })
@@ -118,9 +118,9 @@ describe('PasswordInput', () => {
     render(<PasswordInput aria-label="Password" />)
     const input = screen.getByLabelText('Password')
     expect(input).toHaveAttribute('type', 'password')
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: 'Show password' }))
     expect(input).toHaveAttribute('type', 'text')
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: 'Hide password' }))
     expect(input).toHaveAttribute('type', 'password')
   })
 

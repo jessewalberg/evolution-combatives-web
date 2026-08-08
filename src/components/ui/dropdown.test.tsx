@@ -14,12 +14,10 @@ import {
   SettingsDropdown,
 } from './dropdown'
 
-vi.mock('next/image', () => ({
-  default: ({ src, alt }: { src: string; alt: string }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} />
-  ),
-}))
+vi.mock('next/image', async () => {
+  const { createNextImageMock } = await import('@/test/mocks/next-image')
+  return createNextImageMock()
+})
 
 describe('DropdownMenu', () => {
   it('opens on trigger click and shows items', async () => {
@@ -107,11 +105,11 @@ describe('ContentActionsDropdown', () => {
     const onEdit = vi.fn()
     const onDelete = vi.fn()
     render(<ContentActionsDropdown onEdit={onEdit} onDelete={onDelete} />)
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: 'Content actions' }))
     await user.click(await screen.findByRole('menuitem', { name: /Edit/ }))
     expect(onEdit).toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: 'Content actions' }))
     await user.click(await screen.findByRole('menuitem', { name: /Delete/ }))
     expect(onDelete).toHaveBeenCalled()
   })

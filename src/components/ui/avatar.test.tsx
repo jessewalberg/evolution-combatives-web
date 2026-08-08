@@ -3,33 +3,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Avatar, AvatarGroup } from './avatar'
 
-vi.mock('next/image', () => ({
-  default: ({
-    src,
-    alt,
-    onLoad,
-    onError,
-    ...props
-  }: {
-    src: string
-    alt: string
-    onLoad?: () => void
-    onError?: () => void
-    fill?: boolean
-    className?: string
-    sizes?: string
-  }) => (
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    <img
-      src={src}
-      alt={alt}
-      data-testid="avatar-image"
-      onLoad={onLoad}
-      onError={onError}
-      {...props}
-    />
-  ),
-}))
+vi.mock('next/image', async () => {
+  const { createNextImageMock } = await import('@/test/mocks/next-image')
+  return createNextImageMock()
+})
 
 describe('Avatar', () => {
   it('renders initials from name with accessible label', () => {
@@ -83,12 +60,37 @@ describe('Avatar', () => {
     render(
       <Avatar name="Key User" interactive onAvatarClick={onAvatarClick} />
     )
-    const avatar = screen.getByRole('button')
+    const avatar = screen.getByRole('button', { name: /Avatar for Key User/ })
     avatar.focus()
     await user.keyboard('{Enter}')
-    // native div with role=button doesn't auto-activate on Enter in all environments;
-    // click path is covered above - verify tabIndex for keyboard access
-    expect(avatar).toHaveAttribute('tabIndex', '0')
+    expect(onAvatarClick).toHaveBeenCalledTimes(1)
+    await user.keyboard(' ')
+    expect(onAvatarClick).toHaveBeenCalledTimes(2)
+  })
+
+  it('fires onClick via keyboard when interactive without onAvatarClick', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(<Avatar name="Click Prop" interactive onClick={onClick} />)
+    const avatar = screen.getByRole('button', { name: /Avatar for Click Prop/ })
+    avatar.focus()
+    await user.keyboard('{Enter}')
+    expect(onClick).toHaveBeenCalledTimes(1)
+    await user.keyboard(' ')
+    expect(onClick).toHaveBeenCalledTimes(2)
+  })
+
+  it('delivers a genuine MouseEvent to onClick on keyboard activation, not a fabricated one', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(<Avatar name="Real Event" interactive onClick={onClick} />)
+    const avatar = screen.getByRole('button', { name: /Avatar for Real Event/ })
+    avatar.focus()
+    await user.keyboard('{Enter}')
+    expect(onClick).toHaveBeenCalledTimes(1)
+    const event = onClick.mock.calls[0][0]
+    expect(event.type).toBe('click')
+    expect(event.nativeEvent).toBeInstanceOf(MouseEvent)
   })
 
   it('shows loading spinner and hides status/role while loading', () => {
@@ -115,7 +117,7 @@ describe('Avatar', () => {
 
   it('renders image element when src is provided', () => {
     render(<Avatar name="With Image" src="/avatars/user.jpg" />)
-    expect(screen.getByTestId('avatar-image')).toHaveAttribute(
+    expect(screen.getByRole('img', { name: 'With Image' })).toHaveAttribute(
       'src',
       '/avatars/user.jpg'
     )

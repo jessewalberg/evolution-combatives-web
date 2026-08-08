@@ -50,7 +50,8 @@ const tableVariants = cva(
             variant: {
                 default: 'bg-white dark:bg-gray-800',
                 bordered: 'border border-gray-200 dark:border-gray-700',
-                striped: 'bg-white dark:bg-gray-800',
+                striped:
+                    'bg-white dark:bg-gray-800 [&_tbody_tr:nth-child(even):not([data-selected="true"])]:bg-gray-50 dark:[&_tbody_tr:nth-child(even):not([data-selected="true"])]:bg-gray-700/50',
             },
             size: {
                 sm: 'text-xs',
@@ -159,6 +160,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, TableRowProps>(
                     className
                 )}
                 {...props}
+                data-selected={selected ? 'true' : undefined}
             >
                 {children}
             </tr>

@@ -130,6 +130,7 @@ const Form = React.forwardRef<HTMLFormElement, FormProps>(
                         className
                     )}
                     {...props}
+                    aria-busy={loading || undefined}
                 >
                     {children}
                 </form>

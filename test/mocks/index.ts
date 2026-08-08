@@ -10,3 +10,6 @@ export type {
 
 export { createFakeStripeClient, createStripeConstructorMock } from './stripe'
 export type { FakeStripeClient } from './stripe'
+
+export { NextImageMock, createNextImageMock } from './next-image'
+export type { NextImageMockProps } from './next-image'

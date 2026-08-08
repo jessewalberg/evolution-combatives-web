@@ -13,17 +13,17 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('next/link', () => ({
   default: ({
-    href,
     children,
-    className,
-    onClick,
+    href,
+    ...props
   }: {
-    href: string
     children: React.ReactNode
+    href: string
     className?: string
     onClick?: () => void
+    'aria-current'?: React.AriaAttributes['aria-current']
   }) => (
-    <a href={href} className={className} onClick={onClick}>
+    <a href={href} {...props}>
       {children}
     </a>
   ),
@@ -86,7 +86,7 @@ describe('AdminLayout', () => {
 
     const dashboardLink = screen.getByRole('link', { name: /Dashboard/i })
     expect(dashboardLink).toHaveAttribute('href', '/dashboard')
-    expect(dashboardLink.className).toMatch(/bg-primary/)
+    expect(dashboardLink).toHaveAttribute('aria-current', 'page')
   })
 
   it('marks Users link active when pathname is /users', () => {
@@ -95,10 +95,10 @@ describe('AdminLayout', () => {
 
     const usersLink = screen.getByRole('link', { name: /Users/i })
     expect(usersLink).toHaveAttribute('href', '/users')
-    expect(usersLink.className).toMatch(/bg-primary/)
+    expect(usersLink).toHaveAttribute('aria-current', 'page')
 
     const dashboardLink = screen.getByRole('link', { name: /Dashboard/i })
-    expect(dashboardLink.className).not.toMatch(/bg-primary/)
+    expect(dashboardLink).not.toHaveAttribute('aria-current')
   })
 
   it('toggles sidebar collapse and expand on desktop', async () => {
@@ -191,7 +191,7 @@ describe('AdminLayout', () => {
 
     const videosLink = await screen.findByRole('link', { name: /Videos/i })
     expect(videosLink).toHaveAttribute('href', '/dashboard/content/videos')
-    expect(videosLink.className).toMatch(/bg-primary/)
+    expect(videosLink).toHaveAttribute('aria-current', 'page')
   })
 
   it('renders mocked ThemeToggle without theme provider', () => {

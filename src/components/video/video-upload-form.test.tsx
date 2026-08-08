@@ -19,12 +19,10 @@ const {
   mockInvalidateQueries: vi.fn(),
 }))
 
-vi.mock('next/image', () => ({
-  default: ({ src, alt }: { src: string; alt: string }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} />
-  ),
-}))
+vi.mock('next/image', async () => {
+  const { createNextImageMock } = await import('@/test/mocks/next-image')
+  return createNextImageMock()
+})
 
 vi.mock('../../lib/cloudflare-api', () => ({
   cloudflareApi: {
@@ -101,10 +99,41 @@ function makeVideoFile(
  * jsdom never fires video loadedmetadata/seeked/error for blob URLs, so
  * generateThumbnail would hang forever. Force an immediate error so the
  * component's catch path runs and the upload queue still updates.
+ *
+ * Captures native globals at module load so afterEach can restore them;
+ * otherwise URL.createObjectURL / HTMLMediaElement.prototype.src stubs
+ * leak into later test files.
+ *
+ * Use property descriptors (not value assignment) so own/enumerable/
+ * inherited state matches the original after restore - e.g. revokeObjectURL
+ * must not remain an own enumerable property after stubbing.
  */
+const originalCreateObjectURLDescriptor = Object.getOwnPropertyDescriptor(
+  URL,
+  'createObjectURL'
+)
+const originalRevokeObjectURLDescriptor = Object.getOwnPropertyDescriptor(
+  URL,
+  'revokeObjectURL'
+)
+const originalMediaSrcDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLMediaElement.prototype,
+  'src'
+)
+
 function stubVideoThumbnailFailure() {
-  URL.createObjectURL = vi.fn(() => 'blob:mock-video')
-  URL.revokeObjectURL = vi.fn()
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    writable: true,
+    enumerable: true,
+    value: vi.fn(() => 'blob:mock-video'),
+  })
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    writable: true,
+    enumerable: true,
+    value: vi.fn(),
+  })
 
   Object.defineProperty(HTMLMediaElement.prototype, 'src', {
     configurable: true,
@@ -122,6 +151,27 @@ function stubVideoThumbnailFailure() {
       return this.getAttribute('src') ?? ''
     },
   })
+}
+
+function restoreVideoThumbnailStubs() {
+  if (originalCreateObjectURLDescriptor) {
+    Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURLDescriptor)
+  } else {
+    // Fall back to prototype if it was never an own property.
+    Reflect.deleteProperty(URL, 'createObjectURL')
+  }
+  if (originalRevokeObjectURLDescriptor) {
+    Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectURLDescriptor)
+  } else {
+    Reflect.deleteProperty(URL, 'revokeObjectURL')
+  }
+  if (originalMediaSrcDescriptor) {
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      'src',
+      originalMediaSrcDescriptor
+    )
+  }
 }
 
 async function selectFile(file: File) {
@@ -169,7 +219,7 @@ describe('VideoUploadForm', () => {
   })
 
   afterEach(() => {
-    // keep mock implementations; only clear call history in beforeEach
+    restoreVideoThumbnailStubs()
   })
 
   it('rejects unsupported mime types via onError', async () => {

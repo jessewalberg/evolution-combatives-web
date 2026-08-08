@@ -68,24 +68,49 @@ describe('Table primitives', () => {
         </TableBody>
       </Table>
     )
-    expect(screen.getByTestId('selected-row')).toBeInTheDocument()
+    expect(screen.getByTestId('selected-row')).toHaveAttribute(
+      'data-selected',
+      'true'
+    )
   })
 
-  it.each(['default', 'bordered', 'striped'] as const)(
-    'renders variant=%s',
-    (variant) => {
-      render(
-        <Table variant={variant}>
-          <TableBody>
-            <TableRow>
-              <TableCell>{variant}</TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      )
-      expect(screen.getByText(variant)).toBeInTheDocument()
-    }
-  )
+  it.each([
+    ['default', /bg-white/],
+    ['bordered', /border-gray-200/],
+  ] as const)('applies variant=%s classes', (variant, classPattern) => {
+    render(
+      <Table variant={variant}>
+        <TableBody>
+          <TableRow>
+            <TableCell>{variant}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+    expect(screen.getByRole('table').className).toMatch(classPattern)
+  })
+
+  it('applies striped variant classes that exclude selected rows', () => {
+    render(
+      <Table variant="striped">
+        <TableBody>
+          <TableRow>
+            <TableCell>Odd</TableCell>
+          </TableRow>
+          <TableRow selected data-testid="even-selected">
+            <TableCell>Even selected</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+    expect(screen.getByRole('table').className).toMatch(
+      /nth-child\(even\):not\(\[data-selected="true"\]\)/
+    )
+    expect(screen.getByTestId('even-selected')).toHaveAttribute(
+      'data-selected',
+      'true'
+    )
+  })
 })
 
 describe('TableSkeleton', () => {

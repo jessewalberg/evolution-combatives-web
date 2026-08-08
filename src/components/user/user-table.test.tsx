@@ -3,12 +3,10 @@ import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { UserTable, type User } from './user-table'
 
-vi.mock('next/image', () => ({
-  default: ({ src, alt }: { src: string; alt: string }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} />
-  ),
-}))
+vi.mock('next/image', async () => {
+  const { createNextImageMock } = await import('@/test/mocks/next-image')
+  return createNextImageMock()
+})
 
 function makeUser(overrides: Partial<User> & Pick<User, 'id' | 'firstName' | 'lastName' | 'email'>): User {
   return {
