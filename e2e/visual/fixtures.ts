@@ -181,7 +181,16 @@ export const questionFixture = {
   video: {
     id: FIXTURE_IDS.video,
     title: 'Defensive Tactics Module 1',
+    description: 'Intro module for defensive tactics',
     thumbnail_url: null,
+    stream_url: null,
+    duration: 600,
+    category: {
+      name: 'Ground Control',
+      discipline: {
+        name: 'Law Enforcement',
+      },
+    },
   },
   answers: [],
 }

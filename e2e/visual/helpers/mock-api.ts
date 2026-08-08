@@ -87,6 +87,17 @@ export async function installVisualMocks(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64'
   )
+  // Next.js image optimizer proxy (/_next/image?url=...) does not carry a
+  // recognizable file extension in the request URL, so it needs its own
+  // catch-all rather than relying on the extension-based mock below.
+  await page.route('**/_next/image**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: transparentPng,
+    })
+  )
+
   await page.route('**/*', async (route) => {
     const url = route.request().url()
     if (!/\.(png|jpe?g|webp|gif)(\?|$)/i.test(url)) {
@@ -226,9 +237,10 @@ export async function installVisualMocks(
     }
 
     if (mode === 'empty') {
-      // Keep the signed-in admin row so AdminLayout still has a profile;
-      // omit other users so the users table looks empty.
-      return json(route, [{ ...adminProfileFixture, id: sessionUserId }])
+      // AdminLayout/useAuth fetch their own profile via the id=eq.<id> branch
+      // above, so this unfiltered list query only feeds users-list/analytics
+      // list queries - return genuinely empty so "empty" means empty.
+      return json(route, [])
     }
 
     return json(route, [
