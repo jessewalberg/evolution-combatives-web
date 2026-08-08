@@ -169,28 +169,36 @@ test.describe('Subscription deep-link flow', () => {
     // UI path must send CSRF; a missing token would 403 before Stripe/domain logic
     expect(checkoutResponse.status()).not.toBe(403)
 
-    const errorBanner = page.getByText(/csrf token validation failed/i)
-    await expect(errorBanner).toHaveCount(0)
+    const csrfErrorBanner = page.getByText(/csrf token validation failed/i)
+    await expect(csrfErrorBanner).toHaveCount(0)
 
+    // Don't read checkoutResponse.json() here: app/subscribe/page.tsx's own success
+    // handler reads this same response body and immediately does
+    // `window.location.href = data.url`, which can evict the buffered body before
+    // this test's CDP read completes ("Response body is not available for a
+    // response that was navigated away from" - flaky in CI). Assert success via
+    // UI-visible signals instead.
     if (checkoutResponse.ok()) {
-      const body = await checkoutResponse.json()
-      expect(body.sessionId).toBeTruthy()
-      checkoutSessionId = body.sessionId as string
-      expect(body.url).toMatch(/stripe\.com|checkout/i)
-
-      // App redirects via window.location.href to Stripe Checkout
       await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
-    } else {
-      const body = await checkoutResponse.json().catch(() => ({} as { error?: string }))
-      const errorMessage = String(body.error || '')
-      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API test)
+      const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
       expect(
-        errorMessage,
-        `UI create-checkout failed with unexpected error: ${JSON.stringify(body)}`
-      ).toMatch(
+        sessionId,
+        `could not extract Stripe session id from redirect URL: ${page.url()}`
+      ).toBeTruthy()
+      checkoutSessionId = sessionId
+    } else {
+      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API
+      // test), read from the page's own error banner rather than the response body.
+      const allowedErrors =
         /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
-      )
-      await expect(page.getByText(errorMessage)).toBeVisible({ timeout: 10_000 })
+      const actualErrorText = await page
+        .locator('p.text-red-600')
+        .textContent()
+        .catch(() => null)
+      await expect(
+        page.getByText(allowedErrors),
+        `UI create-checkout failed with unexpected error: ${JSON.stringify(actualErrorText)}`
+      ).toBeVisible({ timeout: 10_000 })
     }
   })
 })
