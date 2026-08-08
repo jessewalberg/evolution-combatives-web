@@ -41,17 +41,17 @@ describe('Badge', () => {
   })
 
   it.each([
-    'default',
-    'primary',
-    'secondary',
-    'success',
-    'warning',
-    'error',
-    'info',
-    'gold',
-  ] as const)('renders variant=%s', (variant) => {
+    ['default', /bg-muted/],
+    ['primary', /bg-primary/],
+    ['secondary', /bg-secondary/],
+    ['success', /bg-green-600/],
+    ['warning', /bg-yellow-600/],
+    ['error', /bg-destructive/],
+    ['info', /bg-blue-600/],
+    ['gold', /from-amber-400/],
+  ] as const)('applies variant=%s classes', (variant, classPattern) => {
     render(<Badge variant={variant}>{variant}</Badge>)
-    expect(screen.getByText(variant)).toBeInTheDocument()
+    expect(screen.getByText(variant).className).toMatch(classPattern)
   })
 
   it.each(['solid', 'outline', 'soft'] as const)(

@@ -34,13 +34,27 @@ describe('Card', () => {
     expect(onCardClick).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['default', 'elevated', 'interactive', 'bordered', 'glass'] as const)(
-    'renders variant=%s',
-    (variant) => {
-      render(<Card variant={variant}>{variant}</Card>)
-      expect(screen.getByText(variant)).toBeInTheDocument()
-    }
-  )
+  it('applies default variant classes without elevated/interactive/bordered/glass markers', () => {
+    render(<Card variant="default">default</Card>)
+    const className = screen.getByText('default').className
+    // shadow-sm appears in 4/5 variants; assert default via shared border token
+    // plus absence of each other variant's distinctive class.
+    expect(className).toMatch(/border-border/)
+    expect(className).not.toMatch(/shadow-lg/)
+    expect(className).not.toMatch(/cursor-pointer/)
+    expect(className).not.toMatch(/border-neutral-600/)
+    expect(className).not.toMatch(/backdrop-blur-sm/)
+  })
+
+  it.each([
+    ['elevated', /shadow-lg/],
+    ['interactive', /cursor-pointer/],
+    ['bordered', /border-neutral-600/],
+    ['glass', /backdrop-blur-sm/],
+  ] as const)('applies variant=%s classes', (variant, classPattern) => {
+    render(<Card variant={variant}>{variant}</Card>)
+    expect(screen.getByText(variant).className).toMatch(classPattern)
+  })
 
   it.each(['none', 'sm', 'default', 'lg'] as const)('renders padding=%s', (padding) => {
     render(<Card padding={padding}>{padding}</Card>)
