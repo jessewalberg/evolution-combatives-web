@@ -334,6 +334,7 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
                         <button
                             type="button"
                             onClick={handleClear}
+                            aria-label="Clear search"
                             className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
                         >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -375,6 +376,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
                         <button
                             type="button"
                             onClick={togglePassword}
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
                             className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
                         >
                             {showPassword ? (
