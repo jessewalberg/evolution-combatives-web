@@ -70,10 +70,13 @@ Fork PRs are skipped (`head.repo.full_name == github.repository`) because secret
 ## Scripts
 
 ```bash
-pnpm test:e2e          # headless full suite (builds + starts app by default)
+pnpm test:e2e          # headless live-data suite (chromium + webkit)
 pnpm test:e2e:ui       # Playwright UI mode
 pnpm test:e2e:headed   # headed browsers
+pnpm test:e2e:visual   # visual regression suite (mocked routes, Chromium)
 ```
+
+Visual regression docs and Linux-only baseline workflow: [`e2e/visual/README.md`](./visual/README.md).
 
 Local faster iteration (dev server instead of production build):
 
@@ -97,7 +100,8 @@ Do not depend on fixed seed rows. Do not leave orphaned fixtures in the shared p
 e2e/
   setup/auth.setup.ts     # real /login → e2e/.auth/admin.json
   helpers/                # unique IDs, CSRF, API, service-role cleanup
-  tests/*.spec.ts         # flow specs
+  tests/*.spec.ts         # live-data flow specs
+  visual/                 # mocked visual regression suite (see visual/README.md)
   README.md               # this file
-playwright.config.ts      # webServer, chromium + webkit, CI retries
+playwright.config.ts      # webServer, chromium + webkit + visual projects
 ```
