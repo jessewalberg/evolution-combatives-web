@@ -311,6 +311,7 @@ const NavItemComponent: React.FC<NavItemComponentProps> = ({
                             : 'text-card-foreground hover:text-foreground !text-slate-200 dark:!text-slate-300 hover:!text-white dark:hover:!text-white',
                         isCollapsed && 'justify-center px-2'
                     )}
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={onLinkClick}
                 >
                     <item.icon className={cn(
