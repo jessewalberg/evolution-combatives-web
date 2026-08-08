@@ -34,11 +34,23 @@ export default defineConfig({
         'src/lib/shared/services/index.ts',
         'src/lib/shared/types/index.ts',
       ],
+      // Aggregate thresholds cover lib/services/hooks/middleware/api, matching
+      // the pre-issue-18 gate. src/components/** gets its own glob entry below
+      // so it is excluded from this aggregate (per Vitest's per-glob threshold
+      // sets) but is still measured and reported via `include` above.
+      // Issue #18: coverage on src/components/** is reported, not yet hard-gated
+      // - revisit the threshold once real numbers exist from this issue.
       thresholds: {
         lines: 85,
         statements: 85,
         branches: 75,
         functions: 75,
+        'src/components/**/*.{ts,tsx}': {
+          lines: 0,
+          statements: 0,
+          branches: 0,
+          functions: 0,
+        },
       },
       reportOnFailure: true,
     },
