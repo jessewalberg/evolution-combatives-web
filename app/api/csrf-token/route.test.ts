@@ -30,6 +30,29 @@ describe('GET /api/csrf-token', () => {
     expect(res.cookies.get('csrf-token')?.value).toBe('csrf-test-token')
   })
 
+  it('sets __Host-csrf-token with Secure when x-forwarded-proto is https', async () => {
+    mockGenerate.mockReturnValue('csrf-secure-token')
+
+    const res = await GET(
+      createNextRequest('/api/csrf-token', {
+        headers: { 'x-forwarded-proto': 'https' },
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.csrfToken).toBe('csrf-secure-token')
+    expect(res.cookies.get('__Host-csrf-token')?.value).toBe('csrf-secure-token')
+    expect(res.cookies.get('csrf-token')).toBeUndefined()
+
+    // Next.js serializes cookie options into Set-Cookie; Secure must be present
+    // on the HTTPS / __Host- path (attribute casing may vary by runtime).
+    const setCookie = res.headers.getSetCookie?.() ?? []
+    const hostCookie = setCookie.find((c) => c.startsWith('__Host-csrf-token='))
+    expect(hostCookie).toBeDefined()
+    expect(hostCookie!.toLowerCase()).toContain('secure')
+  })
+
   it('returns 500 when token generation fails', async () => {
     mockGenerate.mockImplementation(() => {
       throw new Error('rng fail')

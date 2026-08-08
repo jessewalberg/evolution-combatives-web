@@ -116,6 +116,25 @@ describe('middleware', () => {
       expect(body.error).toBe('CSRF token validation failed')
       expect(mockCreateMiddlewareClient).not.toHaveBeenCalled()
     })
+
+    it('accepts matching __Host-csrf-token when x-forwarded-proto is https', async () => {
+      const token = generateCSRFToken()
+      const response = await middleware(
+        createNextRequest('/api/content/videos', {
+          method: 'POST',
+          headers: withUniqueIp({
+            'X-CSRF-Token': token,
+            'x-forwarded-proto': 'https',
+          }),
+          cookies: { '__Host-csrf-token': token },
+        })
+      )
+
+      // Past CSRF; may still redirect/auth-fail, but must not be 403 CSRF reject
+      expect(response.status).not.toBe(403)
+      const bodyText = await response.clone().text()
+      expect(bodyText).not.toContain('CSRF token validation failed')
+    })
   })
 
   describe('rate limiting', () => {
