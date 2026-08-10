@@ -14,6 +14,10 @@ import { createServerClient } from '@/src/lib/supabase'
 
 const mockedCreateServerClient = vi.mocked(createServerClient)
 
+function freshLoginAt() {
+  return new Date().toISOString()
+}
+
 describe('ROLE_PERMISSIONS', () => {
   it('gives super_admin admin.all and broad permissions', () => {
     expect(ROLE_PERMISSIONS.super_admin.has('admin.all')).toBe(true)
@@ -63,7 +67,10 @@ describe('validateApiAuth', () => {
     const from = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: { admin_role: 'content_admin' }, error: null }),
+          single: vi.fn().mockResolvedValue({
+            data: { admin_role: 'content_admin', last_login_at: freshLoginAt() },
+            error: null,
+          }),
         }),
       }),
     })
@@ -108,7 +115,7 @@ describe('validateApiAuthWithSession', () => {
     const from = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: { admin_role: null }, error: null }),
+          single: vi.fn().mockResolvedValue({ data: { admin_role: null, last_login_at: freshLoginAt() }, error: null }),
         }),
       }),
     })
@@ -136,7 +143,7 @@ describe('validateApiAuthWithSession', () => {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           single: vi.fn().mockResolvedValue({
-            data: { admin_role: 'support_admin' },
+            data: { admin_role: 'support_admin', last_login_at: freshLoginAt() },
             error: null,
           }),
         }),
@@ -161,12 +168,43 @@ describe('validateApiAuthWithSession', () => {
     }
   })
 
+  it('returns 401 when last_login_at is older than 24 hours', async () => {
+    const staleLogin = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+    const from = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: { admin_role: 'super_admin', last_login_at: staleLogin },
+            error: null,
+          }),
+        }),
+      }),
+    })
+    mockedCreateServerClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'u1', email: 'admin@test.com' } },
+          error: null,
+        }),
+      },
+      from,
+    } as never)
+
+    const result = await validateApiAuthWithSession('content.write')
+    expect('error' in result).toBe(true)
+    if ('error' in result) {
+      expect(result.error.status).toBe(401)
+      const body = await result.error.json()
+      expect(body.error).toBe('Session expired')
+    }
+  })
+
   it('returns user when session and permission ok', async () => {
     const from = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           single: vi.fn().mockResolvedValue({
-            data: { admin_role: 'super_admin' },
+            data: { admin_role: 'super_admin', last_login_at: freshLoginAt() },
             error: null,
           }),
         }),

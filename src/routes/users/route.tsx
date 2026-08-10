@@ -80,8 +80,9 @@ function UsersLayoutRoute() {
         )
     }
 
-    // Show access denied if user doesn't have admin role
-    if (!profile?.admin_role) {
+    // Show access denied if user lacks admin role or is content_admin
+    // (users is support_admin + super_admin only — see ROUTE_CONFIG.roleAccess)
+    if (!profile?.admin_role || profile.admin_role === 'content_admin') {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center max-w-md mx-auto p-8">

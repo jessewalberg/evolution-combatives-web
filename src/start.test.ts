@@ -5,7 +5,7 @@
  * suites; these cover the pure route logic.
  */
 import { describe, it, expect } from 'vitest'
-import { hasRouteAccess, isPublicRoute } from './start'
+import { hasRouteAccess, isPublicRoute, replaceHtmlApiFallback } from './start'
 
 describe('isPublicRoute', () => {
     it('allows the public pages and endpoints', () => {
@@ -67,5 +67,48 @@ describe('hasRouteAccess', () => {
 
     it('prefix matching requires a path boundary', () => {
         expect(hasRouteAccess('/usersomething', 'support_admin')).toBe(false)
+    })
+})
+
+describe('replaceHtmlApiFallback', () => {
+    it('replaces a bare HTML Response with JSON 405', async () => {
+        const html = new Response('<html></html>', {
+            status: 200,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+        const result = replaceHtmlApiFallback(html)
+        expect(result).toBeInstanceOf(Response)
+        const response = result as Response
+        expect(response.status).toBe(405)
+        expect(await response.json()).toEqual({
+            success: false,
+            error: 'Method not allowed',
+        })
+    })
+
+    it('replaces { response } HTML shape and preserves sibling fields', async () => {
+        const html = new Response('<html></html>', {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' },
+        })
+        const result = replaceHtmlApiFallback({ response: html, ctx: 'keep' }) as {
+            response: Response
+            ctx: string
+        }
+        expect(result.ctx).toBe('keep')
+        expect(result.response.status).toBe(405)
+        expect(await result.response.json()).toEqual({
+            success: false,
+            error: 'Method not allowed',
+        })
+    })
+
+    it('leaves JSON API responses untouched', () => {
+        const api = new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        })
+        expect(replaceHtmlApiFallback(api)).toBe(api)
+        expect(replaceHtmlApiFallback({ response: api })).toEqual({ response: api })
     })
 })

@@ -136,7 +136,7 @@ const timeRanges: TimeRange[] = [
 
 export function AnalyticsPage() {
     const navigate = useNavigate()
-    const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
+    const { user, profile, isLoading: authLoading } = useAuth()
     const supabase = createClientComponentClient()
 
     // State
@@ -363,19 +363,30 @@ export function AnalyticsPage() {
         )
     }
 
-    if (!user || !profile?.admin_role || !hasPermission('analytics.read')) {
+    // Analytics is content_admin + super_admin only — see ROUTE_CONFIG.roleAccess
+    if (!user || !profile?.admin_role || profile.admin_role === 'support_admin') {
         return (
-            <EmptyState
-                icon={ExclamationTriangleIcon}
-                title="Access Denied"
-                description="You don't have permission to view analytics data."
-                primaryAction={{
-                    label: "Go to Dashboard",
-                    onClick: () => navigate({ to: '/dashboard' as never }),
-                    variant: "primary"
-                }}
-                iconVariant="warning"
-            />
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="text-center max-w-md mx-auto p-8">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-semibold text-foreground mb-4">
+                        Access Denied
+                    </h2>
+                    <p className="text-muted-foreground mb-6">
+                        Your account does not have permission to view analytics data.
+                    </p>
+                    <button
+                        onClick={() => navigate({ to: '/dashboard' as never })}
+                        className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md transition-colors"
+                    >
+                        Go to Dashboard
+                    </button>
+                </div>
+            </div>
         )
     }
 

@@ -12,6 +12,7 @@ import { createMiddlewareClient } from './lib/supabase'
 import { csrfProtection } from './lib/csrf-protection'
 import { checkRateLimit, getClientIP, rateLimitResponse } from './lib/rate-limit'
 import { isSecureRequest } from './lib/csrf-protection'
+import { json } from './lib/http'
 import type { AdminRole } from 'shared/types/database'
 
 // Route configuration
@@ -133,6 +134,30 @@ function resultResponse(result: unknown): Response | undefined {
 }
 
 /**
+ * Replace an HTML SSR fallback on /api/* with a JSON 405.
+ * Exported for unit tests — TanStack Start falls through to HTML 200 for
+ * undeclared HTTP verbs; Next auto-405'd them.
+ */
+export function replaceHtmlApiFallback<T>(result: T): T | Response {
+    const response = resultResponse(result)
+    if (!response) return result
+
+    const contentType = response.headers.get('Content-Type') || ''
+    if (!contentType.includes('text/html')) return result
+
+    const methodNotAllowed = json(
+        { success: false, error: 'Method not allowed' },
+        { status: 405 },
+    )
+
+    if (result instanceof Response) {
+        return methodNotAllowed
+    }
+
+    return { ...(result as object), response: methodNotAllowed } as T
+}
+
+/**
  * Outermost middleware: security headers on every response.
  */
 const securityHeadersMiddleware = createMiddleware({ type: 'request' }).server(
@@ -200,6 +225,22 @@ const rateLimitMiddleware = createMiddleware({ type: 'request' }).server(
         }
 
         return next()
+    },
+)
+
+/**
+ * Undeclared HTTP verbs on /api/* fall through to SSR HTML 200 in TanStack
+ * Start (Next auto-405'd them). Detect that HTML fallback and return 405 JSON.
+ */
+const apiMethodGuardMiddleware = createMiddleware({ type: 'request' }).server(
+    async ({ request, next }) => {
+        const pathname = new URL(request.url).pathname
+        if (!pathname.startsWith('/api/')) {
+            return next()
+        }
+
+        const result = await next()
+        return replaceHtmlApiFallback(result)
     },
 )
 
@@ -297,6 +338,7 @@ export const startInstance = createStart(() => {
             securityHeadersMiddleware,
             csrfMiddleware,
             rateLimitMiddleware,
+            apiMethodGuardMiddleware,
             authGuardMiddleware,
         ],
     }

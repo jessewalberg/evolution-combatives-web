@@ -1,6 +1,8 @@
 import { createServerClient } from './supabase'
 import { json } from './http'
 
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000
+
 export interface ApiUser {
     userId: string
     role: string
@@ -40,13 +42,23 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
         // Get user profile with admin role
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('admin_role')
+            .select('admin_role, last_login_at')
             .eq('id', user.id)
             .single()
 
         if (profileError || !profile?.admin_role) {
             return {
                 error: json({ success: false, error: 'Admin role required' }, { status: 403 })
+            }
+        }
+
+        // Session timeout based on last login (parity with authGuardMiddleware)
+        if (profile.last_login_at) {
+            const lastLoginTime = new Date(profile.last_login_at).getTime()
+            if (Date.now() - lastLoginTime > SESSION_TIMEOUT_MS) {
+                return {
+                    error: json({ success: false, error: 'Session expired' }, { status: 401 })
+                }
             }
         }
 
