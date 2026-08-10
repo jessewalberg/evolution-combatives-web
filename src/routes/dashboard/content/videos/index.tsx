@@ -1,32 +1,30 @@
 /**
  * Evolution Combatives - Video Library Management
  * Comprehensive video content management for admin dashboard
- * 
+ *
  * @description Video library with advanced filtering, bulk operations, and analytics
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState, useMemo, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { cn } from '../../../../src/lib/utils'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { cn } from '@/src/lib/utils'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../../../src/hooks/useAuth'
-import { StatsCard, StatsCardGrid } from '../../../../src/components/ui/stats-card'
-import { Card } from '../../../../src/components/ui/card'
-import { Button } from '../../../../src/components/ui/button'
-import { Input } from '../../../../src/components/ui/input'
+import { useAuth } from '@/src/hooks/useAuth'
+import { StatsCard, StatsCardGrid } from '@/src/components/ui/stats-card'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Input } from '@/src/components/ui/input'
 
-import { Spinner } from '../../../../src/components/ui/loading'
-import { VideoTable } from '../../../../src/components/video/video-table'
-import { clientContentService } from '../../../../src/services/content-client'
-import { queryKeys } from '../../../../src/lib/query-client'
+import { Spinner } from '@/src/components/ui/loading'
+import { VideoTable } from '@/src/components/video/video-table'
+import { clientContentService } from '@/src/services/content-client'
+import { queryKeys } from '@/src/lib/query-client'
 import type {
     ContentFilters,
     PaginationOptions
-} from '../../../../src/services/content'
+} from '@/src/services/content'
 import type {
     VideoWithRelations,
     CategoryWithRelations,
@@ -70,8 +68,8 @@ interface BulkAction {
     requiresConfirmation?: boolean
 }
 
-export default function VideoLibraryPage() {
-    const router = useRouter()
+export function VideoLibraryPage() {
+    const navigate = useNavigate()
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
 
@@ -342,7 +340,7 @@ export default function VideoLibraryPage() {
 
     // Handle video actions
     const handleVideoEdit = (video: VideoWithRelations) => {
-        router.push(`/dashboard/content/videos/${video.id}/edit`)
+        navigate({ to: `/dashboard/content/videos/${video.id}/edit` as never })
     }
 
     const handleVideoPreview = (video: VideoWithRelations) => {
@@ -473,7 +471,7 @@ export default function VideoLibraryPage() {
                                     <Button
                                         variant="primary"
                                         size="default"
-                                        onClick={() => router.push('/dashboard/content/videos/upload')}
+                                        onClick={() => navigate({ to: '/dashboard/content/videos/upload' as never })}
                                         leftIcon={<PlusIcon className="h-4 w-4" />}
                                         className="w-full sm:w-auto"
                                     >
@@ -762,4 +760,8 @@ export default function VideoLibraryPage() {
             </div>
         </div>
     )
-} 
+}
+
+export const Route = createFileRoute('/dashboard/content/videos/')({
+    component: VideoLibraryPage,
+})

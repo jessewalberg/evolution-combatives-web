@@ -1,28 +1,26 @@
 /**
  * Evolution Combatives - Video Upload Page
  * Professional video upload interface for tactical training content
- * 
+ *
  * @description Video upload page with drag-and-drop, progress tracking, and metadata management
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../../../../src/hooks/useAuth'
-import { Card } from '../../../../../src/components/ui/card'
-import { Button } from '../../../../../src/components/ui/button'
-import { Breadcrumb } from '../../../../../src/components/ui/breadcrumb'
-import { VideoUploadForm } from '../../../../../src/components/video/video-upload-form'
-import { contentApi } from '../../../../../src/lib/content-api'
-import { queryKeys } from '../../../../../src/lib/query-client'
+import { useAuth } from '@/src/hooks/useAuth'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Breadcrumb } from '@/src/components/ui/breadcrumb'
+import { VideoUploadForm } from '@/src/components/video/video-upload-form'
+import { contentApi } from '@/src/lib/content-api'
+import { queryKeys } from '@/src/lib/query-client'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 
-export default function VideoUploadPage() {
-    const router = useRouter()
+function VideoUploadPage() {
+    const navigate = useNavigate()
     const { user, profile, hasPermission } = useAuth()
     const [isUploading, setIsUploading] = useState(false)
 
@@ -45,7 +43,7 @@ export default function VideoUploadPage() {
     // Handle successful upload
     const handleUploadSuccess = (videoId: string) => {
         toast.success('Video uploaded successfully!')
-        router.push(`/dashboard/content/videos/${videoId}/preview`)
+        navigate({ to: `/dashboard/content/videos/${videoId}/preview` as never })
     }
 
     // Handle upload error
@@ -64,7 +62,7 @@ export default function VideoUploadPage() {
                         You don&apos;t have permission to upload videos.
                     </p>
                     <Button
-                        onClick={() => router.push('/dashboard/content/videos')}
+                        onClick={() => navigate({ to: '/dashboard/content/videos' as never })}
                         variant="outline"
                     >
                         Back to Videos
@@ -93,7 +91,7 @@ export default function VideoUploadPage() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => router.back()}
+                        onClick={() => window.history.back()}
                         className="p-2 self-start"
                     >
                         <ArrowLeftIcon className="h-4 w-4" />
@@ -132,3 +130,7 @@ export default function VideoUploadPage() {
         </div>
     )
 }
+
+export const Route = createFileRoute('/dashboard/content/videos/upload')({
+    component: VideoUploadPage,
+})

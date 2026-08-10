@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST } from './route'
+import { POST as POSTHandler } from './signed-url'
+
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
 const mockGetUser = vi.fn()
 
@@ -13,7 +15,7 @@ vi.mock('@supabase/supabase-js', () => ({
 const mockGetVideoDetails = vi.fn()
 const mockGenerateSignedUrl = vi.fn()
 
-vi.mock('../../../../src/services/cloudflare-stream', () => ({
+vi.mock('@/src/services/cloudflare-stream', () => ({
   videoManagement: {
     getVideoDetails: (...args: unknown[]) => mockGetVideoDetails(...args),
     generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),

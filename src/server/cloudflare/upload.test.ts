@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { authSuccess, authFail } from '@/test/helpers/auth'
-import { POST } from './route'
+import { POST as POSTHandler } from './upload'
 
-vi.mock('../../../../src/lib/api-auth', () => ({
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
+
+vi.mock('@/src/lib/api-auth', () => ({
   validateApiAuthWithSession: vi.fn(),
 }))
 
@@ -13,7 +15,7 @@ const mockGenerateAdminPreviewUrl = vi.fn()
 const mockGenerateThumbnailUrl = vi.fn()
 const mockRetryProcessing = vi.fn()
 
-vi.mock('../../../../src/services/cloudflare-stream', () => ({
+vi.mock('@/src/services/cloudflare-stream', () => ({
   cloudflareStreamService: {
     upload: {
       getUploadUrl: (...args: unknown[]) => mockGetUploadUrl(...args),
@@ -29,7 +31,7 @@ vi.mock('../../../../src/services/cloudflare-stream', () => ({
   },
 }))
 
-import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
+import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 
