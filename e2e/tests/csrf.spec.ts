@@ -10,15 +10,23 @@ test.describe('CSRF protection', () => {
   // These tests intentionally do not need a browser session cookie for the negative case.
   test.use({ storageState: { cookies: [], origins: [] } })
 
-  test('GET /api/csrf-token uses a cookie compatible with HTTP CI', async ({
+  test('GET /api/csrf-token uses a protocol-appropriate cookie', async ({
     request,
+    baseURL,
   }) => {
     const response = await request.get('/api/csrf-token')
     expect(response.ok()).toBeTruthy()
 
     const setCookie = response.headers()['set-cookie']
-    expect(setCookie).toMatch(/^csrf-token=/)
-    expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
+    if (baseURL?.startsWith('https:')) {
+      // HTTPS (staging/production): host-only Secure cookie
+      expect(setCookie).toMatch(/^__Host-csrf-token=/)
+      expect(setCookie).toMatch(/;\s*Secure(?:;|$)/i)
+    } else {
+      // HTTP (local dev/CI): plain cookie without Secure
+      expect(setCookie).toMatch(/^csrf-token=/)
+      expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
+    }
   })
 
   test('HTTPS requests retain the host-only Secure cookie name', () => {
