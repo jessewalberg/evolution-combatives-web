@@ -1,0 +1,125 @@
+// Single config for all Worker targets. The @cloudflare/vite-plugin flattens
+// this into a single-env dist/server/wrangler.json at build time, based on the
+// CLOUDFLARE_ENV env var:
+//
+//   CLOUDFLARE_ENV unset       → top-level block → evolution-combatives-admin (production)
+//   CLOUDFLARE_ENV=staging     → env.staging     → evolution-combatives-admin-staging
+//   CLOUDFLARE_ENV=preview     → env.preview     → evolution-combatives-admin-preview
+//
+// Package scripts:
+//   pnpm deploy:production → production
+//   pnpm deploy:staging    → staging
+//
+// Secrets attach to the Worker by NAME (set per env with `wrangler secret put
+// <KEY>` / `wrangler secret put --env staging <KEY>`):
+//   SUPABASE_SERVICE_ROLE_KEY
+//   STRIPE_SECRET_KEY
+//   STRIPE_WEBHOOK_SECRET
+//   CLOUDFLARE_API_TOKEN            (Stream API token)
+//   CLOUDFLARE_STREAM_SIGNING_KEY
+//   CLOUDFLARE_STREAM_SIGNING_KEY_ID
+//   CLOUDFLARE_STREAM_WEBHOOK_SECRET
+//
+// Per Wrangler v4 env inheritance, `account_id`, `compatibility_date`,
+// `compatibility_flags`, `main`, and `workers_dev` flow down. `vars` and
+// `observability` do NOT inherit and must be repeated per env block.
+//
+// With this compatibility date + nodejs_compat, Workers populates
+// `process.env` from vars/secrets, so server code can keep reading
+// `process.env.X` at request time.
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "evolution-combatives-admin",
+    // Jesse's personal Cloudflare account (same as howverydareyou). If the
+    // Evolution Combatives Stream account is a different CF account, the
+    // Worker still lives here — Stream is reached via API token, not binding.
+    "account_id": "6b13f76a2d42fd29437154c35fa8a0c9",
+    "compatibility_date": "2026-08-01",
+    "compatibility_flags": ["nodejs_compat"],
+    "main": "@tanstack/react-start/server-entry",
+    "workers_dev": true,
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+    },
+    // TODO(deploy): replace placeholder values before first production deploy.
+    // VITE_* vars are inlined into the client bundle at build time; the
+    // non-VITE_* duplicates are read by server code at runtime.
+    "vars": {
+        "VITE_SUPABASE_URL": "https://TODO.supabase.co",
+        "VITE_SUPABASE_ANON_KEY": "TODO",
+        "VITE_APP_URL": "https://admin.evolutioncombatives.com",
+        "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
+        "VITE_POSTHOG_KEY": "TODO",
+        "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
+        "SUPABASE_URL": "https://TODO.supabase.co",
+        "SUPABASE_ANON_KEY": "TODO",
+        "APP_URL": "https://admin.evolutioncombatives.com",
+        "ADMIN_URL": "https://admin.evolutioncombatives.com",
+        "MOBILE_APP_SCHEME": "evolutioncombatives",
+        "CLOUDFLARE_ACCOUNT_ID": "TODO-stream-account-id",
+        "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "TODO.cloudflarestream.com",
+        "STRIPE_PUBLISHABLE_KEY": "pk_live_TODO",
+        "STRIPE_BEGINNER_PRICE_ID": "price_TODO",
+        "STRIPE_INTERMEDIATE_PRICE_ID": "price_TODO",
+        "STRIPE_ADVANCED_PRICE_ID": "price_TODO"
+    },
+    "env": {
+        "staging": {
+            "name": "evolution-combatives-admin-staging",
+            "observability": {
+                "enabled": true,
+                "head_sampling_rate": 1
+            },
+            "vars": {
+                "VITE_SUPABASE_URL": "https://TODO.supabase.co",
+                "VITE_SUPABASE_ANON_KEY": "TODO",
+                "VITE_APP_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
+                "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
+                "VITE_POSTHOG_KEY": "TODO",
+                "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
+                "SUPABASE_URL": "https://TODO.supabase.co",
+                "SUPABASE_ANON_KEY": "TODO",
+                "APP_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
+                "ADMIN_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
+                "MOBILE_APP_SCHEME": "evolutioncombatives",
+                "CLOUDFLARE_ACCOUNT_ID": "TODO-stream-account-id",
+                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "TODO.cloudflarestream.com",
+                "STRIPE_PUBLISHABLE_KEY": "pk_test_TODO",
+                "STRIPE_BEGINNER_PRICE_ID": "price_TODO",
+                "STRIPE_INTERMEDIATE_PRICE_ID": "price_TODO",
+                "STRIPE_ADVANCED_PRICE_ID": "price_TODO"
+            }
+        },
+        "preview": {
+            "name": "evolution-combatives-admin-preview",
+            // PR previews upload versions of this Worker via `wrangler
+            // versions upload`; preview_urls gives each version its own
+            // workers.dev URL.
+            "preview_urls": true,
+            "observability": {
+                "enabled": true,
+                "head_sampling_rate": 1
+            },
+            "vars": {
+                "VITE_SUPABASE_URL": "https://TODO.supabase.co",
+                "VITE_SUPABASE_ANON_KEY": "TODO",
+                "VITE_APP_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
+                "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
+                "VITE_POSTHOG_KEY": "TODO",
+                "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
+                "SUPABASE_URL": "https://TODO.supabase.co",
+                "SUPABASE_ANON_KEY": "TODO",
+                "APP_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
+                "ADMIN_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
+                "MOBILE_APP_SCHEME": "evolutioncombatives",
+                "CLOUDFLARE_ACCOUNT_ID": "TODO-stream-account-id",
+                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "TODO.cloudflarestream.com",
+                "STRIPE_PUBLISHABLE_KEY": "pk_test_TODO",
+                "STRIPE_BEGINNER_PRICE_ID": "price_TODO",
+                "STRIPE_INTERMEDIATE_PRICE_ID": "price_TODO",
+                "STRIPE_ADVANCED_PRICE_ID": "price_TODO"
+            }
+        }
+    }
+}

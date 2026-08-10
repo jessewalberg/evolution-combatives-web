@@ -14,6 +14,7 @@ const config: Config = {
     darkMode: 'class',
     content: [
         './app/**/*.{js,ts,jsx,tsx}',
+        './src/routes/**/*.{js,ts,jsx,tsx}',
         './src/components/**/*.{js,ts,jsx,tsx}',
         './src/app/**/*.{js,ts,jsx,tsx}',
     ],
