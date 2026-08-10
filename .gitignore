@@ -92,3 +92,6 @@ e2e/.auth/*.json
 supabase/.temp/
 src/routeTree.gen.ts
 .claude/
+.dev.vars
+.wrangler/
+dist/
