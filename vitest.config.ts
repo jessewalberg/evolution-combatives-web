@@ -30,8 +30,7 @@ export default defineConfig({
         'src/services/**/*.{ts,tsx}',
         'src/hooks/**/*.{ts,tsx}',
         'src/components/**/*.{ts,tsx}',
-        'middleware.ts',
-        'app/api/**/*.{ts,tsx}',
+        'src/server/**/*.{ts,tsx}',
       ],
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
@@ -58,7 +57,10 @@ export default defineConfig({
       // Issue #18: coverage on src/components/** is reported, not yet hard-gated
       // - revisit the threshold once real numbers exist from this issue.
       thresholds: {
-        '{src/lib/**/*.{ts,tsx},src/services/**/*.{ts,tsx},src/hooks/**/*.{ts,tsx},middleware.ts,app/api/**/*.{ts,tsx}}':
+        // Post-migration equivalent of the old gate: middleware.ts became
+        // src/start.ts (ungated, like src/components — Issue #18 successor)
+        // and app/api/** handler logic now lives in src/server/**.
+        '{src/lib/**/*.{ts,tsx},src/services/**/*.{ts,tsx},src/hooks/**/*.{ts,tsx},src/server/**/*.{ts,tsx}}':
           { lines: 85, statements: 85, branches: 75, functions: 75 },
       },
       reportOnFailure: true,
