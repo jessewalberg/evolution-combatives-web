@@ -1,13 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
 import {
-  extractUserFromRequest,
   hasPermission,
   validateApiAuth,
   validateApiAuthWithSession,
   ROLE_PERMISSIONS,
 } from '@/src/lib/api-auth'
-import { createAuthenticatedRequest, createNextRequest } from '@/test/helpers/next-request'
 
 vi.mock('@/src/lib/supabase', () => ({
   createServerClient: vi.fn(),
@@ -31,32 +28,6 @@ describe('ROLE_PERMISSIONS', () => {
   })
 })
 
-describe('extractUserFromRequest', () => {
-  it('returns null when any required header is missing', () => {
-    expect(extractUserFromRequest(createNextRequest('/api/x'))).toBeNull()
-    expect(
-      extractUserFromRequest(
-        createNextRequest('/api/x', {
-          headers: { 'X-User-ID': '1', 'X-User-Role': 'super_admin' },
-        })
-      )
-    ).toBeNull()
-  })
-
-  it('extracts user from headers', () => {
-    const req = createAuthenticatedRequest('/api/x', {
-      userId: 'u1',
-      role: 'content_admin',
-      email: 'a@b.com',
-    })
-    expect(extractUserFromRequest(req)).toEqual({
-      userId: 'u1',
-      role: 'content_admin',
-      email: 'a@b.com',
-    })
-  })
-})
-
 describe('hasPermission', () => {
   it('grants via admin.all or exact permission', () => {
     expect(hasPermission('super_admin', 'anything')).toBe(true)
@@ -67,8 +38,19 @@ describe('hasPermission', () => {
 })
 
 describe('validateApiAuth', () => {
-  it('returns 401 when unauthenticated', async () => {
-    const result = validateApiAuth(createNextRequest('/api/x'), 'content.read')
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns 401 when unauthenticated (delegates to session validation)', async () => {
+    mockedCreateServerClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: { message: 'no' } }),
+      },
+      from: vi.fn(),
+    } as never)
+
+    const result = await validateApiAuth(new Request('http://localhost/api/x'), 'content.read')
     expect('error' in result).toBe(true)
     if ('error' in result) {
       expect(result.error.status).toBe(401)
@@ -77,26 +59,25 @@ describe('validateApiAuth', () => {
     }
   })
 
-  it('returns 403 when permission missing', async () => {
-    const req = createAuthenticatedRequest('/api/x', {
-      userId: 'u1',
-      role: 'support_admin',
-      email: 's@test.com',
+  it('returns user when session and permission ok', async () => {
+    const from = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: { admin_role: 'content_admin' }, error: null }),
+        }),
+      }),
     })
-    const result = validateApiAuth(req, 'content.write')
-    expect('error' in result).toBe(true)
-    if ('error' in result) {
-      expect(result.error.status).toBe(403)
-    }
-  })
+    mockedCreateServerClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'u1', email: 'c@test.com' } },
+          error: null,
+        }),
+      },
+      from,
+    } as never)
 
-  it('returns user when authorized', () => {
-    const req = createAuthenticatedRequest('/api/x', {
-      userId: 'u1',
-      role: 'content_admin',
-      email: 'c@test.com',
-    })
-    const result = validateApiAuth(req, 'content.write')
+    const result = await validateApiAuth(new Request('http://localhost/api/x'), 'content.write')
     expect(result).toEqual({
       user: { userId: 'u1', role: 'content_admin', email: 'c@test.com' },
     })
@@ -214,13 +195,5 @@ describe('validateApiAuthWithSession', () => {
     if ('error' in result) {
       expect(result.error.status).toBe(500)
     }
-  })
-})
-
-describe('NextRequest fixture typing', () => {
-  it('uses real NextRequest instances', () => {
-    const req = createNextRequest('/api/test', { method: 'POST' })
-    expect(req).toBeInstanceOf(NextRequest)
-    expect(req.method).toBe('POST')
   })
 })

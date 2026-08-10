@@ -1,6 +1,4 @@
-import { NextRequest } from 'next/server'
 import { createServerClient } from './supabase'
-// Updated for Next.js 15 async cookies support - v3
 
 export interface ApiUser {
     userId: string
@@ -18,18 +16,6 @@ export const ROLE_PERMISSIONS: Record<string, Set<string>> = {
     ]),
     content_admin: new Set(['content.read', 'content.write', 'content.delete', 'users.read']),
     support_admin: new Set(['users.read', 'support.read', 'support.write'])
-}
-
-export function extractUserFromRequest(request: NextRequest): ApiUser | null {
-    const userId = request.headers.get('X-User-ID')
-    const role = request.headers.get('X-User-Role')
-    const email = request.headers.get('X-User-Email')
-
-    if (!userId || !role || !email) {
-        return null
-    }
-
-    return { userId, role, email }
 }
 
 export function hasPermission(userRole: string, permission: string): boolean {
@@ -86,7 +72,7 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
                 email: user.email || ''
             }
         }
-    } catch (error) {
+    } catch {
         return {
             error: new Response(
                 JSON.stringify({ success: false, error: 'Authentication failed' }),
@@ -96,26 +82,11 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
     }
 }
 
-export function validateApiAuth(request: NextRequest, requiredPermission: string): { user: ApiUser } | { error: Response } {
-    const user = extractUserFromRequest(request)
-
-    if (!user) {
-        return {
-            error: new Response(
-                JSON.stringify({ success: false, error: 'Authentication required' }),
-                { status: 401, headers: { 'Content-Type': 'application/json' } }
-            )
-        }
-    }
-
-    if (!hasPermission(user.role, requiredPermission)) {
-        return {
-            error: new Response(
-                JSON.stringify({ success: false, error: 'Insufficient permissions' }),
-                { status: 403, headers: { 'Content-Type': 'application/json' } }
-            )
-        }
-    }
-
-    return { user }
+/**
+ * Legacy signature kept for ported call sites. The old implementation read
+ * X-User-* headers injected by Next middleware; sessions are now validated
+ * directly from auth cookies.
+ */
+export async function validateApiAuth(_request: Request, requiredPermission: string): Promise<{ user: ApiUser } | { error: Response }> {
+    return validateApiAuthWithSession(requiredPermission)
 }

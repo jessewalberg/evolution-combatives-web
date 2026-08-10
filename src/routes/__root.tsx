@@ -9,6 +9,7 @@ import { ThemeProvider } from '@/src/providers/ThemeProvider'
 import { DefaultCatchBoundary } from '@/src/components/router/DefaultCatchBoundary'
 import { NotFound } from '@/src/components/router/NotFound'
 import appCss from '@/src/styles/app.css?url'
+import '@/src/lib/analytics-client'
 
 export interface RouterAppContext {
     queryClient: QueryClient

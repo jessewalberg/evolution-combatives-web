@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
                     success: false,
                     error: 'Validation error',
                     message: 'Invalid request data',
-                    details: error.errors
+                    details: error.issues
                 },
                 { status: 400 }
             )

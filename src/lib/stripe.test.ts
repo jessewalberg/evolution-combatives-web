@@ -15,7 +15,7 @@ const fakeStripe = {
     update: vi.fn(),
   },
   webhooks: {
-    constructEvent: vi.fn(),
+    constructEventAsync: vi.fn(),
   },
 }
 
@@ -34,13 +34,13 @@ describe('stripe helpers', () => {
   it('validateWebhookSignature returns event or wraps errors', async () => {
     const { validateWebhookSignature } = await import('@/src/lib/stripe')
     const event = { id: 'evt_1', type: 'checkout.session.completed' }
-    fakeStripe.webhooks.constructEvent.mockReturnValue(event)
-    expect(validateWebhookSignature('{}', 'sig', 'secret')).toEqual(event)
+    fakeStripe.webhooks.constructEventAsync.mockResolvedValue(event)
+    await expect(validateWebhookSignature('{}', 'sig', 'secret')).resolves.toEqual(event)
 
-    fakeStripe.webhooks.constructEvent.mockImplementation(() => {
+    fakeStripe.webhooks.constructEventAsync.mockImplementation(() => {
       throw new Error('bad sig')
     })
-    expect(() => validateWebhookSignature('{}', 'sig', 'secret')).toThrow(
+    await expect(validateWebhookSignature('{}', 'sig', 'secret')).rejects.toThrow(
       /Webhook signature verification failed: bad sig/
     )
   })

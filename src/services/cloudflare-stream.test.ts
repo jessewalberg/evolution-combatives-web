@@ -956,24 +956,23 @@ describe('server-only API helpers', () => {
   })
 })
 
-describe('module env validation', () => {
-  it('throws when required Cloudflare env vars are missing on import', async () => {
+describe('env validation', () => {
+  it('imports without env but rejects API calls when Cloudflare env vars are missing', async () => {
     const account = process.env.CLOUDFLARE_ACCOUNT_ID
     const token = process.env.CLOUDFLARE_API_TOKEN
 
-    vi.resetModules()
     delete process.env.CLOUDFLARE_ACCOUNT_ID
     delete process.env.CLOUDFLARE_API_TOKEN
 
     try {
-      await expect(import('./cloudflare-stream')).rejects.toThrow(
+      // Env access is lazy (Workers only guarantees env at request time),
+      // so importing succeeds and the failure surfaces on first API call.
+      await expect(uploadFunctions.getUploadUrl({ fileName: 'a.mp4' })).rejects.toThrow(
         /Missing Cloudflare environment variables/
       )
     } finally {
       process.env.CLOUDFLARE_ACCOUNT_ID = account
       process.env.CLOUDFLARE_API_TOKEN = token
-      vi.resetModules()
-      await import('./cloudflare-stream')
     }
   })
 })
