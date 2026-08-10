@@ -10,7 +10,7 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
+import Link from '@/src/components/compat/link'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
 import {

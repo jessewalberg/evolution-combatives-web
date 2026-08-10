@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createBrowserClient } from '../lib/supabase-browser'
@@ -30,7 +30,7 @@ const ROLE_PERMISSIONS: Record<NonNullable<AdminRole>, Set<string>> = {
 }
 
 export function useAuth() {
-    const router = useRouter()
+    const navigate = useNavigate()
     const queryClient = useQueryClient()
 
     const { data: session } = useQuery({
@@ -97,7 +97,7 @@ export function useAuth() {
             }
             toast.success('Login successful')
             await queryClient.invalidateQueries({ queryKey: ['auth'] })
-            router.push('/dashboard')
+            void navigate({ to: '/dashboard' as never })
         },
     })
 
@@ -111,7 +111,7 @@ export function useAuth() {
             // Clear auth-related queries
             await queryClient.invalidateQueries({ queryKey: ['auth'] })
             await queryClient.removeQueries({ queryKey: ['auth'] })
-            router.push('/login')
+            void navigate({ to: '/login' as never })
         },
     })
 

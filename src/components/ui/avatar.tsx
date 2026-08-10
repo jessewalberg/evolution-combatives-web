@@ -8,7 +8,7 @@
  */
 
 import * as React from 'react'
-import Image from 'next/image'
+import Image from '@/src/components/compat/image'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn, generateInitials } from '../../lib/utils'
 

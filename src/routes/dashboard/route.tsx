@@ -1,24 +1,18 @@
 /**
- * Evolution Combatives - Users Layout
- * Layout wrapper for users pages with admin navigation
+ * Evolution Combatives - Dashboard Layout
+ * Layout wrapper for all dashboard pages with admin navigation and logout
  * 
- * @description Provides consistent admin layout with authentication for user management
+ * @description Provides consistent admin layout with authentication and logout functionality
  * @author Evolution Combatives
  */
 
-'use client'
-
-import { useAuth } from '../../src/hooks/useAuth'
-import ROUTES from '../../src/lib/routes'
-import AdminLayout from '../../src/components/layout/admin-layout'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { useAuth } from '@/src/hooks/useAuth'
+import AdminLayout from '@/src/components/layout/admin-layout'
 import { toast } from 'sonner'
-import { Spinner } from '../../src/components/ui/loading'
+import { Spinner } from '@/src/components/ui/loading'
 
-interface UsersLayoutProps {
-    children: React.ReactNode
-}
-
-export default function UsersLayout({ children }: UsersLayoutProps) {
+function DashboardLayoutRoute() {
     const { user, profile, isLoading, logout } = useAuth()
 
     const handleLogout = async () => {
@@ -46,16 +40,19 @@ export default function UsersLayout({ children }: UsersLayoutProps) {
                 handleLogout()
                 break
             case 'profile':
+                // Profile page coming soon
                 toast.info('Profile page coming soon', {
                     description: 'This feature is currently under development.'
                 })
                 break
             case 'edit':
+                // Edit profile coming soon
                 toast.info('Edit profile coming soon', {
                     description: 'This feature is currently under development.'
                 })
                 break
             case 'password':
+                // Change password coming soon
                 toast.info('Change password coming soon', {
                     description: 'This feature is currently under development.'
                 })
@@ -67,6 +64,7 @@ export default function UsersLayout({ children }: UsersLayoutProps) {
 
     const handleSearch = (query: string) => {
         if (query.trim()) {
+            // Search functionality coming soon
             toast.info('Search coming soon', {
                 description: `Searching for: "${query.slice(0, 50)}..."`
             })
@@ -127,19 +125,22 @@ export default function UsersLayout({ children }: UsersLayoutProps) {
                 avatar: profile.avatar_url || undefined
             }}
             breadcrumbs={[
-                { name: 'Dashboard', href: ROUTES.DASHBOARD.HOME },
-                { name: 'Users' }
+                { name: 'Dashboard', href: '/dashboard' }
             ]}
             systemStatus={{
                 database: 'online',
                 api: 'online',
                 cdn: 'online'
             }}
-            notificationCount={0}
+            notificationCount={0} // This could be fetched from a notifications API
             onSearch={handleSearch}
             onUserAction={handleUserAction}
         >
-            {children}
+            <Outlet />
         </AdminLayout>
     )
 }
+
+export const Route = createFileRoute('/dashboard')({
+    component: DashboardLayoutRoute,
+})

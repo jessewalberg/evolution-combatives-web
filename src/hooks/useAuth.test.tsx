@@ -16,8 +16,8 @@ const { mockPush, mockToastSuccess, mockToastError, mockAuth, mockFrom } = vi.ho
   return { mockPush, mockToastSuccess, mockToastError, mockAuth, mockFrom }
 })
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => mockPush,
 }))
 
 vi.mock('sonner', () => ({
@@ -154,7 +154,7 @@ describe('useAuth', () => {
       await result.current.login({ email: 'a@b.com', password: 'x' })
     })
     expect(mockToastSuccess).toHaveBeenCalledWith('Login successful')
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).toHaveBeenCalledWith({ to: '/dashboard' })
   })
 
   it('login failure toasts error', async () => {
@@ -167,7 +167,7 @@ describe('useAuth', () => {
       await result.current.login({ email: 'a@b.com', password: 'bad' })
     })
     expect(mockToastError).toHaveBeenCalled()
-    expect(mockPush).not.toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).not.toHaveBeenCalledWith({ to: '/dashboard' })
   })
 
   it('logout success navigates to login', async () => {
@@ -176,7 +176,7 @@ describe('useAuth', () => {
     await act(async () => {
       await result.current.logout()
     })
-    expect(mockPush).toHaveBeenCalledWith('/login')
+    expect(mockPush).toHaveBeenCalledWith({ to: '/login' })
   })
 
   it('logout failure toasts error', async () => {
