@@ -545,7 +545,7 @@ export function AnalyticsPage() {
             </div>
 
             {/* Real-time Metrics */}
-            <div>
+            <div data-testid="realtime-metrics">
                 <h2 className="text-xl font-semibold text-white mb-4">
                     Real-time Metrics
                 </h2>
@@ -781,7 +781,7 @@ export function AnalyticsPage() {
                 </Card>
 
                 {/* System Health */}
-                <Card className="p-6">
+                <Card className="p-6" data-testid="system-health">
                     <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2">
                             <ServerIcon className="h-5 w-5 text-neutral-400" />
