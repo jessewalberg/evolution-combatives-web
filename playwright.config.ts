@@ -6,7 +6,7 @@ import path from 'path'
  * Load gitignored local E2E secrets. CI injects the same names via GitHub Actions secrets.
  * Never commit .env.test.local - covered by .gitignore ".env.*.local".
  */
-dotenv.config({ path: path.resolve(__dirname, '.env.test.local') })
+dotenv.config({ path: path.resolve(import.meta.dirname, '.env.test.local') })
 
 const baseURL = process.env.VITE_APP_URL || 'http://localhost:3000'
 const isCI = !!process.env.CI
