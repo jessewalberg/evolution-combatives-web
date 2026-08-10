@@ -1,27 +1,26 @@
 /**
  * Evolution Combatives - User Management Dashboard
  * Professional user administration for tactical training platform
- * 
+ *
  * @description Comprehensive user management with analytics, filtering, and bulk operations
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../src/hooks/useAuth'
-import ROUTES from '../../src/lib/routes'
-import { StatsCard, StatsCardGrid } from '../../src/components/ui/stats-card'
-import { Card } from '../../src/components/ui/card'
-import { Button } from '../../src/components/ui/button'
-import { Input } from '../../src/components/ui/input'
-import { Spinner } from '../../src/components/ui/loading'
-import { UserTable } from '../../src/components/user/user-table'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { queryKeys } from '../../src/lib/query-client'
+import { useAuth } from '@/src/hooks/useAuth'
+import ROUTES from '@/src/lib/routes'
+import { StatsCard, StatsCardGrid } from '@/src/components/ui/stats-card'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Input } from '@/src/components/ui/input'
+import { Spinner } from '@/src/components/ui/loading'
+import { UserTable } from '@/src/components/user/user-table'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { queryKeys } from '@/src/lib/query-client'
+import type { Profile } from 'shared/types/database'
 
 // Icons
 import {
@@ -135,9 +134,39 @@ interface User {
     lastLogin?: string
 }
 
-export default function UsersPage() {
-    const router = useRouter()
-    const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
+// Row shapes for the columns actually selected. The shared Database type is
+// stale relative to the installed @supabase/supabase-js typings (all `.from()`
+// queries resolve to `never` rows), so query results are cast to these local
+// shapes at the query site instead of editing the shared type.
+interface ProfileStatsRow {
+    id: string
+    created_at: string
+    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null
+}
+
+interface SubscriptionStatsRow {
+    id: string
+    tier: string
+    status: string
+    user_id: string
+}
+
+interface ProfileListRow {
+    id: string
+    email: string
+    full_name: string | null
+    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null
+    created_at: string
+    subscription_tier: string | null
+    last_active: string | null
+}
+
+export function UsersPage() {
+    const navigate = useNavigate()
+    const { user, profile: rawProfile, hasPermission, isLoading: authLoading } = useAuth()
+    // useAuth's profile query resolves to `never` rows against the stale shared
+    // Database type; cast locally rather than editing the shared hook/type.
+    const profile = rawProfile as Profile | null
     const supabase = createClientComponentClient()
 
     // State
@@ -182,8 +211,8 @@ export default function UsersPage() {
             if (profilesResult.error) throw profilesResult.error
             if (subscriptionsResult.error) throw subscriptionsResult.error
 
-            const profiles = profilesResult.data || []
-            const subscriptions = subscriptionsResult.data || []
+            const profiles = (profilesResult.data || []) as ProfileStatsRow[]
+            const subscriptions = (subscriptionsResult.data || []) as SubscriptionStatsRow[]
 
             const now = new Date()
             const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -256,8 +285,8 @@ export default function UsersPage() {
             if (profilesResult.error) throw profilesResult.error
             if (subscriptionsResult.error) throw subscriptionsResult.error
 
-            const profiles = profilesResult.data || []
-            const subscriptions = subscriptionsResult.data || []
+            const profiles = (profilesResult.data || []) as ProfileListRow[]
+            const subscriptions = (subscriptionsResult.data || []) as SubscriptionData[]
 
 
             // Create subscription lookup map
@@ -330,7 +359,7 @@ export default function UsersPage() {
                     completionRate,
                     subscriptionExpiresAt: subscription?.current_period_end,
                     location: undefined, // Column may not exist
-                    department: undefined, // Column may not exist  
+                    department: undefined, // Column may not exist
                     phoneNumber: undefined, // Column may not exist
                     isEmailVerified: true, // Default to true for now
                     totalProgress,
@@ -453,23 +482,23 @@ export default function UsersPage() {
 
     // Handle user actions
     const handleViewProfile = (user: User) => {
-        router.push(`/users/${user.id}`)
+        navigate({ to: `/users/${user.id}` as never })
     }
 
     const handleEditSubscription = (user: User) => {
-        router.push(`/users/${user.id}?tab=subscription`)
+        navigate({ to: `/users/${user.id}` as never, search: { tab: 'subscription' } as never })
     }
 
     const handleSendMessage = (user: User) => {
         console.log('Sending message to user:', user)
         toast.info('Messaging feature coming soon')
-        // router.push(`/messaging/compose?to=${user.id}`)
+        // navigate({ to: `/messaging/compose`, search: { to: user.id } })
     }
 
     // TODO: Add analytics feature
     // const handleViewAnalytics = (user: User) => {
     //     console.log('Viewing analytics for user:', user)
-    //     router.push(`/analytics/users/${user.id}`)
+    //     navigate({ to: `/analytics/users/${user.id}` as never })
     // }
 
     // TODO: Add suspend user feature
@@ -583,7 +612,7 @@ export default function UsersPage() {
                     <Button
                         variant="outline"
                         className="mt-4"
-                        onClick={() => router.push(ROUTES.DASHBOARD.HOME)}
+                        onClick={() => navigate({ to: ROUTES.DASHBOARD.HOME as never })}
                     >
                         Back to Dashboard
                     </Button>
@@ -817,4 +846,8 @@ export default function UsersPage() {
             </Card>
         </div>
     )
-} 
+}
+
+export const Route = createFileRoute('/users/')({
+    component: UsersPage,
+})
