@@ -8,11 +8,12 @@ const { mockPush, mockHasPermission } = vi.hoisted(() => ({
   mockHasPermission: vi.fn(),
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+vi.mock('@tanstack/react-router', () => ({
+  createFileRoute: () => () => ({}),
+  useNavigate: () => mockPush,
 }))
 
-vi.mock('../../src/hooks/useAuth', () => ({
+vi.mock('@/src/hooks/useAuth', () => ({
   useAuth: () => ({
     user: { id: 'u1', email: 'admin@test.com' },
     profile: {
@@ -25,7 +26,7 @@ vi.mock('../../src/hooks/useAuth', () => ({
   }),
 }))
 
-import DashboardPage from './page'
+import { DashboardPage } from './index'
 
 const metrics = {
   totalUsers: 1247,

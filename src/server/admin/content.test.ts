@@ -1,18 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { authSuccess, authFail } from '@/test/helpers/auth'
-import { POST } from './route'
+import { POST as POSTHandler } from './content'
 
-vi.mock('../../../../src/lib/api-auth', () => ({
+const POST = (request?: Request) =>
+  POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
+
+vi.mock('@/src/lib/api-auth', () => ({
   validateApiAuthWithSession: vi.fn(),
 }))
 
-vi.mock('../../../../src/lib/supabase', () => ({
+vi.mock('@/src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
-import { createAdminClient } from '../../../../src/lib/supabase'
+import { validateApiAuthWithSession } from '@/src/lib/api-auth'
+import { createAdminClient } from '@/src/lib/supabase'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockCreateAdminClient = vi.mocked(createAdminClient)

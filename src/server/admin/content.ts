@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '../../../../src/lib/supabase'
-import { handleSupabaseError } from '../../../../src/lib/shared/utils/supabase-errors'
-import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
+import { json } from '@/src/lib/http';
+import { createAdminClient } from '@/src/lib/supabase';
+import { handleSupabaseError } from '@/src/lib/shared/utils/supabase-errors';
+import { validateApiAuthWithSession } from '@/src/lib/api-auth';
 
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     try {
         // Authenticate user and check permissions
         const authResult = await validateApiAuthWithSession('content.write')
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
                     averageRating: 0
                 }
 
-                return NextResponse.json({ success: true, data: stats })
+                return json({ success: true, data: stats })
 
             case 'createVideo':
                 const { data: newVideo, error: createError } = await supabase
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
                     throw handleSupabaseError(createError)
                 }
 
-                return NextResponse.json({ success: true, data: newVideo })
+                return json({ success: true, data: newVideo })
 
             case 'updateVideo':
                 const { data: updatedVideo, error: updateError } = await supabase
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
                     throw handleSupabaseError(updateError)
                 }
 
-                return NextResponse.json({ success: true, data: updatedVideo })
+                return json({ success: true, data: updatedVideo })
 
             case 'deleteVideo':
                 // Start transaction-like cleanup
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
                     throw handleSupabaseError(videoError)
                 }
 
-                return NextResponse.json({ success: true })
+                return json({ success: true })
 
             case 'bulkUpdateVideoStatus':
                 const results = {
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 results.success = results.failed === 0
-                return NextResponse.json({ success: true, data: results })
+                return json({ success: true, data: results })
 
             case 'bulkDeleteVideos':
                 const deleteResults = {
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 deleteResults.success = deleteResults.failed === 0
-                return NextResponse.json({ success: true, data: deleteResults })
+                return json({ success: true, data: deleteResults })
 
             case 'getVideoAnalytics':
                 const { data: video, error: fetchVideoError } = await supabase
@@ -222,17 +222,17 @@ export async function POST(request: NextRequest) {
                     monthlyViews
                 }
 
-                return NextResponse.json({ success: true, data: analytics })
+                return json({ success: true, data: analytics })
 
             default:
-                return NextResponse.json(
+                return json(
                     { success: false, error: 'Invalid action' },
                     { status: 400 }
                 )
         }
     } catch (error) {
         console.error('Admin Content API error:', error)
-        return NextResponse.json(
+        return json(
             {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error'

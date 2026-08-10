@@ -1,25 +1,23 @@
 /**
  * Evolution Combatives - Question Detail & Answer Interface
  * Comprehensive question management with video context and rich answer tools
- * 
+ *
  * @description Admin interface for detailed question review and expert answer creation
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../../src/hooks/useAuth'
-import { Card } from '../../../src/components/ui/card'
-import { Button } from '../../../src/components/ui/button'
-import { Badge } from '../../../src/components/ui/badge'
-import { Avatar } from '../../../src/components/ui/avatar'
-import { LoadingOverlay } from '../../../src/components/ui/loading'
-import { createClientComponentClient } from '../../../src/lib/supabase-browser'
-import { queryKeys } from '../../../src/lib/query-client'
+import { useAuth } from '@/src/hooks/useAuth'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Badge } from '@/src/components/ui/badge'
+import { Avatar } from '@/src/components/ui/avatar'
+import { LoadingOverlay } from '@/src/components/ui/loading'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { queryKeys } from '@/src/lib/query-client'
 
 // Icons
 import {
@@ -113,9 +111,9 @@ interface AnswerTemplate {
 
 
 
-export default function QuestionDetailPage() {
-    const router = useRouter()
-    const params = useParams()
+export function QuestionDetailPage() {
+    const navigate = useNavigate()
+    const params = useParams({ strict: false })
     const questionId = params.id as string
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
@@ -180,7 +178,7 @@ export default function QuestionDetailPage() {
 
             if (error) throw error
 
-            return data
+            return data as unknown as QuestionDetail
         },
         enabled: !!questionId && !!user && !!profile?.admin_role
     })
@@ -207,7 +205,7 @@ export default function QuestionDetailPage() {
 
             if (error) throw error
 
-            return data.map(q => ({
+            return (data as unknown as Array<{ id: string; title: string; status: string; created_at: string; answers?: { count: number }[] }>).map(q => ({
                 ...q,
                 answers_count: q.answers?.[0]?.count || 0
             }))
@@ -249,18 +247,20 @@ export default function QuestionDetailPage() {
             const responseTime = Math.round((new Date().getTime() - startTime.getTime()) / 60000)
 
             // Insert answer
-            const { data: answer, error: answerError } = await supabase
+            const { data: answerData, error: answerError } = await supabase
                 .from('answers')
                 .insert({
                     question_id: questionId,
                     content,
                     admin_id: user!.id,
                     is_official: true
-                })
+                } as never)
                 .select()
                 .single()
 
             if (answerError) throw answerError
+
+            const answer = answerData as unknown as { id: string }
 
             // Update question status
             const { error: questionError } = await supabase
@@ -269,7 +269,7 @@ export default function QuestionDetailPage() {
                     status: 'answered',
                     answered: true,
                     updated_at: new Date().toISOString()
-                })
+                } as never)
                 .eq('id', questionId)
                 .select('id')
                 .single()
@@ -285,24 +285,26 @@ export default function QuestionDetailPage() {
                         admin_id: user!.id,
                         question_id: questionId,
                         template_used: templateId
-                    })
+                    } as never)
                     .select()
             }
 
             // Update template usage count
             if (templateId) {
-                const { data: template } = await supabase
+                const { data: templateData } = await supabase
                     .from('answer_templates')
                     .select('usage_count')
                     .eq('id', templateId)
                     .single()
+
+                const template = templateData as unknown as { usage_count: number } | null
 
                 if (template) {
                     await supabase
                         .from('answer_templates')
                         .update({
                             usage_count: template.usage_count + 1
-                        })
+                        } as never)
                         .eq('id', templateId)
                 }
             }
@@ -408,7 +410,7 @@ export default function QuestionDetailPage() {
                 <div className="text-center">
                     <h2 className="text-xl font-semibold text-white mb-2">Question not found</h2>
                     <p className="text-neutral-400 mb-4">The question you&apos;re looking for doesn&apos;t exist.</p>
-                    <Button onClick={() => router.push('/qa')} variant="outline">
+                    <Button onClick={() => navigate({ to: '/qa' as never })} variant="outline">
                         Back to Q&A
                     </Button>
                 </div>
@@ -424,7 +426,7 @@ export default function QuestionDetailPage() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => router.push('/qa')}
+                        onClick={() => navigate({ to: '/qa' as never })}
                         className="flex items-center gap-2"
                     >
                         <ArrowLeftIcon className="h-4 w-4" />
@@ -787,7 +789,7 @@ export default function QuestionDetailPage() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => router.push(`/users/${question.user.id}`)}
+                                    onClick={() => navigate({ to: `/users/${question.user.id}` as never })}
                                     className="flex-1"
                                 >
                                     <EyeIcon className="h-4 w-4 mr-1" />
@@ -825,7 +827,7 @@ export default function QuestionDetailPage() {
                                     {relatedQuestionsQuery.data?.map(related => (
                                         <button
                                             key={related.id}
-                                            onClick={() => router.push(`/qa/${related.id}`)}
+                                            onClick={() => navigate({ to: `/qa/${related.id}` as never })}
                                             className="w-full text-left p-3 border border-neutral-700 rounded-lg hover:border-primary-500 transition-colors"
                                         >
                                             <h4 className="font-medium text-white text-sm mb-1 line-clamp-2">
@@ -880,3 +882,7 @@ export default function QuestionDetailPage() {
         </div>
     )
 }
+
+export const Route = createFileRoute('/qa/$id')({
+    component: QuestionDetailPage,
+})

@@ -1,28 +1,26 @@
 /**
  * Evolution Combatives - Q&A Management Dashboard
  * Comprehensive question and answer management for tactical training platform
- * 
+ *
  * @description Admin dashboard for managing user questions and providing expert answers
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState } from 'react'
-import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import Image from '@/src/components/compat/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../src/hooks/useAuth'
-import { Card } from '../../src/components/ui/card'
-import { Button } from '../../src/components/ui/button'
-import { Input } from '../../src/components/ui/input'
-import { Badge } from '../../src/components/ui/badge'
-import { Avatar } from '../../src/components/ui/avatar'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../../src/components/ui/table'
-import { LoadingOverlay } from '../../src/components/ui/loading'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { queryKeys } from '../../src/lib/query-client'
+import { useAuth } from '@/src/hooks/useAuth'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Input } from '@/src/components/ui/input'
+import { Badge } from '@/src/components/ui/badge'
+import { Avatar } from '@/src/components/ui/avatar'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/src/components/ui/table'
+import { LoadingOverlay } from '@/src/components/ui/loading'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { queryKeys } from '@/src/lib/query-client'
 
 // Icons
 import {
@@ -128,8 +126,8 @@ interface BulkAction {
     requiresConfirmation?: boolean
 }
 
-export default function QAManagementPage() {
-    const router = useRouter()
+export function QAManagementPage() {
+    const navigate = useNavigate()
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
     const supabase = createClientComponentClient()
@@ -176,8 +174,13 @@ export default function QAManagementPage() {
             if (questionsResult.error) throw questionsResult.error
             if (categoriesResult.error) throw categoriesResult.error
 
-            const questions = questionsResult.data || []
-            const categories = categoriesResult.data || []
+            const questions = (questionsResult.data || []) as unknown as Array<{
+                id: string
+                status: string
+                created_at: string
+                category: string
+            }>
+            const categories = (categoriesResult.data || []) as unknown as Array<{ category: string }>
 
             const now = new Date()
             const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -289,7 +292,7 @@ export default function QAManagementPage() {
             if (error) throw error
 
             // Process and filter data
-            let questions = (data || []).map(question => ({
+            let questions = ((data || []) as unknown as QuestionWithRelations[]).map(question => ({
                 ...question,
                 user: question.user ? {
                     ...question.user
@@ -339,7 +342,7 @@ export default function QAManagementPage() {
                     content,
                     admin_id: user!.id,
                     is_official: isOfficial
-                })
+                } as never)
                 .select()
                 .single()
 
@@ -352,7 +355,7 @@ export default function QAManagementPage() {
                     status: 'answered',
                     answered: true,
                     updated_at: new Date().toISOString()
-                })
+                } as never)
                 .eq('id', questionId)
                 .select('id')
                 .single()
@@ -387,7 +390,7 @@ export default function QAManagementPage() {
                 .update({
                     ...updates,
                     updated_at: new Date().toISOString()
-                })
+                } as never)
                 .in('id', questionIds)
 
             if (error) throw error
@@ -978,7 +981,7 @@ export default function QAManagementPage() {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => router.push(`/qa/${question.id}`)}
+                                                onClick={() => navigate({ to: `/qa/${question.id}` as never })}
                                             >
                                                 <EyeIcon className="h-4 w-4" />
                                             </Button>
@@ -1057,3 +1060,7 @@ export default function QAManagementPage() {
         </div>
     )
 }
+
+export const Route = createFileRoute('/qa/')({
+    component: QAManagementPage,
+})

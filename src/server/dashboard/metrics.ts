@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
-import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
-import { createAdminClient } from '../../../../src/lib/supabase'
+import { json } from '@/src/lib/http';
+import { validateApiAuthWithSession } from '@/src/lib/api-auth';
+import { createAdminClient } from '@/src/lib/supabase';
 
 export async function GET() {
     console.log('Dashboard metrics API called')
@@ -117,13 +117,13 @@ export async function GET() {
             systemAlerts: 2 // Mock data - would come from monitoring system
         }
 
-        return NextResponse.json({
+        return json({
             success: true,
             data: metrics
         })
     } catch (error) {
         console.error('Dashboard metrics API error:', error)
-        return NextResponse.json(
+        return json(
             {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error'

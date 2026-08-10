@@ -1,22 +1,20 @@
 /**
  * Evolution Combatives - Admin Dashboard Overview
  * Main dashboard page for tactical training platform administration
- * 
+ *
  * @description Dashboard overview with key metrics, quick actions, and activity feed
  * @author Evolution Combatives
  */
 
-'use client'
-
-import { useRouter } from 'next/navigation'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useAuth } from '../../src/hooks/useAuth'
-import ROUTES from '../../src/lib/routes'
-import { StatsCard, StatsCardGrid } from '../../src/components/ui/stats-card'
-import { Card } from '../../src/components/ui/card'
-import { Button } from '../../src/components/ui/button'
-import { Spinner } from '../../src/components/ui/loading'
-import { cn } from '../../src/lib/utils'
+import { useAuth } from '@/src/hooks/useAuth'
+import ROUTES from '@/src/lib/routes'
+import { StatsCard, StatsCardGrid } from '@/src/components/ui/stats-card'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Spinner } from '@/src/components/ui/loading'
+import { cn } from '@/src/lib/utils'
 
 // Icons
 import {
@@ -72,8 +70,8 @@ interface QuickAction {
     permissions?: string[]
 }
 
-export default function DashboardPage() {
-    const router = useRouter()
+export function DashboardPage() {
+    const navigate = useNavigate()
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
 
     // Dashboard metrics query
@@ -217,7 +215,7 @@ export default function DashboardPage() {
         if (action.onClick) {
             action.onClick()
         } else if (action.href) {
-            router.push(action.href)
+            navigate({ to: action.href as never })
         }
     }
 
@@ -325,7 +323,7 @@ export default function DashboardPage() {
                         {isRefreshing ? 'Refreshing...' : 'Refresh'}
                     </Button>
                     <Button
-                        onClick={() => router.push('/dashboard/content/videos')}
+                        onClick={() => navigate({ to: '/dashboard/content/videos' as never })}
                         variant="primary"
                         size="default"
                         leftIcon={<VideoCameraIcon className="h-4 w-4" />}
@@ -437,7 +435,7 @@ export default function DashboardPage() {
                     <div className="space-y-3">
                         {/* Always show video upload button */}
                         <Button
-                            onClick={() => router.push(ROUTES.DASHBOARD.CONTENT.VIDEOS)}
+                            onClick={() => navigate({ to: ROUTES.DASHBOARD.CONTENT.VIDEOS as never })}
                             variant="primary"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<VideoCameraIcon className="h-5 w-5" />}
@@ -452,7 +450,7 @@ export default function DashboardPage() {
 
                         {/* Content Management */}
                         <Button
-                            onClick={() => router.push(ROUTES.DASHBOARD.CONTENT.CATEGORIES)}
+                            onClick={() => navigate({ to: ROUTES.DASHBOARD.CONTENT.CATEGORIES as never })}
                             variant="outline"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<DocumentTextIcon className="h-5 w-5" />}
@@ -467,7 +465,7 @@ export default function DashboardPage() {
 
                         {/* User Management */}
                         <Button
-                            onClick={() => router.push(ROUTES.USERS.LIST)}
+                            onClick={() => navigate({ to: ROUTES.USERS.LIST as never })}
                             variant="outline"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<UsersIcon className="h-5 w-5" />}
@@ -482,7 +480,7 @@ export default function DashboardPage() {
 
                         {/* Analytics */}
                         <Button
-                            onClick={() => router.push(ROUTES.ANALYTICS.HOME)}
+                            onClick={() => navigate({ to: ROUTES.ANALYTICS.HOME as never })}
                             variant="outline"
                             className="w-full justify-start h-auto p-4"
                             leftIcon={<ChartBarIcon className="h-5 w-5" />}
@@ -578,4 +576,8 @@ export default function DashboardPage() {
             </div>
         </div>
     )
-} 
+}
+
+export const Route = createFileRoute('/dashboard/')({
+    component: DashboardPage,
+})
