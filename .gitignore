@@ -91,3 +91,4 @@ e2e/.auth/*.json
 # Supabase CLI local state (pooler-url contains a live DB password)
 supabase/.temp/
 src/routeTree.gen.ts
+.claude/
