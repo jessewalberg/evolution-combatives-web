@@ -95,3 +95,4 @@ src/routeTree.gen.ts
 .dev.vars
 .wrangler/
 dist/
+.vercel

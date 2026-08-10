@@ -54,23 +54,23 @@
         ]
     },
     "vars": {
-        "VITE_SUPABASE_URL": "https://TODO.supabase.co",
-        "VITE_SUPABASE_ANON_KEY": "TODO",
-        "VITE_APP_URL": "https://admin.evolutioncombatives.com",
+        "VITE_SUPABASE_URL": "https://bxpxpkiubjbcmgsnfpvp.supabase.co",
+        "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cHhwa2l1YmpiY21nc25mcHZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MDMwMDYsImV4cCI6MjA2NjE3OTAwNn0.pNu3sSNs33hMvJcJuOta_udnV-lXF3LxXJqpqqPxfYw",
+        "VITE_APP_URL": "https://evolutioncombatives.com",
         "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
-        "VITE_POSTHOG_KEY": "TODO",
+        "VITE_POSTHOG_KEY": "phc_HQY1191X359mG41VEpvieYN9qiSY3acZnopO2JZiYry",
         "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
-        "SUPABASE_URL": "https://TODO.supabase.co",
-        "SUPABASE_ANON_KEY": "TODO",
-        "APP_URL": "https://admin.evolutioncombatives.com",
-        "ADMIN_URL": "https://admin.evolutioncombatives.com",
+        "SUPABASE_URL": "https://bxpxpkiubjbcmgsnfpvp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cHhwa2l1YmpiY21nc25mcHZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MDMwMDYsImV4cCI6MjA2NjE3OTAwNn0.pNu3sSNs33hMvJcJuOta_udnV-lXF3LxXJqpqqPxfYw",
+        "APP_URL": "https://evolutioncombatives.com",
+        "ADMIN_URL": "https://evolutioncombatives.com",
         "MOBILE_APP_SCHEME": "evolutioncombatives",
-        "CLOUDFLARE_ACCOUNT_ID": "TODO-stream-account-id",
-        "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "TODO.cloudflarestream.com",
-        "STRIPE_PUBLISHABLE_KEY": "pk_live_TODO",
-        "STRIPE_BEGINNER_PRICE_ID": "price_TODO",
-        "STRIPE_INTERMEDIATE_PRICE_ID": "price_TODO",
-        "STRIPE_ADVANCED_PRICE_ID": "price_TODO"
+        "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
+        "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
+        "STRIPE_PUBLISHABLE_KEY": "update",
+        "STRIPE_BEGINNER_PRICE_ID": "update",
+        "STRIPE_INTERMEDIATE_PRICE_ID": "update",
+        "STRIPE_ADVANCED_PRICE_ID": "update"
     },
     "env": {
         "staging": {
