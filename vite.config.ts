@@ -23,7 +23,11 @@ export default defineConfig({
         //   CLOUDFLARE_ENV=staging  → env.staging
         //   CLOUDFLARE_ENV=preview  → env.preview
         ...(isVitest ? [] : [cloudflare({ viteEnvironment: { name: 'ssr' } })]),
-        tanstackStart(),
+        tanstackStart({
+            // Allow colocated page tests inside src/routes without the
+            // generator treating them as routes.
+            router: { routeFileIgnorePattern: '\\.(test|spec)\\.' },
+        }),
         viteReact(),
     ],
 })
