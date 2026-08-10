@@ -2,7 +2,7 @@ import { test as setup, expect } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 
-const authFile = path.join(__dirname, '../.auth/admin.json')
+const authFile = path.join(import.meta.dirname, '../.auth/admin.json')
 
 /**
  * Logs in once via the real /login UI and persists storageState for dependent projects.
