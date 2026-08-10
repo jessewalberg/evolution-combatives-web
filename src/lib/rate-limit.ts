@@ -59,13 +59,22 @@ function checkFallbackLimit(kind: RateLimitKind, key: string): boolean {
     return true
 }
 
-async function getBinding(kind: RateLimitKind): Promise<RateLimiterBinding | undefined> {
-    try {
-        const { env } = await import(/* @vite-ignore */ 'cloudflare:workers')
-        return (env as Record<string, unknown>)[BINDING_NAMES[kind]] as RateLimiterBinding | undefined
-    } catch {
-        return undefined
+// Memoized so the dynamic import (and its failure outside Workers) is
+// resolved once per isolate rather than per request.
+let workersEnvPromise: Promise<Record<string, unknown> | undefined> | undefined
+
+function getWorkersEnv(): Promise<Record<string, unknown> | undefined> {
+    if (!workersEnvPromise) {
+        workersEnvPromise = import(/* @vite-ignore */ 'cloudflare:workers')
+            .then((mod) => mod.env as Record<string, unknown>)
+            .catch(() => undefined)
     }
+    return workersEnvPromise
+}
+
+async function getBinding(kind: RateLimitKind): Promise<RateLimiterBinding | undefined> {
+    const env = await getWorkersEnv()
+    return env?.[BINDING_NAMES[kind]] as RateLimiterBinding | undefined
 }
 
 /**

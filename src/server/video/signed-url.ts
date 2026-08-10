@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseConfig } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
 
 // Use exact subscription tiers from .cursorrules
@@ -25,9 +26,8 @@ async function validateMobileAppAuth(request: Request) {
         const token = authHeader.replace('Bearer ', '')
 
         // Create Supabase client with the provided JWT token
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        const { url, anonKey } = getSupabaseConfig()
+        const supabase = createClient(url, anonKey,
             {
                 global: {
                     headers: {

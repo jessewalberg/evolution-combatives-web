@@ -1,4 +1,5 @@
 import { createServerClient } from './supabase'
+import { json } from './http'
 
 export interface ApiUser {
     userId: string
@@ -32,10 +33,7 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
 
         if (userError || !user) {
             return {
-                error: new Response(
-                    JSON.stringify({ success: false, error: 'Authentication required' }),
-                    { status: 401, headers: { 'Content-Type': 'application/json' } }
-                )
+                error: json({ success: false, error: 'Authentication required' }, { status: 401 })
             }
         }
 
@@ -48,20 +46,14 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
 
         if (profileError || !profile?.admin_role) {
             return {
-                error: new Response(
-                    JSON.stringify({ success: false, error: 'Admin role required' }),
-                    { status: 403, headers: { 'Content-Type': 'application/json' } }
-                )
+                error: json({ success: false, error: 'Admin role required' }, { status: 403 })
             }
         }
 
         // Check permissions
         if (!hasPermission(profile.admin_role, requiredPermission)) {
             return {
-                error: new Response(
-                    JSON.stringify({ success: false, error: 'Insufficient permissions' }),
-                    { status: 403, headers: { 'Content-Type': 'application/json' } }
-                )
+                error: json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
             }
         }
 
@@ -74,10 +66,7 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
         }
     } catch {
         return {
-            error: new Response(
-                JSON.stringify({ success: false, error: 'Authentication failed' }),
-                { status: 500, headers: { 'Content-Type': 'application/json' } }
-            )
+            error: json({ success: false, error: 'Authentication failed' }, { status: 500 })
         }
     }
 }

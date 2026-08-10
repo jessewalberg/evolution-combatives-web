@@ -84,8 +84,8 @@ export async function POST({ request }: { request: Request }) {
         const customer = await getOrCreateCustomer(userEmail, userId);
 
         // Default URLs - redirect back to mobile app
-        const defaultSuccessUrl = successUrl || `${process.env.NEXT_PUBLIC_MOBILE_APP_SCHEME}://subscription/success?tier=${tier}`;
-        const defaultCancelUrl = cancelUrl || `${process.env.NEXT_PUBLIC_MOBILE_APP_SCHEME}://subscription/cancel`;
+        const defaultSuccessUrl = successUrl || `${(process.env.MOBILE_APP_SCHEME || 'evolutioncombatives')}://subscription/success?tier=${tier}`;
+        const defaultCancelUrl = cancelUrl || `${(process.env.MOBILE_APP_SCHEME || 'evolutioncombatives')}://subscription/cancel`;
 
         // Create checkout session
         const session = await createCheckoutSession({

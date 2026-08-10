@@ -72,6 +72,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '.'),
       shared: path.resolve(__dirname, './src/lib/shared'),
+      // workerd-only module; both consumers fall back on undefined exports
+      'cloudflare:workers': path.resolve(__dirname, './test/mocks/cloudflare-workers.ts'),
     },
   },
 })

@@ -36,15 +36,9 @@ const ROUTE_CONFIG = {
         '/ingest*'
     ],
 
-    // Role-based route access
+    // Role-based route access (super_admin passes hasRouteAccess
+    // unconditionally and is deliberately not listed here)
     roleAccess: {
-        super_admin: [
-            '/dashboard',
-            '/users',
-            '/analytics',
-            '/qa',
-            '/subscribe'
-        ],
         content_admin: [
             '/dashboard',
             '/analytics'
@@ -58,24 +52,38 @@ const ROUTE_CONFIG = {
 } as const
 
 const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000 // 24 hours
+const ACTIVITY_WRITE_THROTTLE_MS = 5 * 60 * 1000 // skip last_activity_at writes fresher than this
 
-function isPublicRoute(pathname: string): boolean {
+const CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https: blob:",
+    "media-src 'self' https: blob:",
+    "connect-src 'self' https: wss:",
+    "frame-src 'self' https://*.cloudflarestream.com https://iframe.videodelivery.net",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+].join('; ')
+
+export function isPublicRoute(pathname: string): boolean {
     return ROUTE_CONFIG.public.some(route => {
         if (route === pathname) return true
         if (route.endsWith('*')) {
-            const prefix = route.slice(0, -1)
-            return pathname === prefix || pathname.startsWith(prefix + '/') || pathname.startsWith(prefix)
+            return pathname.startsWith(route.slice(0, -1))
         }
         return false
     })
 }
 
-function hasRouteAccess(pathname: string, role: AdminRole): boolean {
+export function hasRouteAccess(pathname: string, role: AdminRole): boolean {
     if (role === 'super_admin') {
         return true
     }
 
-    const allowedRoutes = ROUTE_CONFIG.roleAccess[role] ?? []
+    const allowedRoutes = ROUTE_CONFIG.roleAccess[role as Exclude<AdminRole, 'super_admin' | null>] ?? []
 
     return allowedRoutes.some(route => {
         if (route === pathname) return true
@@ -93,12 +101,24 @@ function redirect(request: Request, to: string): Response {
     })
 }
 
+// Memoized so the dynamic import is resolved once per isolate, not per request.
+let waitUntilPromise: Promise<((promise: Promise<unknown>) => void) | undefined> | undefined
+
+function getWaitUntil() {
+    if (!waitUntilPromise) {
+        waitUntilPromise = import(/* @vite-ignore */ 'cloudflare:workers')
+            .then((mod) => mod.waitUntil)
+            .catch(() => undefined)
+    }
+    return waitUntilPromise
+}
+
 /** Schedule background work past the response (waitUntil on Workers). */
 async function runInBackground(work: () => Promise<unknown>): Promise<void> {
-    try {
-        const { waitUntil } = await import(/* @vite-ignore */ 'cloudflare:workers')
+    const waitUntil = await getWaitUntil()
+    if (waitUntil) {
         waitUntil(work())
-    } catch {
+    } else {
         void work()
     }
 }
@@ -126,20 +146,7 @@ const securityHeadersMiddleware = createMiddleware({ type: 'request' }).server(
             response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
             response.headers.set('X-XSS-Protection', '1; mode=block')
 
-            const csp = [
-                "default-src 'self'",
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-                "font-src 'self' https://fonts.gstatic.com",
-                "img-src 'self' data: https: blob:",
-                "media-src 'self' https: blob:",
-                "connect-src 'self' https: wss:",
-                "frame-src 'self' https://*.cloudflarestream.com https://iframe.videodelivery.net",
-                "frame-ancestors 'none'",
-                "base-uri 'self'",
-                "form-action 'self'"
-            ].join('; ')
-            response.headers.set('Content-Security-Policy', csp)
+            response.headers.set('Content-Security-Policy', CSP)
 
             if (isSecureRequest(request)) {
                 response.headers.set(
@@ -175,16 +182,18 @@ const rateLimitMiddleware = createMiddleware({ type: 'request' }).server(
         const pathname = new URL(request.url).pathname
         const clientIP = getClientIP(request)
 
-        if (pathname.startsWith('/api/')) {
-            const kind = pathname.startsWith('/api/admin/') ? 'admin' : 'api'
-            const allowed = await checkRateLimit(kind, `${clientIP}:${kind}`)
+        const isAuthPath =
+            (pathname === '/api/auth/login' || pathname === '/api/auth/sign-up') && request.method === 'POST'
+
+        if (isAuthPath) {
+            // The stricter auth bucket (10/60s) subsumes the generic api one
+            const allowed = await checkRateLimit('auth', clientIP)
             if (!allowed) {
                 return rateLimitResponse()
             }
-        }
-
-        if ((pathname === '/api/auth/login' || pathname === '/api/auth/sign-up') && request.method === 'POST') {
-            const allowed = await checkRateLimit('auth', clientIP)
+        } else if (pathname.startsWith('/api/')) {
+            const kind = pathname.startsWith('/api/admin/') ? 'admin' : 'api'
+            const allowed = await checkRateLimit(kind, `${clientIP}:${kind}`)
             if (!allowed) {
                 return rateLimitResponse()
             }
@@ -220,40 +229,33 @@ const authGuardMiddleware = createMiddleware({ type: 'request' }).server(
             return result
         }
 
-        const withCookiesOnRedirect = (response: Response) => {
-            for (const value of cookieHeaders.getSetCookie()) {
-                response.headers.append('Set-Cookie', value)
-            }
-            return response
-        }
-
         try {
             const { data: { user }, error: userError } = await supabase.auth.getUser()
 
             if (userError || !user) {
                 const loginUrl = new URL('/login', request.url)
                 loginUrl.searchParams.set('redirectTo', pathname)
-                return withCookiesOnRedirect(
+                return withAuthCookies(
                     new Response(null, { status: 302, headers: { Location: loginUrl.toString() } }),
                 )
             }
 
             const { data: profile, error: profileError } = await supabase
                 .from('profiles')
-                .select('admin_role, full_name, last_login_at')
+                .select('admin_role, full_name, last_login_at, last_activity_at')
                 .eq('id', user.id)
                 .single()
 
             if (profileError || !profile) {
-                return withCookiesOnRedirect(redirect(request, '/login?error=profile_error'))
+                return withAuthCookies(redirect(request, '/login?error=profile_error'))
             }
 
             if (!profile.admin_role) {
-                return withCookiesOnRedirect(redirect(request, '/login?error=access_denied'))
+                return withAuthCookies(redirect(request, '/login?error=access_denied'))
             }
 
             if (!hasRouteAccess(pathname, profile.admin_role as AdminRole)) {
-                return withCookiesOnRedirect(redirect(request, '/dashboard?error=insufficient_permissions'))
+                return withAuthCookies(redirect(request, '/dashboard?error=insufficient_permissions'))
             }
 
             // Session timeout based on last login
@@ -265,17 +267,21 @@ const authGuardMiddleware = createMiddleware({ type: 'request' }).server(
                     } catch {
                         // best-effort sign-out of the expired session
                     }
-                    return withCookiesOnRedirect(redirect(request, '/login?error=session_expired'))
+                    return withAuthCookies(redirect(request, '/login?error=session_expired'))
                 }
             }
 
-            // Update last activity past the response lifecycle
-            await runInBackground(async () => {
-                await supabase
-                    .from('profiles')
-                    .update({ last_activity_at: new Date().toISOString() })
-                    .eq('id', user.id)
-            })
+            // Update last activity past the response lifecycle, throttled so
+            // rapid navigation doesn't write on every request
+            const lastActivity = profile.last_activity_at ? new Date(profile.last_activity_at).getTime() : 0
+            if (Date.now() - lastActivity > ACTIVITY_WRITE_THROTTLE_MS) {
+                await runInBackground(async () => {
+                    await supabase
+                        .from('profiles')
+                        .update({ last_activity_at: new Date().toISOString() })
+                        .eq('id', user.id)
+                })
+            }
 
             return withAuthCookies(await next())
         } catch (error) {

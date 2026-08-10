@@ -32,7 +32,7 @@ function SubscriptionSuccessPage() {
         setRedirecting(true);
 
         // Deep link back to mobile app
-        const mobileAppScheme = process.env.NEXT_PUBLIC_MOBILE_APP_SCHEME || 'evolutioncombatives';
+        const mobileAppScheme = import.meta.env.VITE_MOBILE_APP_SCHEME || 'evolutioncombatives';
         const deepLink = `${mobileAppScheme}://subscription/success?tier=${tier}&session_id=${sessionId}`;
 
         // Try to open the mobile app

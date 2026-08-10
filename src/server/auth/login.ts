@@ -79,6 +79,10 @@ function clearFailedAttempts(identifier: string) {
  * Get client IP for rate limiting
  */
 function getClientIP(request: Request): string {
+    // Behind Cloudflare the real client IP arrives in cf-connecting-ip
+    const cfConnectingIP = request.headers.get('cf-connecting-ip')
+    if (cfConnectingIP) return cfConnectingIP
+
     const forwarded = request.headers.get('x-forwarded-for')
     const realIP = request.headers.get('x-real-ip')
 

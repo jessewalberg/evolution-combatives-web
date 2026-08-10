@@ -10,7 +10,3 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
     }
     return new Response(JSON.stringify(data), { ...init, headers })
 }
-
-export function methodNotAllowed(): Response {
-    return json({ error: 'Method not allowed' }, { status: 405 })
-}
