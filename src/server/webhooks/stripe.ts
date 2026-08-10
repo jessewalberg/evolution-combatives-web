@@ -6,9 +6,9 @@
  * @author Evolution Combatives
  */
 
-import { NextRequest, NextResponse } from 'next/server';
 import { validateWebhookSignature } from '@/src/lib/stripe';
 import { createAdminClient } from '@/src/lib/supabase';
+import { json } from '@/src/lib/http';
 import Stripe from 'stripe';
 
 // Extended interface for Stripe Subscription with period properties
@@ -22,27 +22,27 @@ interface StripeInvoiceWithSubscription extends Stripe.Invoice {
     subscription: string | Stripe.Subscription | null;
 }
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET environment variable is required');
-}
-
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     try {
+        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        if (!webhookSecret) {
+            console.error('STRIPE_WEBHOOK_SECRET environment variable is required');
+            return json({ error: 'Webhook not configured' }, { status: 500 });
+        }
+
         const body = await request.text();
         const signature = request.headers.get('stripe-signature');
 
         if (!signature) {
             console.error('Missing Stripe signature header');
-            return NextResponse.json(
+            return json(
                 { error: 'Missing signature' },
                 { status: 400 }
             );
         }
 
         // Validate webhook signature
-        const event = validateWebhookSignature(body, signature, webhookSecret!);
+        const event = await validateWebhookSignature(body, signature, webhookSecret);
 
         console.log(`Received Stripe webhook: ${event.type}, ID: ${event.id}`);
 
@@ -76,11 +76,11 @@ export async function POST(request: NextRequest) {
                 console.log(`Unhandled webhook event type: ${event.type}`);
         }
 
-        return NextResponse.json({ received: true });
+        return json({ received: true });
 
     } catch (error) {
         console.error('Webhook error:', error);
-        return NextResponse.json(
+        return json(
             { error: 'Webhook handler failed' },
             { status: 400 }
         );
@@ -270,7 +270,7 @@ async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription) {
 
 // Health check endpoint
 export async function GET() {
-    return NextResponse.json({
+    return json({
         status: 'ok',
         service: 'stripe-webhooks',
         timestamp: new Date().toISOString(),

@@ -7,10 +7,8 @@
  * @author Evolution Combatives
  */
 
-import { NextRequest, NextResponse } from 'next/server'
-import { headers } from 'next/headers'
-import crypto from 'crypto'
-import { createAdminClient } from '../../../../src/lib/supabase'
+import { createAdminClient } from '@/src/lib/supabase'
+import { json } from '@/src/lib/http'
 
 // Cloudflare Stream webhook event types
 interface CloudflareStreamEvent {
@@ -51,12 +49,12 @@ const RETRY_CONFIG = {
     backoffMultiplier: 2
 }
 
-// Webhook signature verification
-function verifyWebhookSignature(
+// Webhook signature verification (WebCrypto — runs on Cloudflare Workers)
+async function verifyWebhookSignature(
     payload: string,
     signature: string | null,
     secret: string
-): boolean {
+): Promise<boolean> {
     if (!signature || !secret) {
         console.warn('Missing webhook signature or secret')
         return false
@@ -64,16 +62,29 @@ function verifyWebhookSignature(
 
     try {
         // Cloudflare Stream uses HMAC-SHA256
-        const expectedSignature = crypto
-            .createHmac('sha256', secret)
-            .update(payload)
-            .digest('hex')
+        const encoder = new TextEncoder()
+        const key = await crypto.subtle.importKey(
+            'raw',
+            encoder.encode(secret),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+        )
+        const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
+        const expectedSignature = Array.from(new Uint8Array(mac))
+            .map(byte => byte.toString(16).padStart(2, '0'))
+            .join('')
 
         // Compare signatures using constant-time comparison
-        return crypto.timingSafeEqual(
-            Buffer.from(signature.replace('sha256=', '')),
-            Buffer.from(expectedSignature)
-        )
+        const provided = signature.replace('sha256=', '')
+        if (provided.length !== expectedSignature.length) {
+            return false
+        }
+        let diff = 0
+        for (let i = 0; i < expectedSignature.length; i++) {
+            diff |= provided.charCodeAt(i) ^ expectedSignature.charCodeAt(i)
+        }
+        return diff === 0
     } catch (error) {
         console.error('Webhook signature verification failed:', error)
         return false
@@ -323,7 +334,7 @@ async function logWebhookEvent(
 }
 
 // Main webhook handler
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     let webhookPayload: string
     let event: CloudflareStreamEvent
 
@@ -333,7 +344,7 @@ export async function POST(request: NextRequest) {
 
         if (!webhookPayload) {
             console.error('Empty webhook payload received')
-            return NextResponse.json(
+            return json(
                 { error: 'Empty payload' },
                 { status: 400 }
             )
@@ -344,19 +355,18 @@ export async function POST(request: NextRequest) {
             event = JSON.parse(webhookPayload)
         } catch (parseError) {
             console.error('Invalid JSON payload:', parseError)
-            return NextResponse.json(
+            return json(
                 { error: 'Invalid JSON payload' },
                 { status: 400 }
             )
         }
 
         // Verify webhook signature if secret is configured
-        const headersList = await headers()
-        const signature = headersList.get('x-signature')
+        const signature = request.headers.get('x-signature')
         const webhookSecret = process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
         if (webhookSecret) {
-            const isValidSignature = verifyWebhookSignature(
+            const isValidSignature = await verifyWebhookSignature(
                 webhookPayload,
                 signature,
                 webhookSecret
@@ -365,7 +375,7 @@ export async function POST(request: NextRequest) {
             if (!isValidSignature) {
                 console.error('Invalid webhook signature')
                 await logWebhookEvent(event, false, 'Invalid webhook signature')
-                return NextResponse.json(
+                return json(
                     { error: 'Invalid signature' },
                     { status: 401 }
                 )
@@ -392,7 +402,7 @@ export async function POST(request: NextRequest) {
 
         console.log(`Successfully processed webhook ${event.eventId} for video ${event.uid}`)
 
-        return NextResponse.json(
+        return json(
             {
                 success: true,
                 eventId: event.eventId,
@@ -411,7 +421,7 @@ export async function POST(request: NextRequest) {
             await logWebhookEvent(event, false, errorMessage)
         }
 
-        return NextResponse.json(
+        return json(
             {
                 error: 'Webhook processing failed',
                 message: errorMessage
@@ -423,21 +433,21 @@ export async function POST(request: NextRequest) {
 
 // Handle other HTTP methods
 export async function GET() {
-    return NextResponse.json(
+    return json(
         { message: 'Cloudflare Stream webhook endpoint' },
         { status: 200 }
     )
 }
 
 export async function PUT() {
-    return NextResponse.json(
+    return json(
         { error: 'Method not allowed' },
         { status: 405 }
     )
 }
 
 export async function DELETE() {
-    return NextResponse.json(
+    return json(
         { error: 'Method not allowed' },
         { status: 405 }
     )

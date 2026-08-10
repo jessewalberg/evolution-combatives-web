@@ -1,96 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
+import { json } from '@/src/lib/http'
 
 // Use exact subscription tiers from .cursorrules
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
-
-async function validateMobileAppAuth(request: NextRequest) {
-    try {
-        const authHeader = request.headers.get('Authorization')
-        const mobileClient = request.headers.get('X-Mobile-Client')
-        const userAgent = request.headers.get('User-Agent')
-
-        console.log('🔐 [Mobile API] Auth Debug:', {
-            hasAuthHeader: !!authHeader,
-            authHeaderStart: authHeader?.substring(0, 20) + '...',
-            headerLength: authHeader?.length,
-            mobileClient,
-            userAgent
-        });
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'Bearer token required for mobile API' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        // Verify this is actually a mobile client request
-        if (!mobileClient || !userAgent?.includes('EvolutionCombatives-Mobile')) {
-            console.warn('🚨 [Mobile API] Non-mobile client accessing mobile endpoint:', {
-                mobileClient,
-                userAgent
-            });
-            // Allow it but log the warning
-        }
-
-        const token = authHeader.replace('Bearer ', '')
-
-        // Create Supabase client with the provided JWT token
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                global: {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            }
-        )
-
-        // Verify the user with the token
-        const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-
-        console.log('🔐 [Mobile API] User Validation Result:', {
-            hasUser: !!user,
-            userId: user?.id,
-            userEmail: user?.email,
-            hasError: !!userError,
-            errorMessage: userError?.message
-        });
-
-        if (userError || !user) {
-            console.error('❌ [Mobile API] User validation failed:', userError);
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'Invalid authentication token' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        console.log('✅ [Mobile API] User authenticated successfully:', user.email);
-        return { user, supabase }
-    } catch (error) {
-        console.error('[Mobile API] Auth validation error:', error)
-        return {
-            error: NextResponse.json(
-                { success: false, error: 'Authentication failed' },
-                { status: 500 }
-            )
-        }
-    }
-}
 
 /**
  * Mobile-specific video API endpoint
  * This endpoint bypasses CSRF protection since mobile apps use Bearer token auth
  * and are not subject to CSRF attacks like web browsers
  */
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     console.log('📱 [Mobile API] Incoming video request');
 
     const authResult = await validateMobileAppAuth(request)
@@ -104,13 +23,13 @@ export async function POST(request: NextRequest) {
 
     try {
         // Import videoManagement inside the function to avoid environment variable issues
-        const { videoManagement } = await import('../../../../../src/services/cloudflare-stream')
+        const { videoManagement } = await import('@/src/services/cloudflare-stream')
         const requestBody = await request.json()
         const { videoId: requestVideoId, subscriptionTier = 'tier1', format = 'hls' } = requestBody
         videoId = requestVideoId; // Store for error handling
 
         if (!videoId) {
-            return NextResponse.json(
+            return json(
                 { success: false, error: 'Video ID is required' },
                 { status: 400 }
             )
@@ -135,7 +54,7 @@ export async function POST(request: NextRequest) {
             });
         } catch (error) {
             console.error('❌ [Mobile API] Video not found in Cloudflare Stream:', error);
-            return NextResponse.json(
+            return json(
                 {
                     success: false,
                     error: 'Video not found in Cloudflare Stream',
@@ -200,14 +119,14 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ [Mobile API] Successfully generated video response for user:', user.email);
 
-        return NextResponse.json(response)
+        return json(response)
 
     } catch (error) {
         console.error('[Mobile API] Error generating signed video URL:', error)
 
         // Handle specific Cloudflare Stream errors
         if (error instanceof Error && error.message.includes('Not Found')) {
-            return NextResponse.json(
+            return json(
                 {
                     success: false,
                     error: 'Video not found',
@@ -218,7 +137,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        return NextResponse.json(
+        return json(
             {
                 success: false,
                 error: 'Failed to generate signed video URL',

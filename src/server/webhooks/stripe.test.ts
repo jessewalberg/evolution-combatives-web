@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST } from './route'
+import { POST as POSTHandler } from './stripe'
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 import type Stripe from 'stripe'
 
 vi.mock('@/src/lib/stripe', () => ({
@@ -336,7 +337,7 @@ describe('POST /api/webhooks/stripe', () => {
 
 describe('GET /api/webhooks/stripe', () => {
   it('returns health check', async () => {
-    const { GET } = await import('./route')
+    const { GET } = await import('./stripe')
     const res = await GET()
     const body = await res.json()
 

@@ -1,22 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import crypto from 'crypto'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST } from './route'
+import { POST as POSTHandler } from './cloudflare'
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
 const WEBHOOK_SECRET = 'test-stream-webhook-secret'
 
-vi.mock('next/headers', () => ({
-  headers: vi.fn(),
-}))
-
-vi.mock('../../../../src/lib/supabase', () => ({
+vi.mock('@/src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-import { headers } from 'next/headers'
-import { createAdminClient } from '../../../../src/lib/supabase'
+import { createAdminClient } from '@/src/lib/supabase'
 
-const mockHeaders = vi.mocked(headers)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
 function signPayload(payload: string, secret = WEBHOOK_SECRET) {
@@ -91,14 +86,12 @@ describe('POST /api/webhooks/cloudflare', () => {
   })
 
   it('returns 401 for invalid signature', async () => {
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': 'sha256=invalid' }) as never
-    )
     const payload = JSON.stringify(buildEvent())
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': 'sha256=invalid' },
       })
     )
     const body = await res.json()
@@ -113,14 +106,11 @@ describe('POST /api/webhooks/cloudflare', () => {
     const payload = JSON.stringify(event)
     const signature = signPayload(payload)
 
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signature }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signature },
       })
     )
     const body = await res.json()
@@ -156,14 +146,11 @@ describe('POST /api/webhooks/cloudflare', () => {
     const payload = JSON.stringify(event)
     const signature = signPayload(payload)
 
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signature }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signature },
       })
     )
 
@@ -186,17 +173,18 @@ describe('POST /api/webhooks/cloudflare', () => {
     const payload = JSON.stringify(event)
     const signature = signPayload(payload)
 
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signature }) as never
-    )
-
     const resPromise = POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signature },
       })
     )
-    await vi.runAllTimersAsync()
+    // Signature verification is now async (WebCrypto), so retry timers get
+    // scheduled after additional microtasks; flush repeatedly.
+    for (let i = 0; i < 5; i++) {
+      await vi.runAllTimersAsync()
+    }
     const res = await resPromise
     const body = await res.json()
     vi.useRealTimers()
@@ -208,8 +196,7 @@ describe('POST /api/webhooks/cloudflare', () => {
   })
 
   it('returns 401 when signature header missing', async () => {
-    mockHeaders.mockResolvedValue(new Headers({}) as never)
-    const payload = JSON.stringify(buildEvent())
+        const payload = JSON.stringify(buildEvent())
 
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -223,14 +210,11 @@ describe('POST /api/webhooks/cloudflare', () => {
   it('processes video.upload.complete by marking status processing and unpublished', async () => {
     const event = buildEvent({ eventType: 'video.upload.complete' })
     const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -242,14 +226,11 @@ describe('POST /api/webhooks/cloudflare', () => {
   it('processes video.processing.started by marking status processing and unpublished', async () => {
     const event = buildEvent({ eventType: 'video.processing.started' })
     const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -261,14 +242,11 @@ describe('POST /api/webhooks/cloudflare', () => {
   it('processes video.processing.complete by writing ready status and metadata', async () => {
     const event = buildEvent({ eventType: 'video.processing.complete' })
     const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -285,14 +263,11 @@ describe('POST /api/webhooks/cloudflare', () => {
   it('processes video.deleted by marking status deleted and unpublished', async () => {
     const event = buildEvent({ eventType: 'video.deleted' })
     const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -304,14 +279,11 @@ describe('POST /api/webhooks/cloudflare', () => {
   it('handles unknown event types via default branch, writing queued status', async () => {
     const event = buildEvent({ eventType: 'video.unknown' as never })
     const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'x-signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -323,7 +295,7 @@ describe('POST /api/webhooks/cloudflare', () => {
 
 describe('GET /api/webhooks/cloudflare', () => {
   it('returns endpoint info', async () => {
-    const { GET, PUT, DELETE } = await import('./route')
+    const { GET, PUT, DELETE } = await import('./cloudflare')
     const res = await GET()
     const body = await res.json()
 
@@ -342,8 +314,7 @@ describe('POST /api/webhooks/cloudflare payload validation', () => {
   })
 
   it('returns 400 for empty payload', async () => {
-    mockHeaders.mockResolvedValue(new Headers({}) as never)
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: '',
@@ -354,8 +325,7 @@ describe('POST /api/webhooks/cloudflare payload validation', () => {
   })
 
   it('returns 400 for invalid JSON', async () => {
-    mockHeaders.mockResolvedValue(new Headers({}) as never)
-    const res = await POST(
+        const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: 'not-json',

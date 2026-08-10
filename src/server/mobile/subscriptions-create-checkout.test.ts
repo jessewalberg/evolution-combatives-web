@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST } from './route'
+import { POST as POSTHandler } from './subscriptions-create-checkout'
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
 const mockGetUser = vi.fn()
 const mockProfileSingle = vi.fn()
@@ -16,12 +17,12 @@ vi.mock('@supabase/supabase-js', () => ({
   })),
 }))
 
-vi.mock('../../../../../src/lib/stripe', () => ({
+vi.mock('@/src/lib/stripe', () => ({
   createCheckoutSession: vi.fn(),
   getOrCreateCustomer: vi.fn(),
 }))
 
-import { createCheckoutSession, getOrCreateCustomer } from '../../../../../src/lib/stripe'
+import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
 
 const mockCreateCheckoutSession = vi.mocked(createCheckoutSession)
 const mockGetOrCreateCustomer = vi.mocked(getOrCreateCustomer)

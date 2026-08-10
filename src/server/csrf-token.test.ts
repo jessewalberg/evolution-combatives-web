@@ -1,18 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { GET } from './route'
+import { GET as GETHandler } from './csrf-token'
+const GET = (request?: Request) => GETHandler({ request: request ?? new Request('http://localhost/') } as never)
 
-vi.mock('../../../src/lib/csrf-protection', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/lib/csrf-protection')>()
+vi.mock('@/src/lib/csrf-protection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/src/lib/csrf-protection')>()
   return {
     ...actual,
     generateCSRFToken: vi.fn(),
   }
 })
 
-import { generateCSRFToken } from '../../../src/lib/csrf-protection'
+import { generateCSRFToken } from '@/src/lib/csrf-protection'
 
 const mockGenerate = vi.mocked(generateCSRFToken)
+
+const setCookie = vi.fn()
+vi.mock('@tanstack/react-start/server', () => ({
+  setCookie: (...args: unknown[]) => (setCookie as (...a: unknown[]) => unknown)(...args),
+}))
 
 describe('GET /api/csrf-token', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -27,7 +33,11 @@ describe('GET /api/csrf-token', () => {
     expect(body.success).toBe(true)
     expect(body.csrfToken).toBe('csrf-test-token')
     expect(body.expiresAt).toBeDefined()
-    expect(res.cookies.get('csrf-token')?.value).toBe('csrf-test-token')
+    expect(setCookie).toHaveBeenCalledWith(
+      'csrf-token',
+      'csrf-test-token',
+      expect.objectContaining({ httpOnly: true, secure: false, sameSite: 'strict', path: '/' })
+    )
   })
 
   it('sets __Host-csrf-token with Secure when x-forwarded-proto is https', async () => {
@@ -42,15 +52,12 @@ describe('GET /api/csrf-token', () => {
 
     expect(res.status).toBe(200)
     expect(body.csrfToken).toBe('csrf-secure-token')
-    expect(res.cookies.get('__Host-csrf-token')?.value).toBe('csrf-secure-token')
-    expect(res.cookies.get('csrf-token')).toBeUndefined()
-
-    // Next.js serializes cookie options into Set-Cookie; Secure must be present
-    // on the HTTPS / __Host- path (attribute casing may vary by runtime).
-    const setCookie = res.headers.getSetCookie?.() ?? []
-    const hostCookie = setCookie.find((c) => c.startsWith('__Host-csrf-token='))
-    expect(hostCookie).toBeDefined()
-    expect(hostCookie!.toLowerCase()).toContain('secure')
+    // Secure host-only cookie on the HTTPS path
+    expect(setCookie).toHaveBeenCalledWith(
+      '__Host-csrf-token',
+      'csrf-secure-token',
+      expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'strict', path: '/' })
+    )
   })
 
   it('returns 500 when token generation fails', async () => {
