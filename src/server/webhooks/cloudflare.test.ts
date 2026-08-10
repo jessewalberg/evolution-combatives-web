@@ -165,7 +165,7 @@ describe('POST /api/webhooks/cloudflare', () => {
     )
   })
 
-  it('returns 500 when video not found in database', async () => {
+  it('returns 500 when video not found in database', { timeout: 20_000 }, async () => {
     vi.useFakeTimers()
     supabase = buildSupabase(false)
     mockCreateAdminClient.mockReturnValue(supabase as never)
@@ -181,8 +181,11 @@ describe('POST /api/webhooks/cloudflare', () => {
       })
     )
     // Signature verification is now async (WebCrypto), so retry timers get
-    // scheduled after additional microtasks; flush repeatedly.
-    for (let i = 0; i < 5; i++) {
+    // scheduled after additional microtasks; flush until the handler
+    // settles (slow CI runners need more passes than fast machines).
+    let settled = false
+    void resPromise.finally(() => { settled = true })
+    for (let i = 0; i < 50 && !settled; i++) {
       await vi.runAllTimersAsync()
     }
     const res = await resPromise
