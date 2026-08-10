@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { authSuccess, authFail } from '@/test/helpers/auth'
-import { GET, POST } from './route'
+import { GET as GETHandler, POST as POSTHandler } from './videos'
 
-vi.mock('../../../../src/lib/api-auth', () => ({
+const GET = (request?: Request) => GETHandler({ request: request ?? new Request('http://localhost/') } as never)
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
+
+vi.mock('@/src/lib/api-auth', () => ({
   validateApiAuthWithSession: vi.fn(),
 }))
 
-vi.mock('../../../../src/services/content', () => ({
+vi.mock('@/src/services/content', () => ({
   contentQueries: {
     fetchVideos: vi.fn(),
   },
@@ -17,8 +20,8 @@ vi.mock('../../../../src/services/content', () => ({
   },
 }))
 
-import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
-import { contentQueries, contentMutations } from '../../../../src/services/content'
+import { validateApiAuthWithSession } from '@/src/lib/api-auth'
+import { contentQueries, contentMutations } from '@/src/services/content'
 
 const mockAuth = vi.mocked(validateApiAuthWithSession)
 const mockFetchVideos = vi.mocked(contentQueries.fetchVideos)

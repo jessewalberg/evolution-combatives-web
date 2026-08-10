@@ -1,34 +1,32 @@
 /**
  * Evolution Combatives - Video Edit Page
  * Comprehensive video editing interface for tactical training content
- * 
+ *
  * @description Video edit page with form validation, thumbnail management, and optimistic updates
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from 'sonner'
-import Image from 'next/image'
+import Image from '@/src/components/compat/image'
 
-import { useAuth } from '../../../../../../src/hooks/useAuth'
-import { Button } from '../../../../../../src/components/ui/button'
-import { Input } from '../../../../../../src/components/ui/input'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '../../../../../../src/components/ui/form'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../../../src/components/ui/card'
-import { Badge } from '../../../../../../src/components/ui/badge'
-import { Spinner } from '../../../../../../src/components/ui/loading'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../../../../../src/components/ui/dialog'
+import { useAuth } from '@/src/hooks/useAuth'
+import { Button } from '@/src/components/ui/button'
+import { Input } from '@/src/components/ui/input'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/src/components/ui/form'
+import { Card, CardContent, CardHeader, CardTitle } from '@/src/components/ui/card'
+import { Badge } from '@/src/components/ui/badge'
+import { Spinner } from '@/src/components/ui/loading'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/src/components/ui/dialog'
 
-import { clientContentService } from '../../../../../../src/services/content-client'
-import { cloudflareApi } from '../../../../../../src/lib/cloudflare-api'
-import { queryKeys } from '../../../../../../src/lib/query-client'
+import { clientContentService } from '@/src/services/content-client'
+import { cloudflareApi } from '@/src/lib/cloudflare-api'
+import { queryKeys } from '@/src/lib/query-client'
 import type { VideoUpdate } from 'shared/types/database'
 
 // Icons
@@ -101,9 +99,9 @@ const CustomSelect = ({
     </div>
 )
 
-export default function VideoEditPage() {
-    const router = useRouter()
-    const params = useParams()
+function VideoEditPage() {
+    const navigate = useNavigate()
+    const params = useParams({ strict: false })
     const videoId = params.id as string
     const { user, profile, hasPermission } = useAuth()
     const queryClient = useQueryClient()
@@ -262,7 +260,7 @@ export default function VideoEditPage() {
             toast.success('Video deleted successfully')
             // Invalidate video list and navigate back
             queryClient.invalidateQueries({ queryKey: queryKeys.videos() })
-            router.push('/dashboard/content/videos')
+            navigate({ to: '/dashboard/content/videos' as never })
         },
         onError: (err: Error) => {
             toast.error('Failed to delete video', {
@@ -311,7 +309,7 @@ export default function VideoEditPage() {
             const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?')
             if (!confirmed) return
         }
-        router.push('/dashboard/content/videos')
+        navigate({ to: '/dashboard/content/videos' as never })
     }
 
     // Loading and error states
@@ -329,7 +327,7 @@ export default function VideoEditPage() {
                 <XCircleIcon className="h-16 w-16 text-error-500" />
                 <h1 className="text-2xl font-bold text-neutral-0">Video Not Found</h1>
                 <p className="text-neutral-400">The video you&apos;re looking for doesn&apos;t exist or you don&apos;t have permission to view it.</p>
-                <Button onClick={() => router.push('/dashboard/content/videos')}>
+                <Button onClick={() => navigate({ to: '/dashboard/content/videos' as never })}>
                     <ArrowLeftIcon className="h-4 w-4 mr-2" />
                     Back to Videos
                 </Button>
@@ -691,4 +689,8 @@ export default function VideoEditPage() {
             </div>
         </div>
     )
-} 
+}
+
+export const Route = createFileRoute('/dashboard/content/videos/$id/edit')({
+    component: VideoEditPage,
+})

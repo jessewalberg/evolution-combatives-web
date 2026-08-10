@@ -26,11 +26,15 @@ const {
   mockHasPermission: vi.fn(),
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => mockPush,
+  useSearch: () => ({}),
+  useParams: () => ({}),
+  useLocation: () => ({ pathname: '/dashboard/content/videos' }),
+  createFileRoute: () => (config: unknown) => ({ options: config }),
 }))
 
-vi.mock('next/image', async () => {
+vi.mock('@/src/components/compat/image', async () => {
   const { createNextImageMock } = await import('@/test/mocks/next-image')
   return createNextImageMock()
 })
@@ -44,7 +48,7 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('../../../../src/hooks/useAuth', () => ({
+vi.mock('@/src/hooks/useAuth', () => ({
   useAuth: () => ({
     user: { id: 'u1', email: 'admin@test.com' },
     profile: { id: 'u1', admin_role: 'content_admin', full_name: 'Admin' },
@@ -53,7 +57,7 @@ vi.mock('../../../../src/hooks/useAuth', () => ({
   }),
 }))
 
-vi.mock('../../../../src/services/content-client', () => ({
+vi.mock('@/src/services/content-client', () => ({
   clientContentService: {
     fetchVideos: (...args: unknown[]) => mockFetchVideos(...args),
     fetchCategories: (...args: unknown[]) => mockFetchCategories(...args),
@@ -64,7 +68,7 @@ vi.mock('../../../../src/services/content-client', () => ({
   },
 }))
 
-import VideoLibraryPage from './page'
+import { VideoLibraryPage } from './index'
 
 const videos = [
   {

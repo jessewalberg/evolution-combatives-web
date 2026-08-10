@@ -1,21 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { contentQueries } from '../../../../../src/services/content'
-import { validateApiAuthWithSession } from '../../../../../src/lib/api-auth'
+import { json } from '@/src/lib/http'
+import { contentQueries } from '@/src/services/content'
+import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 
-export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET({ params }: { request: Request; params: { id: string } }) {
     const authResult = await validateApiAuthWithSession('content.read')
     if ('error' in authResult) {
         return authResult.error
     }
 
     try {
-        const { id: videoId } = await params
-        
+        const videoId = params.id
+
         if (!videoId) {
-            return NextResponse.json(
+            return json(
                 { success: false, error: 'Video ID is required' },
                 { status: 400 }
             )
@@ -23,22 +20,22 @@ export async function GET(
 
         console.log('Fetching video by ID:', videoId)
         const video = await contentQueries.fetchVideoById(videoId)
-        
+
         if (!video) {
-            return NextResponse.json(
+            return json(
                 { success: false, error: 'Video not found' },
                 { status: 404 }
             )
         }
 
         console.log('Video fetch result:', video.id, video.title)
-        return NextResponse.json({ success: true, data: video })
+        return json({ success: true, data: video })
     } catch (error) {
         console.error('Video by ID GET API error:', error)
-        return NextResponse.json(
-            { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
+        return json(
+            {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
             },
             { status: 500 }
         )

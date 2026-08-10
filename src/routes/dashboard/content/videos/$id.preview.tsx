@@ -1,25 +1,23 @@
 /**
  * Evolution Combatives - Video Preview Page
  * Preview video content for admin review
- * 
+ *
  * @description Video preview interface for content administrators
  * @author Evolution Combatives
  */
 
-'use client'
-
 import React from 'react'
-import Image from 'next/image'
-import { useRouter, useParams } from 'next/navigation'
+import Image from '@/src/components/compat/image'
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../../../../../src/hooks/useAuth'
-import { Button } from '../../../../../../src/components/ui/button'
-import { Card } from '../../../../../../src/components/ui/card'
-import { Badge } from '../../../../../../src/components/ui/badge'
-import { Spinner } from '../../../../../../src/components/ui/loading'
-import { clientContentService } from '../../../../../../src/services/content-client'
-import { queryKeys } from '../../../../../../src/lib/query-client'
+import { useAuth } from '@/src/hooks/useAuth'
+import { Button } from '@/src/components/ui/button'
+import { Card } from '@/src/components/ui/card'
+import { Badge } from '@/src/components/ui/badge'
+import { Spinner } from '@/src/components/ui/loading'
+import { clientContentService } from '@/src/services/content-client'
+import { queryKeys } from '@/src/lib/query-client'
 import type { VideoWithRelations } from 'shared/types/database'
 
 // Icons
@@ -34,9 +32,9 @@ import {
     ArrowPathIcon
 } from '@heroicons/react/24/outline'
 
-export default function VideoPreviewPage() {
-    const router = useRouter()
-    const params = useParams()
+function VideoPreviewPage() {
+    const navigate = useNavigate()
+    const params = useParams({ strict: false })
     const videoId = params.id as string
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const queryClient = useQueryClient()
@@ -216,7 +214,7 @@ export default function VideoPreviewPage() {
                         <p className="text-muted-foreground mb-6">
                             The video you&apos;re looking for doesn&apos;t exist or you don&apos;t have permission to view it.
                         </p>
-                        <Button onClick={() => router.push('/dashboard/content/videos')}>
+                        <Button onClick={() => navigate({ to: '/dashboard/content/videos' as never })}>
                             Back to Videos
                         </Button>
                     </Card>
@@ -243,7 +241,7 @@ export default function VideoPreviewPage() {
                         <div className="flex flex-wrap items-center gap-2">
                             <Button
                                 variant="secondary"
-                                onClick={() => router.push('/dashboard/content/videos')}
+                                onClick={() => navigate({ to: '/dashboard/content/videos' as never })}
                                 leftIcon={<ArrowLeftIcon className="h-4 w-4" />}
                                 className="flex-shrink-0"
                             >
@@ -293,7 +291,7 @@ export default function VideoPreviewPage() {
                         {canManageContent && (
                             <Button
                                 variant="primary"
-                                onClick={() => router.push(`/dashboard/content/videos/${video.id}/edit`)}
+                                onClick={() => navigate({ to: `/dashboard/content/videos/${video.id}/edit` as never })}
                                 leftIcon={<PencilIcon className="h-4 w-4" />}
                                 className="flex-shrink-0"
                             >
@@ -492,3 +490,7 @@ export default function VideoPreviewPage() {
         </div>
     )
 }
+
+export const Route = createFileRoute('/dashboard/content/videos/$id/preview')({
+    component: VideoPreviewPage,
+})

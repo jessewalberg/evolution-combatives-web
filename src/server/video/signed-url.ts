@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { json } from '@/src/lib/http'
 
 // Use exact subscription tiers from .cursorrules
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
 
-async function validateMobileAppAuth(request: NextRequest) {
+async function validateMobileAppAuth(request: Request) {
     try {
         const authHeader = request.headers.get('Authorization')
         console.log('🔐 Admin API Auth Debug:', {
@@ -15,7 +15,7 @@ async function validateMobileAppAuth(request: NextRequest) {
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             return {
-                error: NextResponse.json(
+                error: json(
                     { success: false, error: 'Authentication required' },
                     { status: 401 }
                 )
@@ -51,7 +51,7 @@ async function validateMobileAppAuth(request: NextRequest) {
         if (userError || !user) {
             console.error('❌ User validation failed:', userError);
             return {
-                error: NextResponse.json(
+                error: json(
                     { success: false, error: 'Invalid authentication token' },
                     { status: 401 }
                 )
@@ -63,7 +63,7 @@ async function validateMobileAppAuth(request: NextRequest) {
     } catch (error) {
         console.error('Auth validation error:', error)
         return {
-            error: NextResponse.json(
+            error: json(
                 { success: false, error: 'Authentication failed' },
                 { status: 500 }
             )
@@ -71,7 +71,7 @@ async function validateMobileAppAuth(request: NextRequest) {
     }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     const authResult = await validateMobileAppAuth(request)
     if ('error' in authResult) {
         return authResult.error
@@ -83,13 +83,13 @@ export async function POST(request: NextRequest) {
 
     try {
         // Import videoManagement inside the function to avoid environment variable issues
-        const { videoManagement } = await import('../../../../src/services/cloudflare-stream')
+        const { videoManagement } = await import('@/src/services/cloudflare-stream')
         const requestBody = await request.json()
         const { videoId: requestVideoId, subscriptionTier = 'tier1', format = 'hls' } = requestBody
         videoId = requestVideoId; // Store for error handling
 
         if (!videoId) {
-            return NextResponse.json(
+            return json(
                 { error: 'Video ID is required' },
                 { status: 400 }
             )
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
             });
         } catch (error) {
             console.error('❌ Video not found in Cloudflare Stream:', error);
-            return NextResponse.json(
+            return json(
                 {
                     error: 'Video not found in Cloudflare Stream',
                     details: `Video ${videoId} does not exist in Cloudflare Stream or is not accessible.`,
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
         // Get video metadata for additional info
         const videoDetails = await videoManagement.getVideoDetails(videoId)
 
-        return NextResponse.json({
+        return json({
             success: true,
             data: {
                 signed_url: signedUrl,
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
 
         // Handle specific Cloudflare Stream errors
         if (error instanceof Error && error.message.includes('Not Found')) {
-            return NextResponse.json(
+            return json(
                 {
                     error: 'Video not found',
                     details: `Video ${videoId || 'unknown'} does not exist in Cloudflare Stream. This may be a development/test video that hasn't been uploaded yet.`,
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        return NextResponse.json(
+        return json(
             {
                 error: 'Failed to generate signed video URL',
                 details: error instanceof Error ? error.message : 'Unknown error'
