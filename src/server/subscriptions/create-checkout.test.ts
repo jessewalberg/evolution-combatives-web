@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST, GET } from './route'
+import { POST as POSTHandler, GET } from './create-checkout'
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
 vi.mock('@/src/lib/stripe', () => ({
   createCheckoutSession: vi.fn(),

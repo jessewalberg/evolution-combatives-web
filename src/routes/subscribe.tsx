@@ -1,15 +1,13 @@
 /**
  * Evolution Combatives - Subscription Selection Page
  * Subscription tier selection and checkout initiation for mobile app users
- * 
+ *
  * @description Public page for subscription selection, accessed via mobile app redirect
  * @author Evolution Combatives
  */
 
-'use client';
-
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/src/components/ui/button';
 import { Card } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -18,18 +16,24 @@ import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '
 
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 
-function SubscribeContent() {
-    const searchParams = useSearchParams();
-    const router = useRouter();
+export const Route = createFileRoute('/subscribe')({
+    validateSearch: (search: Record<string, unknown>) =>
+        search as { userId?: string; email?: string; tier?: string },
+    component: SubscribePage,
+});
+
+function SubscribePage() {
+    const search = useSearch({ strict: false }) as { userId?: string; email?: string; tier?: string };
+    const navigate = useNavigate();
 
     const [selectedTier, setSelectedTier] = useState<SubscriptionTier | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Extract parameters from URL (passed from mobile app)
-    const userId = searchParams.get('userId');
-    const userEmail = searchParams.get('email');
-    const preselectedTier = searchParams.get('tier') as SubscriptionTier | null;
+    const userId = search.userId ?? null;
+    const userEmail = search.email ?? null;
+    const preselectedTier = (search.tier as SubscriptionTier | undefined) ?? null;
 
     useEffect(() => {
         if (preselectedTier && ['beginner', 'intermediate', 'advanced'].includes(preselectedTier)) {
@@ -47,7 +51,7 @@ function SubscribeContent() {
                         This page must be accessed through the Evolution Combatives mobile app.
                     </p>
                     <Button
-                        onClick={() => router.push('/')}
+                        onClick={() => navigate({ to: '/' as never })}
                         className="mt-4"
                     >
                         Go to Dashboard
@@ -232,19 +236,5 @@ function SubscribeContent() {
                 </div>
             </div>
         </div>
-    );
-}
-
-export default function SubscribePage() {
-    return (
-        <Suspense
-            fallback={
-                <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                    <LoadingSpinner size="lg" />
-                </div>
-            }
-        >
-            <SubscribeContent />
-        </Suspense>
     );
 }
