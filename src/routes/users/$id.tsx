@@ -1,26 +1,24 @@
 /**
  * Evolution Combatives - Individual User Profile Management
  * Comprehensive user profile dashboard for tactical training platform
- * 
+ *
  * @description Detailed user management with subscription, activity, and admin controls
  * @author Evolution Combatives
  */
 
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useAuth } from '../../../src/hooks/useAuth'
-import { Card } from '../../../src/components/ui/card'
-import { Button } from '../../../src/components/ui/button'
-import { Input } from '../../../src/components/ui/input'
-import { Badge } from '../../../src/components/ui/badge'
-import { Avatar } from '../../../src/components/ui/avatar'
-import { Spinner } from '../../../src/components/ui/loading'
-import { createClientComponentClient } from '../../../src/lib/supabase-browser'
-import { queryKeys } from '../../../src/lib/query-client'
+import { useAuth } from '@/src/hooks/useAuth'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Input } from '@/src/components/ui/input'
+import { Badge } from '@/src/components/ui/badge'
+import { Avatar } from '@/src/components/ui/avatar'
+import { Spinner } from '@/src/components/ui/loading'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { queryKeys } from '@/src/lib/query-client'
 import type {
     Profile,
     Subscription,
@@ -151,20 +149,15 @@ interface UserEditForm {
     admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null
 }
 
-export default function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
-    const router = useRouter()
-    const { user: currentUser, profile: currentProfile, hasPermission, isLoading: authLoading } = useAuth()
+export function UserProfilePage() {
+    const navigate = useNavigate()
+    const { id: userId } = useParams({ strict: false }) as { id?: string }
+    const { user: currentUser, profile: rawCurrentProfile, hasPermission, isLoading: authLoading } = useAuth()
+    // useAuth's profile query resolves to `never` rows against the stale shared
+    // Database type; cast locally rather than editing the shared hook/type.
+    const currentProfile = rawCurrentProfile as Profile | null
     const queryClient = useQueryClient()
     const supabase = createClientComponentClient()
-
-    // Await params in Next.js 15
-    const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null)
-
-    useEffect(() => {
-        params.then(setResolvedParams)
-    }, [params])
-
-    const userId = resolvedParams?.id
 
     // State
     const [activeTab, setActiveTab] = useState<'overview' | 'subscription' | 'activity' | 'progress' | 'questions' | 'support' | 'payments'>('overview')
@@ -199,10 +192,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             console.log('Fetching user profile for ID:', userId)
 
             // Fetch basic profile data first
-            const { data: profile, error: profileError } = await supabase
+            const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('id', userId)
+                .eq('id', userId as string)
                 .single()
 
             if (profileError) {
@@ -210,95 +203,96 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 throw profileError
             }
 
-            console.log('Profile data:', profile)
+            console.log('Profile data:', profileData)
+            const profile = profileData as Profile
 
             // Try to fetch subscription data separately
-            let subscriptions = []
+            let subscriptions: Subscription[] = []
             try {
                 const { data: subData, error: subError } = await supabase
                     .from('subscriptions')
                     .select('*')
-                    .eq('user_id', userId)
+                    .eq('user_id', userId as string)
                     .order('created_at', { ascending: false })
 
                 if (subError) {
                     console.warn('Subscription error:', subError)
                 } else {
-                    subscriptions = subData || []
+                    subscriptions = (subData || []) as Subscription[]
                 }
             } catch (error) {
                 console.warn('Subscription fetch failed:', error)
             }
 
             // Try to fetch user progress separately (simplified)
-            let progress = []
+            let progress: UserProgress[] = []
             try {
                 const { data: progressData, error: progressError } = await supabase
                     .from('user_progress')
                     .select('*')
-                    .eq('user_id', userId)
+                    .eq('user_id', userId as string)
                     .limit(50)
 
                 if (progressError) {
                     console.warn('Progress error:', progressError)
                 } else {
-                    progress = progressData || []
+                    progress = (progressData || []) as UserProgress[]
                 }
             } catch (error) {
                 console.warn('Progress fetch failed:', error)
             }
 
             // Try to fetch questions separately
-            let questions = []
+            let questions: Question[] = []
             try {
                 const { data: questionsData, error: questionsError } = await supabase
                     .from('questions')
                     .select('*')
-                    .eq('user_id', userId)
+                    .eq('user_id', userId as string)
                     .order('created_at', { ascending: false })
                     .limit(20)
 
                 if (questionsError) {
                     console.warn('Questions error:', questionsError)
                 } else {
-                    questions = questionsData || []
+                    questions = (questionsData || []) as Question[]
                 }
             } catch (error) {
                 console.warn('Questions fetch failed:', error)
             }
 
             // Try to fetch support notes separately
-            let notes = []
+            let notes: SupportNote[] = []
             try {
                 const { data: supportNotes, error: supportError } = await supabase
-                    .from('support_notes')
+                    .from('support_notes' as never)
                     .select('*')
-                    .eq('user_id', userId)
+                    .eq('user_id', userId as string)
                     .order('created_at', { ascending: false })
 
                 if (supportError) {
                     console.warn('Support notes error:', supportError)
                 } else {
-                    notes = supportNotes || []
+                    notes = (supportNotes || []) as SupportNote[]
                 }
             } catch (error) {
                 console.warn('Support notes fetch failed:', error)
             }
 
             // Try to fetch payment history separately
-            let payments = []
+            let payments: PaymentRecord[] = []
             try {
                 const { data: paymentHistory, error: paymentError } = await supabase
-                    .from('payment_records')
+                    .from('payment_records' as never)
                     .select('*')
-                    .eq('user_id', userId)
+                    .eq('user_id', userId as string)
                     .order('created_at', { ascending: false })
                     .limit(50)
 
                 if (paymentError) {
                     console.warn('Payment history error:', paymentError)
                 } else {
-                    payments = paymentHistory || []
+                    payments = (paymentHistory || []) as PaymentRecord[]
                 }
             } catch (error) {
                 console.warn('Payment history fetch failed:', error)
@@ -406,13 +400,13 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         mutationFn: async (updates: Partial<UserEditForm> & { is_active?: boolean }) => {
             const { data, error } = await supabase
                 .from('profiles')
-                .update(updates)
-                .eq('id', userId)
+                .update(updates as never)
+                .eq('id', userId as string)
                 .select()
                 .single()
 
             if (error) throw error
-            return data
+            return data as Profile
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.userDetail(userId || '') })
@@ -439,23 +433,23 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                         status: status || 'active',
                         current_period_start: new Date().toISOString(),
                         current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-                    })
+                    } as never)
                     .select()
                     .single()
 
                 if (error) throw error
-                return data
+                return data as Subscription
             } else {
                 // Update existing subscription
                 const { data, error } = await supabase
                     .from('subscriptions')
-                    .update({ tier, status })
+                    .update({ tier, status } as never)
                     .eq('id', userData.subscription.id)
                     .select()
                     .single()
 
                 if (error) throw error
-                return data
+                return data as Subscription
             }
         },
         onSuccess: () => {
@@ -473,18 +467,18 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     const addSupportNoteMutation = useMutation({
         mutationFn: async (noteData: { content: string; type: SupportNote['type']; is_internal: boolean }) => {
             const { data, error } = await supabase
-                .from('support_notes')
+                .from('support_notes' as never)
                 .insert({
                     user_id: userId,
                     admin_id: currentUser!.id,
                     admin_name: currentProfile!.full_name || currentProfile!.email,
                     ...noteData
-                })
+                } as never)
                 .select()
                 .single()
 
             if (error) throw error
-            return data
+            return data as SupportNote
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.userDetail(userId || '') })
@@ -503,18 +497,18 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     const impersonateUserMutation = useMutation({
         mutationFn: async () => {
             // Create impersonation session token
-            const { data, error } = await supabase.rpc('create_impersonation_token', {
+            const { data, error } = await supabase.rpc('create_impersonation_token' as never, {
                 target_user_id: userId,
                 admin_user_id: currentUser!.id
-            })
+            } as never)
 
             if (error) throw error
-            return data
+            return data as string
         },
         onSuccess: (token: string) => {
             // Store impersonation token and redirect to mobile app
             localStorage.setItem('impersonation_token', token)
-            window.open(`/ impersonate / ${token} `, '_blank')
+            window.open(`/impersonate/${token}`, '_blank')
             toast.success('Impersonation session created')
         },
         onError: (error: Error) => {
@@ -634,7 +628,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-white mb-2">User Not Found</h1>
                     <p className="text-neutral-400 mb-4">The requested user profile could not be found.</p>
-                    <Button onClick={() => router.push('/users')}>
+                    <Button onClick={() => navigate({ to: '/users' as never })}>
                         <ArrowLeftIcon className="h-4 w-4 mr-2" />
                         Back to Users
                     </Button>
@@ -658,7 +652,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <Button
                         variant="ghost"
-                        onClick={() => router.push('/users')}
+                        onClick={() => navigate({ to: '/users' as never })}
                         className="flex items-center gap-2 w-fit"
                     >
                         <ArrowLeftIcon className="h-4 w-4" />
@@ -1513,11 +1507,11 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                                 {userData.paymentHistory.map(payment => (
                                     <div key={payment.id} className="flex items-center justify-between p-4 bg-neutral-800 rounded-lg">
                                         <div className="flex items-center gap-4">
-                                            <div className={`p - 2 rounded - full ${payment.status === 'succeeded' ? 'bg-green-500/20 text-green-400' :
+                                            <div className={`p-2 rounded-full ${payment.status === 'succeeded' ? 'bg-green-500/20 text-green-400' :
                                                 payment.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                                     payment.status === 'refunded' ? 'bg-yellow-500/20 text-yellow-400' :
                                                         'bg-gray-500/20 text-gray-400'
-                                                } `}>
+                                                }`}>
                                                 <BanknotesIcon className="h-4 w-4" />
                                             </div>
                                             <div>
@@ -1555,4 +1549,8 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             )}
         </div>
     )
-} 
+}
+
+export const Route = createFileRoute('/users/$id')({
+    component: UserProfilePage,
+})
