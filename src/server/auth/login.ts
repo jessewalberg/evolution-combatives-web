@@ -1,22 +1,17 @@
 /**
- * Evolution Combatives - Sign Up API Route
- * Handles admin registration requests
+ * Evolution Combatives - Login API Route
+ * Handles admin authentication requests
  *
- * @description Secure API endpoint for admin registration with validation
+ * @description Secure API endpoint for admin login with rate limiting and validation
  * @author Evolution Combatives
  */
 
-import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createServerClient } from '../../../../src/lib/supabase'
+import { createServerClient } from '@/src/lib/supabase'
+import { json } from '@/src/lib/http'
 
 // Request validation schema
-const signUpRequestSchema = z.object({
-    fullName: z
-        .string()
-        .min(1, 'Full name is required')
-        .min(2, 'Full name must be at least 2 characters')
-        .max(100, 'Full name must not exceed 100 characters'),
+const loginRequestSchema = z.object({
     email: z
         .string()
         .min(1, 'Email is required')
@@ -25,14 +20,12 @@ const signUpRequestSchema = z.object({
     password: z
         .string()
         .min(1, 'Password is required')
-        .min(8, 'Password must be at least 8 characters')
-        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-        .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-        .regex(/[0-9]/, 'Password must contain at least one number')
+        .min(8, 'Password must be at least 8 characters'),
+    rememberMe: z.boolean().optional().default(false)
 })
 
 // Rate limiting storage (in production, use Redis)
-const signUpAttempts = new Map<string, { count: number; resetTime: number }>()
+const loginAttempts = new Map<string, { count: number; resetTime: number }>()
 
 const MAX_ATTEMPTS = 5
 const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
@@ -42,13 +35,13 @@ const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
  */
 function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetTime: number } {
     const now = Date.now()
-    const attempts = signUpAttempts.get(identifier)
+    const attempts = loginAttempts.get(identifier)
 
     // Clean expired entries periodically
     if (Math.random() < 0.1) {
-        for (const [key, value] of signUpAttempts.entries()) {
+        for (const [key, value] of loginAttempts.entries()) {
             if (now > value.resetTime) {
-                signUpAttempts.delete(key)
+                loginAttempts.delete(key)
             }
         }
     }
@@ -56,7 +49,7 @@ function checkRateLimit(identifier: string): { allowed: boolean; remaining: numb
     if (!attempts || now > attempts.resetTime) {
         // New window
         const resetTime = now + LOCKOUT_DURATION
-        signUpAttempts.set(identifier, { count: 1, resetTime })
+        loginAttempts.set(identifier, { count: 1, resetTime })
         return { allowed: true, remaining: MAX_ATTEMPTS - 1, resetTime }
     }
 
@@ -67,7 +60,7 @@ function checkRateLimit(identifier: string): { allowed: boolean; remaining: numb
 
     // Increment counter
     attempts.count++
-    signUpAttempts.set(identifier, attempts)
+    loginAttempts.set(identifier, attempts)
     return {
         allowed: true,
         remaining: MAX_ATTEMPTS - attempts.count,
@@ -76,16 +69,16 @@ function checkRateLimit(identifier: string): { allowed: boolean; remaining: numb
 }
 
 /**
- * Clear failed attempts on successful sign up
+ * Clear failed attempts on successful login
  */
 function clearFailedAttempts(identifier: string) {
-    signUpAttempts.delete(identifier)
+    loginAttempts.delete(identifier)
 }
 
 /**
  * Get client IP for rate limiting
  */
-function getClientIP(request: NextRequest): string {
+function getClientIP(request: Request): string {
     const forwarded = request.headers.get('x-forwarded-for')
     const realIP = request.headers.get('x-real-ip')
 
@@ -101,22 +94,22 @@ function getClientIP(request: NextRequest): string {
 }
 
 /**
- * POST /api/auth/sign-up
- * Register new admin user
+ * POST /api/auth/login
+ * Authenticate admin user
  */
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     try {
         const clientIP = getClientIP(request)
-        const rateLimitKey = `signup:${clientIP}`
+        const rateLimitKey = `login:${clientIP}`
 
         // Check rate limiting
         const rateLimit = checkRateLimit(rateLimitKey)
         if (!rateLimit.allowed) {
-            return NextResponse.json(
+            return json(
                 {
                     success: false,
-                    error: 'Too many registration attempts',
-                    message: 'Please try again later.',
+                    error: 'Too many failed attempts',
+                    message: 'Account temporarily locked. Please try again later.',
                     retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
                 },
                 {
@@ -133,39 +126,35 @@ export async function POST(request: NextRequest) {
 
         // Parse and validate request body
         const body = await request.json()
-        const validatedData = signUpRequestSchema.parse(body)
+        const validatedData = loginRequestSchema.parse(body)
 
         // Create Supabase client
         const supabase = await createServerClient()
 
-        // Attempt to create user account
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        // Attempt authentication
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email: validatedData.email,
-            password: validatedData.password,
-            options: {
-                data: {
-                    full_name: validatedData.fullName
-                },
-                emailRedirectTo: `${request.nextUrl.origin}/auth/confirm`
-            }
+            password: validatedData.password
         })
 
-        if (authError) {
+        if (authError || !authData.user) {
             // Log failed attempt for development
             if (process.env.NODE_ENV === 'development') {
-                console.error('Sign up auth error:', authError.message)
+                console.error('Login auth error:', authError?.message)
             }
 
-            return NextResponse.json(
+            return json(
                 {
                     success: false,
-                    error: 'Registration failed',
-                    message: authError.message.includes('already registered')
-                        ? 'An account with this email already exists. Please sign in instead.'
-                        : authError.message
+                    error: 'Authentication failed',
+                    message: authError?.message.includes('Invalid')
+                        ? 'Invalid email or password. Please check your credentials and try again.'
+                        : authError?.message.includes('Email not confirmed')
+                            ? 'Please check your email and click the confirmation link before signing in.'
+                            : 'Authentication failed. Please try again.'
                 },
                 {
-                    status: 400,
+                    status: 401,
                     headers: {
                         'X-RateLimit-Limit': MAX_ATTEMPTS.toString(),
                         'X-RateLimit-Remaining': (rateLimit.remaining - 1).toString(),
@@ -175,27 +164,59 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        if (!authData.user) {
-            return NextResponse.json(
+        // Verify admin role
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('admin_role, full_name, last_login_at')
+            .eq('id', authData.user.id)
+            .single()
+
+        if (profileError || !profile) {
+            // Sign out the user since profile fetch failed
+            await supabase.auth.signOut()
+
+            return json(
                 {
                     success: false,
-                    error: 'Registration failed',
-                    message: 'Unable to create account. Please try again.'
+                    error: 'Profile verification failed',
+                    message: 'Unable to verify admin access. Please contact support.'
                 },
-                { status: 400 }
+                { status: 403 }
             )
         }
 
-        // Clear failed attempts on successful sign up
+        if (!profile.admin_role) {
+            // Sign out the user since they're not an admin
+            await supabase.auth.signOut()
+
+            return json(
+                {
+                    success: false,
+                    error: 'Access denied',
+                    message: 'This account does not have admin privileges.'
+                },
+                { status: 403 }
+            )
+        }
+
+        // Update last login timestamp
+        await supabase
+            .from('profiles')
+            .update({ last_login_at: new Date().toISOString() })
+            .eq('id', authData.user.id)
+
+        // Clear failed attempts on successful login
         clearFailedAttempts(rateLimitKey)
 
         // Return success response
-        const response = NextResponse.json({
+        const response = json({
             success: true,
-            message: 'Account created successfully. Please check your email to confirm your account.',
+            message: 'Login successful',
             user: {
                 id: authData.user.id,
-                email: authData.user.email
+                email: authData.user.email,
+                role: profile.admin_role,
+                name: profile.full_name
             }
         })
 
@@ -209,11 +230,11 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         // Log error for debugging in development
         if (process.env.NODE_ENV === 'development') {
-            console.error('Sign up API error:', error)
+            console.error('Login API error:', error)
         }
 
         if (error instanceof z.ZodError) {
-            return NextResponse.json(
+            return json(
                 {
                     success: false,
                     error: 'Validation error',
@@ -224,7 +245,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        return NextResponse.json(
+        return json(
             {
                 success: false,
                 error: 'Internal server error',
@@ -236,11 +257,11 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/auth/sign-up
+ * GET /api/auth/login
  * Return method not allowed for GET requests
  */
 export async function GET() {
-    return NextResponse.json(
+    return json(
         {
             success: false,
             error: 'Method not allowed',
@@ -259,7 +280,7 @@ export async function GET() {
  * Handle other HTTP methods
  */
 export async function PUT() {
-    return NextResponse.json(
+    return json(
         {
             success: false,
             error: 'Method not allowed',
@@ -275,7 +296,7 @@ export async function PUT() {
 }
 
 export async function DELETE() {
-    return NextResponse.json(
+    return json(
         {
             success: false,
             error: 'Method not allowed',
@@ -291,7 +312,7 @@ export async function DELETE() {
 }
 
 export async function PATCH() {
-    return NextResponse.json(
+    return json(
         {
             success: false,
             error: 'Method not allowed',

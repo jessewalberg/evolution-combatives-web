@@ -6,19 +6,17 @@
  * @author Evolution Combatives
  */
 
-'use client'
-
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import Link from '@/src/components/compat/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { Input } from '../../src/components/ui/input'
-import { Button } from '../../src/components/ui/button'
-import { ThemeToggle } from '../../src/providers/ThemeProvider'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { Input } from '@/src/components/ui/input'
+import { Button } from '@/src/components/ui/button'
+import { ThemeToggle } from '@/src/providers/ThemeProvider'
 
 // Icons
 import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react'
@@ -52,10 +50,10 @@ const signUpSchema = z.object({
 
 type SignUpFormData = z.infer<typeof signUpSchema>
 
-function SignUpContent() {
-    const router = useRouter()
-    const searchParams = useSearchParams()
-    const redirectTo = searchParams.get('redirectTo') || '/dashboard'
+function SignUpPage() {
+    const navigate = useNavigate()
+    const search = useSearch({ strict: false }) as { redirectTo?: string }
+    const redirectTo = search.redirectTo || '/dashboard'
 
     const [isLoading, setIsLoading] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
@@ -86,14 +84,14 @@ function SignUpContent() {
                 const { data: { session } } = await supabase.auth.getSession()
                 if (session) {
                     // Check if user has admin role
-                    const { data: profile } = await supabase
-                        .from('profiles')
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+                    const { data: profile } = await (supabase.from('profiles') as any)
                         .select('admin_role')
                         .eq('id', session.user.id)
                         .single()
 
                     if (profile?.admin_role) {
-                        router.replace(redirectTo)
+                        navigate({ to: redirectTo as never, replace: true })
                     } else {
                         // User exists but not an admin
                         await supabase.auth.signOut()
@@ -105,7 +103,7 @@ function SignUpContent() {
         }
 
         checkSession()
-    }, [supabase, router, redirectTo])
+    }, [supabase, navigate, redirectTo])
 
     // Sign up submission handler
     const onSubmit = async (data: SignUpFormData) => {
@@ -149,7 +147,7 @@ function SignUpContent() {
 
             // Redirect to login with message
             setTimeout(() => {
-                router.push('/login?message=check_email')
+                navigate({ to: '/login', search: { message: 'check_email' } } as never)
             }, 2000)
 
         } catch (error) {
@@ -361,17 +359,7 @@ function SignUpContent() {
     )
 }
 
-export default function SignUpPage() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                    <p className="text-muted-foreground">Loading...</p>
-                </div>
-            </div>
-        }>
-            <SignUpContent />
-        </Suspense>
-    )
-}
+export const Route = createFileRoute('/sign-up')({
+    component: SignUpPage,
+    validateSearch: (search: Record<string, unknown>) => search as { redirectTo?: string },
+})

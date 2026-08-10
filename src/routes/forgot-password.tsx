@@ -1,23 +1,21 @@
 /**
  * Evolution Combatives - Forgot Password Page
  * Password reset request interface for admin dashboard
- * 
+ *
  * @description Secure password reset flow for admin users
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import Link from '@/src/components/compat/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { Input } from '../../src/components/ui/input'
-import { Button } from '../../src/components/ui/button'
-import { ThemeToggle } from '../../src/providers/ThemeProvider'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { Input } from '@/src/components/ui/input'
+import { Button } from '@/src/components/ui/button'
+import { ThemeToggle } from '@/src/providers/ThemeProvider'
 
 // Icons
 import { Shield, ArrowLeft, Mail, CheckCircle } from 'lucide-react'
@@ -33,8 +31,8 @@ const forgotPasswordSchema = z.object({
 
 type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>
 
-export default function ForgotPasswordPage() {
-    const router = useRouter()
+function ForgotPasswordPage() {
+    const navigate = useNavigate()
     const [isLoading, setIsLoading] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
 
@@ -60,8 +58,8 @@ export default function ForgotPasswordPage() {
             setIsLoading(true)
 
             // First check if user exists and has admin role
-            const { data: profile } = await supabase
-                .from('profiles')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+            const { data: profile } = await (supabase.from('profiles') as any)
                 .select('admin_role, full_name')
                 .eq('email', data.email)
                 .single()
@@ -146,7 +144,7 @@ export default function ForgotPasswordPage() {
                                     variant="primary"
                                     size="lg"
                                     className="w-full"
-                                    onClick={() => router.push('/login')}
+                                    onClick={() => navigate({ to: '/login' as never })}
                                     leftIcon={<ArrowLeft className="h-5 w-5" />}
                                 >
                                     Back to Login
@@ -273,3 +271,7 @@ export default function ForgotPasswordPage() {
         </div>
     )
 }
+
+export const Route = createFileRoute('/forgot-password')({
+    component: ForgotPasswordPage,
+})

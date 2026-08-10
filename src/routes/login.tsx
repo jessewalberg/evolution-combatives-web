@@ -1,24 +1,22 @@
 /**
  * Evolution Combatives - Admin Login Page
  * Professional authentication interface for tactical training platform
- * 
+ *
  * @description Secure admin login with role validation and professional styling
  * @author Evolution Combatives
  */
 
-'use client'
-
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import Link from '@/src/components/compat/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { Input } from '../../src/components/ui/input'
-import { Button } from '../../src/components/ui/button'
-import { ThemeToggle } from '../../src/providers/ThemeProvider'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { Input } from '@/src/components/ui/input'
+import { Button } from '@/src/components/ui/button'
+import { ThemeToggle } from '@/src/providers/ThemeProvider'
 
 // Icons
 import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react'
@@ -49,10 +47,10 @@ interface LoginAttempt {
 const MAX_LOGIN_ATTEMPTS = 20
 const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
 
-function LoginContent() {
-    const router = useRouter()
-    const searchParams = useSearchParams()
-    const redirectTo = searchParams.get('redirectTo') || '/dashboard'
+function LoginPage() {
+    const navigate = useNavigate()
+    const search = useSearch({ strict: false }) as { redirectTo?: string }
+    const redirectTo = search.redirectTo || '/dashboard'
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLocked, setIsLocked] = useState(false)
@@ -83,14 +81,14 @@ function LoginContent() {
                 const { data: { session } } = await supabase.auth.getSession()
                 if (session) {
                     // Check if user has admin role
-                    const { data: profile } = await supabase
-                        .from('profiles')
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+                    const { data: profile } = await (supabase.from('profiles') as any)
                         .select('admin_role')
                         .eq('id', session.user.id)
                         .single()
 
                     if (profile?.admin_role) {
-                        router.replace(redirectTo)
+                        navigate({ to: redirectTo as never, replace: true })
                     } else {
                         // User exists but not an admin
                         await supabase.auth.signOut()
@@ -106,7 +104,7 @@ function LoginContent() {
         }
 
         checkSession()
-    }, [supabase, router, redirectTo])
+    }, [supabase, navigate, redirectTo])
 
     // Rate limiting functions
     const getLoginAttempts = (): LoginAttempt[] => {
@@ -223,8 +221,8 @@ function LoginContent() {
             }
 
             // Verify admin role
-            const { data: profile, error: profileError } = await supabase
-                .from('profiles')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+            const { data: profile, error: profileError } = await (supabase.from('profiles') as any)
                 .select('admin_role, full_name, last_login_at')
                 .eq('id', authData.user.id)
                 .single()
@@ -245,8 +243,8 @@ function LoginContent() {
             }
 
             // Update last login timestamp
-            await supabase
-                .from('profiles')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+            await (supabase.from('profiles') as any)
                 .update({ last_login_at: new Date().toISOString() })
                 .eq('id', authData.user.id)
 
@@ -265,7 +263,7 @@ function LoginContent() {
             })
 
             // Redirect to intended page
-            router.replace(redirectTo)
+            navigate({ to: redirectTo as never, replace: true })
 
         } catch (error) {
             // Log error for debugging in development only
@@ -482,17 +480,7 @@ function LoginContent() {
     )
 }
 
-export default function LoginPage() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                    <p className="text-muted-foreground">Loading...</p>
-                </div>
-            </div>
-        }>
-            <LoginContent />
-        </Suspense>
-    )
-} 
+export const Route = createFileRoute('/login')({
+    component: LoginPage,
+    validateSearch: (search: Record<string, unknown>) => search as { redirectTo?: string },
+})

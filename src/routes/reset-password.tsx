@@ -1,22 +1,20 @@
 /**
  * Evolution Combatives - Reset Password Page
  * Password reset completion interface for admin dashboard
- * 
+ *
  * @description Secure password reset completion flow for admin users
  * @author Evolution Combatives
  */
 
-'use client'
-
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { Input } from '../../src/components/ui/input'
-import { Button } from '../../src/components/ui/button'
-import { ThemeToggle } from '../../src/providers/ThemeProvider'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { Input } from '@/src/components/ui/input'
+import { Button } from '@/src/components/ui/button'
+import { ThemeToggle } from '@/src/providers/ThemeProvider'
 
 // Icons
 import { Shield, Eye, EyeOff, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react'
@@ -38,9 +36,13 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>
 
-function ResetPasswordContent() {
-    const router = useRouter()
-    const searchParams = useSearchParams()
+function ResetPasswordPage() {
+    const navigate = useNavigate()
+    const search = useSearch({ strict: false }) as {
+        access_token?: string
+        refresh_token?: string
+        type?: string
+    }
 
     const [isLoading, setIsLoading] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
@@ -75,9 +77,9 @@ function ResetPasswordContent() {
 
                 if (error || !data.session) {
                     // Check if we have the proper URL parameters for password reset
-                    const accessToken = searchParams.get('access_token')
-                    const refreshToken = searchParams.get('refresh_token')
-                    const type = searchParams.get('type')
+                    const accessToken = search.access_token
+                    const refreshToken = search.refresh_token
+                    const type = search.type
 
                     if (type === 'recovery' && accessToken && refreshToken) {
                         // Set the session with the tokens from URL
@@ -104,7 +106,7 @@ function ResetPasswordContent() {
         }
 
         validateToken()
-    }, [supabase, searchParams])
+    }, [supabase, search.access_token, search.refresh_token, search.type])
 
     // Password reset submission handler
     const onSubmit = async (data: ResetPasswordFormData) => {
@@ -136,21 +138,21 @@ function ResetPasswordContent() {
             // Verify the user still has admin privileges
             const { data: session } = await supabase.auth.getSession()
             if (session.session) {
-                const { data: profile } = await supabase
-                    .from('profiles')
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+                const { data: profile } = await (supabase.from('profiles') as any)
                     .select('admin_role, full_name')
                     .eq('id', session.session.user.id)
                     .single()
 
                 if (!profile || !profile.admin_role) {
                     await supabase.auth.signOut()
-                    router.push('/login?error=access_denied')
+                    navigate({ to: '/login', search: { error: 'access_denied' } } as never)
                     return
                 }
 
                 // Update last login timestamp
-                await supabase
-                    .from('profiles')
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale shared Database type reports `never` rows here
+                await (supabase.from('profiles') as any)
                     .update({ last_login_at: new Date().toISOString() })
                     .eq('id', session.session.user.id)
             }
@@ -215,7 +217,7 @@ function ResetPasswordContent() {
                                     variant="primary"
                                     size="lg"
                                     className="w-full"
-                                    onClick={() => router.push('/forgot-password')}
+                                    onClick={() => navigate({ to: '/forgot-password' as never })}
                                 >
                                     Request New Reset Link
                                 </Button>
@@ -224,7 +226,7 @@ function ResetPasswordContent() {
                                     variant="ghost"
                                     size="sm"
                                     className="w-full"
-                                    onClick={() => router.push('/login')}
+                                    onClick={() => navigate({ to: '/login' as never })}
                                     leftIcon={<ArrowLeft className="h-5 w-5" />}
                                 >
                                     Back to Login
@@ -264,7 +266,7 @@ function ResetPasswordContent() {
                                 variant="primary"
                                 size="lg"
                                 className="w-full"
-                                onClick={() => router.push('/login')}
+                                onClick={() => navigate({ to: '/login' as never })}
                                 leftIcon={<Shield className="h-5 w-5" />}
                             >
                                 Continue to Login
@@ -477,17 +479,11 @@ function ResetPasswordContent() {
     )
 }
 
-export default function ResetPasswordPage() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                    <p className="text-neutral-400">Loading...</p>
-                </div>
-            </div>
-        }>
-            <ResetPasswordContent />
-        </Suspense>
-    )
-}
+export const Route = createFileRoute('/reset-password')({
+    component: ResetPasswordPage,
+    validateSearch: (search: Record<string, unknown>) => search as {
+        access_token?: string
+        refresh_token?: string
+        type?: string
+    },
+})

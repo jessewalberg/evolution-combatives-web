@@ -1,12 +1,10 @@
-'use client'
-
-import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { createBrowserClient } from '../../../src/lib/supabase-browser'
-import { Card } from '../../../src/components/ui/card'
-import { Button } from '../../../src/components/ui/button'
+import { useEffect, useState } from 'react'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { createBrowserClient } from '@/src/lib/supabase-browser'
+import { Card } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
 import { Shield, CheckCircle, AlertCircle, Info } from 'lucide-react'
-import { Spinner } from '../../../src/components/ui/loading'
+import { Spinner } from '@/src/components/ui/loading'
 
 type VerificationStatus = 'loading' | 'success' | 'error' | 'already_verified'
 
@@ -17,9 +15,16 @@ interface VerificationState {
     debugInfo?: string
 }
 
-function AuthConfirmContent() {
-    const searchParams = useSearchParams()
-    const router = useRouter()
+function AuthConfirmPage() {
+    const search = useSearch({ strict: false }) as {
+        redirect_to?: string
+        error?: string
+        error_description?: string
+        token_hash?: string
+        type?: string
+        code?: string
+    }
+    const navigate = useNavigate()
     const [verificationState, setVerificationState] = useState<VerificationState>({
         status: 'loading',
         message: 'Verifying your email...'
@@ -31,16 +36,16 @@ function AuthConfirmContent() {
                 const supabase = createBrowserClient()
 
                 // Query params
-                const redirect_to = searchParams.get('redirect_to')
-                const error = searchParams.get('error')
-                const error_description = searchParams.get('error_description')
+                const redirect_to = search.redirect_to
+                const error = search.error
+                const error_description = search.error_description
 
                 // Parse hash fragment (after #)
                 const hashParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.hash.slice(1) : '')
 
                 // Debug info
                 const debugInfo = {
-                    queryParams: Object.fromEntries(searchParams.entries()),
+                    queryParams: search,
                     hashParams: Object.fromEntries(hashParams.entries()),
                     fullUrl: typeof window !== 'undefined' ? window.location.href : ''
                 }
@@ -48,13 +53,13 @@ function AuthConfirmContent() {
 
                 // Three possible flows:
                 // 1. OTP verification -> token_hash & type in query string
-                // 2. Email confirmation for sign-up -> access_token / refresh_token in hash fragment  
+                // 2. Email confirmation for sign-up -> access_token / refresh_token in hash fragment
                 // 3. New signup flow -> code in hash fragment
-                const token_hash = searchParams.get('token_hash')
-                const type = searchParams.get('type') || hashParams.get('type')
+                const token_hash = search.token_hash
+                const type = search.type || hashParams.get('type')
                 const access_token = hashParams.get('access_token')
                 const refresh_token = hashParams.get('refresh_token')
-                const code = searchParams.get('code')
+                const code = search.code
 
                 // Handle error from Supabase
                 if (error) {
@@ -96,7 +101,7 @@ function AuthConfirmContent() {
 
                         // Redirect to dashboard after brief delay
                         setTimeout(() => {
-                            router.push('/dashboard')
+                            navigate({ to: '/dashboard' as never })
                         }, 2000)
                     }
                     return
@@ -135,7 +140,7 @@ function AuthConfirmContent() {
 
                         // Redirect to dashboard
                         setTimeout(() => {
-                            router.push('/dashboard')
+                            navigate({ to: '/dashboard' as never })
                         }, 2000)
                     } else {
                         setVerificationState({
@@ -171,7 +176,7 @@ function AuthConfirmContent() {
 
                         // Redirect to dashboard
                         setTimeout(() => {
-                            router.push('/dashboard')
+                            navigate({ to: '/dashboard' as never })
                         }, 2000)
                     } else {
                         setVerificationState({
@@ -200,7 +205,8 @@ function AuthConfirmContent() {
         }
 
         handleEmailVerification()
-    }, [searchParams, router])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
@@ -285,7 +291,7 @@ function AuthConfirmContent() {
 
                         {verificationState.status === 'already_verified' && verificationState.redirectUrl && (
                             <Button
-                                onClick={() => router.push(verificationState.redirectUrl!)}
+                                onClick={() => navigate({ to: verificationState.redirectUrl! as never })}
                                 variant="primary"
                                 size="lg"
                                 className="w-full"
@@ -309,7 +315,7 @@ function AuthConfirmContent() {
                                             </ol>
                                         </div>
                                         <Button
-                                            onClick={() => router.push('/sign-up')}
+                                            onClick={() => navigate({ to: '/sign-up' as never })}
                                             variant="primary"
                                             size="lg"
                                             className="w-full"
@@ -317,7 +323,7 @@ function AuthConfirmContent() {
                                             Sign Up Again
                                         </Button>
                                         <Button
-                                            onClick={() => router.push('/login')}
+                                            onClick={() => navigate({ to: '/login' as never })}
                                             variant="outline"
                                             size="lg"
                                             className="w-full"
@@ -336,7 +342,7 @@ function AuthConfirmContent() {
                                             Try Again
                                         </Button>
                                         <Button
-                                            onClick={() => router.push('/login')}
+                                            onClick={() => navigate({ to: '/login' as never })}
                                             variant="outline"
                                             size="lg"
                                             className="w-full"
@@ -364,23 +370,14 @@ function AuthConfirmContent() {
     )
 }
 
-export default function AuthConfirmPage() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-background flex items-center justify-center relative">
-                {/* Background pattern */}
-                <div className="absolute inset-0 bg-background">
-                    <div className="absolute inset-0 bg-gradient-to-br from-muted/50 via-background to-muted/30" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(59,130,246,0.1),transparent_70%)]" />
-                </div>
-
-                <div className="relative text-center">
-                    <Spinner size="lg" showLabel={false} />
-                    <p className="mt-4 text-muted-foreground">Loading...</p>
-                </div>
-            </div>
-        }>
-            <AuthConfirmContent />
-        </Suspense>
-    )
-}
+export const Route = createFileRoute('/auth/confirm')({
+    component: AuthConfirmPage,
+    validateSearch: (search: Record<string, unknown>) => search as {
+        redirect_to?: string
+        error?: string
+        error_description?: string
+        token_hash?: string
+        type?: string
+        code?: string
+    },
+})

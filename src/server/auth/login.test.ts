@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST, GET, PUT, DELETE, PATCH } from './route'
+import { POST as POSTHandler, GET, PUT, DELETE, PATCH } from './login'
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
-vi.mock('../../../../src/lib/supabase', () => ({
+vi.mock('@/src/lib/supabase', () => ({
   createServerClient: vi.fn(),
 }))
 
-import { createServerClient } from '../../../../src/lib/supabase'
+import { createServerClient } from '@/src/lib/supabase'
 
 const mockCreateServerClient = vi.mocked(createServerClient)
 
