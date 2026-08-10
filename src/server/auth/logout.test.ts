@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { POST, GET } from './route'
+import { POST, GET } from './logout'
 
-vi.mock('../../../../src/lib/supabase', () => ({
+vi.mock('@/src/lib/supabase', () => ({
   createServerClient: vi.fn(),
 }))
 
-import { createServerClient } from '../../../../src/lib/supabase'
+import { createServerClient } from '@/src/lib/supabase'
 
 const mockCreateServerClient = vi.mocked(createServerClient)
+
+const deleteCookie = vi.fn()
+vi.mock('@tanstack/react-start/server', () => ({
+  deleteCookie: (...args: unknown[]) => (deleteCookie as (...a: unknown[]) => unknown)(...args),
+}))
 
 describe('POST /api/auth/logout', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -29,6 +34,8 @@ describe('POST /api/auth/logout', () => {
     expect(res.status).toBe(200)
     expect(body).toEqual({ success: true, message: 'Logged out successfully' })
     expect(signOut).toHaveBeenCalled()
+    expect(deleteCookie).toHaveBeenCalledWith('sb-access-token')
+    expect(deleteCookie).toHaveBeenCalledWith('sb-refresh-token')
   })
 
   it('logs out successfully when no session', async () => {

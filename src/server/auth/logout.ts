@@ -1,13 +1,13 @@
 /**
  * Evolution Combatives - Logout API Route
  * Handles admin logout requests
- * 
+ *
  * @description Secure API endpoint for admin logout with audit logging
  * @author Evolution Combatives
  */
 
-import { NextResponse } from 'next/server'
-import { createServerClient } from '../../../../src/lib/supabase'
+import { createServerClient } from '@/src/lib/supabase'
+import { json } from '@/src/lib/http'
 
 /**
  * POST /api/auth/logout
@@ -54,7 +54,7 @@ export async function POST() {
                 console.error('Logout error:', error)
             }
 
-            return NextResponse.json(
+            return json(
                 {
                     success: false,
                     error: 'Logout failed',
@@ -65,14 +65,15 @@ export async function POST() {
         }
 
         // Clear any server-side session data
-        const response = NextResponse.json({
+        const response = json({
             success: true,
             message: 'Logged out successfully'
         })
 
         // Clear auth-related cookies
-        response.cookies.delete('sb-access-token')
-        response.cookies.delete('sb-refresh-token')
+        const { deleteCookie } = await import('@tanstack/react-start/server')
+        deleteCookie('sb-access-token')
+        deleteCookie('sb-refresh-token')
 
         return response
 
@@ -82,7 +83,7 @@ export async function POST() {
             console.error('Logout API error:', error)
         }
 
-        return NextResponse.json(
+        return json(
             {
                 success: false,
                 error: 'Internal server error',
@@ -98,7 +99,7 @@ export async function POST() {
  * Return method not allowed for GET requests
  */
 export async function GET() {
-    return NextResponse.json(
+    return json(
         {
             success: false,
             error: 'Method not allowed',
