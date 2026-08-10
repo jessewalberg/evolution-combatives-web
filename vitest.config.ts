@@ -21,7 +21,9 @@ export default defineConfig({
       SUPABASE_ANON_KEY: 'test-anon-key',
     },
     include: ['**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', '.next', 'dist', 'e2e/**', 'playwright.config.ts'],
+    // .claude/** matters: agent worktrees under .claude/worktrees/ contain
+    // full repo copies whose test files would otherwise run 7x the suite.
+    exclude: ['node_modules', 'dist', '.wrangler', '.claude/**', 'e2e/**', 'playwright.config.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html', 'json-summary'],

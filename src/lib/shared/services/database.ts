@@ -111,12 +111,12 @@ export class DatabaseService {
                 if (error) throw error
 
                 // Transform the data to match our interface
-                const transformedData = data?.map(video => ({
+                const transformedData = (data as Array<Record<string, any>> | null)?.map(video => ({
                     ...video,
                     tags: video.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
                 })) || []
 
-                return transformedData
+                return transformedData as VideoWithRelations[]
             }, 3, 1000, 'getVideos')
 
             return { data: result, error: null }
@@ -163,10 +163,11 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform the data
-            const transformedData = data ? {
-                ...data,
-                tags: data.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
-            } : null
+            const row = data as Record<string, any> | null
+            const transformedData = (row ? {
+                ...row,
+                tags: row.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
+            } : null) as VideoWithRelations | null
 
             return { data: transformedData, error }
         })
@@ -212,10 +213,11 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform subscription data
-            const transformedData = data ? {
-                ...data,
-                subscription: data.subscription?.[0] || null
-            } : null
+            const row = data as Record<string, any> | null
+            const transformedData = (row ? {
+                ...row,
+                subscription: row.subscription?.[0] || null
+            } : null) as UserProfileWithSubscription | null
 
             return { data: transformedData, error }
         })
@@ -232,7 +234,7 @@ export class DatabaseService {
                     .update({
                         ...updates,
                         updated_at: new Date().toISOString()
-                    })
+                    } as never)
                     .eq('id', userId)
                     .select()
                     .single()
@@ -300,7 +302,7 @@ export class DatabaseService {
                         ...progressData,
                         last_watched_at: progressData.last_watched_at || new Date().toISOString(),
                         updated_at: new Date().toISOString()
-                    })
+                    } as never)
                     .select(`
              *,
              video:videos(
@@ -359,10 +361,10 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform data to include video count
-            const transformedData = data?.map(category => ({
+            const transformedData = (data as Array<Record<string, any>> | null)?.map(category => ({
                 ...category,
                 video_count: category.videos?.[0]?.count || 0
-            })) || []
+            })) as CategoryWithCount[] || []
 
             return { data: transformedData, error }
         })
@@ -405,11 +407,11 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform data to include stats
-            const transformedData = data?.map(instructor => ({
+            const transformedData = (data as Array<Record<string, any>> | null)?.map(instructor => ({
                 ...instructor,
                 video_count: instructor.videos?.[0]?.count || 0,
                 total_views: instructor.video_views?.reduce((sum: number, v: { views: number }) => sum + (v.views || 0), 0) || 0
-            })) || []
+            })) as InstructorWithStats[] || []
 
             return { data: transformedData, error }
         })
@@ -469,7 +471,7 @@ export class DatabaseService {
                         user_id: userId,
                         ...subscriptionData,
                         updated_at: new Date().toISOString()
-                    })
+                    } as never)
                     .select()
                     .single()
 
@@ -525,10 +527,10 @@ export class DatabaseService {
             const totalPages = Math.ceil((count || 0) / pageSize)
 
             const result: PaginatedResponse<UserProfileWithSubscription> = {
-                data: data?.map(user => ({
+                data: ((data as Array<Record<string, any>> | null)?.map(user => ({
                     ...user,
                     subscription: user.subscription?.[0] || null
-                })) || [],
+                })) || []) as UserProfileWithSubscription[],
                 count: count || 0,
                 page,
                 pageSize,
@@ -562,10 +564,10 @@ export class DatabaseService {
     async search(query: string, limit = 20): Promise<ServiceResponse<SearchResult[]>> {
         return safeQuery(async () => {
             // This would typically use a full-text search function
-            const { data, error } = await this.supabase.rpc('search_content', {
+            const { data, error } = await this.supabase.rpc('search_content', ({
                 search_query: query,
                 result_limit: limit
-            })
+            }) as never)
 
             return { data, error }
         })
@@ -599,7 +601,7 @@ export class DatabaseService {
             const result = await withRetry(async () => {
                 const { data, error } = await this.supabase
                     .from('notifications')
-                    .update({ read: true })
+                    .update({ read: true } as never)
                     .eq('id', notificationId)
                     .select()
                     .single()
@@ -638,10 +640,10 @@ export class DatabaseService {
      */
     async executeRawQuery<T = unknown>(query: string, params?: unknown[]): Promise<ServiceResponse<T>> {
         return safeQuery(async () => {
-            const { data, error } = await this.supabase.rpc('execute_sql', {
+            const { data, error } = await this.supabase.rpc('execute_sql', ({
                 query,
                 params: params || []
-            })
+            }) as never)
 
             return { data, error }
         })

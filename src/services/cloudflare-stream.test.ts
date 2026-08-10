@@ -961,13 +961,14 @@ describe('env validation', () => {
     const account = process.env.CLOUDFLARE_ACCOUNT_ID
     const token = process.env.CLOUDFLARE_API_TOKEN
 
-    delete process.env.CLOUDFLARE_ACCOUNT_ID
-    delete process.env.CLOUDFLARE_API_TOKEN
+    const env = process.env as Record<string, string | undefined>
+    delete env.CLOUDFLARE_ACCOUNT_ID
+    delete env.CLOUDFLARE_API_TOKEN
 
     try {
       // Env access is lazy (Workers only guarantees env at request time),
       // so importing succeeds and the failure surfaces on first API call.
-      await expect(uploadFunctions.getUploadUrl({ fileName: 'a.mp4' })).rejects.toThrow(
+      await expect(uploadFunctions.getUploadUrl({})).rejects.toThrow(
         /Missing Cloudflare environment variables/
       )
     } finally {

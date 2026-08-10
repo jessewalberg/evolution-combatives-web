@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test'
-import { NextRequest } from 'next/server'
 import { fetchCsrfHeaders } from '../helpers/csrf'
 import { getCSRFCookieName, isSecureRequest } from '../../src/lib/csrf-protection'
 
@@ -23,7 +22,7 @@ test.describe('CSRF protection', () => {
   })
 
   test('HTTPS requests retain the host-only Secure cookie name', () => {
-    const request = new NextRequest('https://admin.example.com/api/csrf-token')
+    const request = new Request('https://admin.example.com/api/csrf-token')
 
     expect(isSecureRequest(request)).toBe(true)
     expect(getCSRFCookieName(request)).toBe('__Host-csrf-token')

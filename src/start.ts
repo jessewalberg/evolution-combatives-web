@@ -210,7 +210,7 @@ const authGuardMiddleware = createMiddleware({ type: 'request' }).server(
         const { supabase, cookieHeaders } = createMiddlewareClient(request)
 
         /** Merge any refreshed auth cookies into the outgoing response. */
-        const withAuthCookies = (result: unknown) => {
+        const withAuthCookies = <T,>(result: T): T => {
             const response = resultResponse(result)
             if (response) {
                 for (const value of cookieHeaders.getSetCookie()) {

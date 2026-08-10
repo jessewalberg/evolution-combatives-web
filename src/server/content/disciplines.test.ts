@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
+import { json as jsonResponse } from '@/src/lib/http'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { authSuccess } from '@/test/helpers/auth'
 import { GET, POST as POSTHandler } from './disciplines'
@@ -28,7 +28,7 @@ describe('GET /api/content/disciplines', () => {
 
   it('returns 401 when auth fails', async () => {
     mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 }),
+      error: jsonResponse({ success: false, error: 'Authentication required' }, { status: 401 }),
     })
     const res = await GET()
     expect(res.status).toBe(401)
@@ -63,7 +63,7 @@ describe('POST /api/content/disciplines', () => {
 
   it('returns 401 when auth fails', async () => {
     mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'denied' }, { status: 401 }),
+      error: jsonResponse({ success: false, error: 'denied' }, { status: 401 }),
     })
     const req = createNextRequest('/api/content/disciplines', {
       method: 'POST',

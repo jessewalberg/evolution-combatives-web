@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
+import { json as jsonResponse } from '@/src/lib/http'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { authSuccess } from '@/test/helpers/auth'
 import { POST as POSTHandler } from './sync-single'
@@ -43,7 +43,7 @@ describe('POST /api/video-processing/sync-single', () => {
 
   it('returns auth error', async () => {
     mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'denied' }, { status: 401 }),
+      error: jsonResponse({ success: false, error: 'denied' }, { status: 401 }),
     })
 
     const res = await POST(request({ videoId: 'v1' }))

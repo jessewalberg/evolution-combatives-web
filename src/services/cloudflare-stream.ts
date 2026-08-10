@@ -763,7 +763,7 @@ export const webhookHandling = {
             }
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
-                // eslint-disable-next-line no-console
+                 
                 console.error('Webhook processing error:', error)
             }
             throw new CloudflareStreamError(
@@ -835,7 +835,7 @@ export const webhookHandling = {
 
             if (!video) {
                 if (process.env.NODE_ENV === 'development') {
-                    // eslint-disable-next-line no-console
+                     
                     console.warn(`Video with cloudflare_video_id ${videoId} not found in database`)
                 }
                 return
@@ -861,7 +861,7 @@ export const webhookHandling = {
 
             // TODO: Send notification to admin about completed processing
             if (process.env.NODE_ENV === 'development') {
-                // eslint-disable-next-line no-console
+                 
                 console.log(`Video processing completed for ${video.title} (${videoId})`)
             }
         } catch (error) {
@@ -899,7 +899,7 @@ export const securityFunctions = {
         // For now, we'll just reference the parameters to avoid linting errors
         if (payload && signature && secret) {
             if (process.env.NODE_ENV === 'development') {
-                // eslint-disable-next-line no-console
+                 
                 console.warn('Webhook signature validation not implemented yet')
             }
         }

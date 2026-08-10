@@ -108,7 +108,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles checkout.session.completed without writing to the database', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('checkout.session.completed', {
         id: 'cs_1',
         metadata: { userId: 'user-1', tier: 'tier1' },
@@ -124,7 +124,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles customer.subscription.created by writing the subscription row and profile tier', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', {
         id: 'sub_1',
         status: 'active',
@@ -159,7 +159,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles customer.subscription.updated by updating status and period fields', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.updated', {
         id: 'sub_1',
         status: 'past_due',
@@ -186,7 +186,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles customer.subscription.updated canceled path by clearing the profile tier', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.updated', {
         id: 'sub_1',
         status: 'canceled',
@@ -212,7 +212,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles customer.subscription.deleted by canceling the subscription and clearing profile tier', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.deleted', { id: 'sub_1' })
     )
 
@@ -228,7 +228,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles invoice.payment_succeeded by reactivating the subscription', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_succeeded', { subscription: 'sub_1' })
     )
 
@@ -243,7 +243,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles invoice.payment_failed by marking the subscription past_due', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_failed', { subscription: 'sub_1' })
     )
 
@@ -258,7 +258,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('returns 200 for unhandled event types', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.created', { id: 'cus_new' })
     )
 
@@ -270,7 +270,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('skips checkout.session.completed when metadata missing', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('checkout.session.completed', { id: 'cs_2', metadata: {} })
     )
 
@@ -279,7 +279,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('skips subscription.created when metadata missing', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', {
         id: 'sub_2',
         status: 'active',
@@ -298,7 +298,7 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('returns 400 when subscription insert fails', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', {
         id: 'sub_fail',
         status: 'active',
@@ -319,14 +319,14 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('handles invoice events without subscription by skipping the DB update', async () => {
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_succeeded', { subscription: null })
     )
     const res1 = await POST(webhookRequest('{}', 'sig'))
     expect(res1.status).toBe(200)
     expect(supabase.subscriptionsUpdate).not.toHaveBeenCalled()
 
-    mockValidateWebhookSignature.mockReturnValue(
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_failed', { subscription: null })
     )
     const res2 = await POST(webhookRequest('{}', 'sig'))

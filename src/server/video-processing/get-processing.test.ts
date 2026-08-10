@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
+import { json as jsonResponse } from '@/src/lib/http'
 import { GET } from './get-processing'
 
 vi.mock('@/src/lib/api-auth', () => ({
@@ -21,7 +21,7 @@ describe('GET /api/video-processing/get-processing', () => {
 
   it('returns auth error', async () => {
     mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'denied' }, { status: 401 }),
+      error: jsonResponse({ success: false, error: 'denied' }, { status: 401 }),
     })
 
     const res = await GET()

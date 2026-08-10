@@ -1,6 +1,6 @@
 # Evolution Combatives - Admin Dashboard
 
-A comprehensive admin dashboard for managing tactical training content, built with Next.js 15, TypeScript, and Supabase. This standalone application provides content administrators with powerful tools to manage video libraries, user subscriptions, and training analytics for law enforcement and tactical professionals.
+A comprehensive admin dashboard for managing tactical training content, built with TanStack Start, TypeScript, and Supabase, deployed on Cloudflare Workers. This standalone application provides content administrators with powerful tools to manage video libraries, user subscriptions, and training analytics for law enforcement and tactical professionals.
 
 ## 🎯 Overview
 
@@ -34,7 +34,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 - **Content Performance**: Video views, popularity, and user feedback
 
 ### Technical Features
-- **Modern Tech Stack**: Next.js 15, React 19, TypeScript, Tailwind CSS
+- **Modern Tech Stack**: TanStack Start (Router + Query), React 19, TypeScript, Tailwind CSS v4
 - **Database**: Supabase with PostgreSQL
 - **Real-time Updates**: Live data synchronization
 - **Responsive Design**: Mobile-friendly admin interface
@@ -42,15 +42,15 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript
+- **Frontend**: TanStack Start (file-based routing, SSR on Cloudflare Workers), React 19, TypeScript
 - **Styling**: Tailwind CSS, Radix UI components
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth
 - **Video Storage**: Cloudflare Stream
 - **Payments**: Stripe
-- **State Management**: TanStack Query, Zustand
+- **State Management**: TanStack Query
 - **Analytics**: PostHog
-- **Deployment**: Vercel-ready
+- **Deployment**: Cloudflare Workers via @cloudflare/vite-plugin + wrangler (production/staging/preview envs in wrangler.jsonc; GitHub Actions ci/deploy/preview workflows)
 
 ## 📦 Installation
 
@@ -75,42 +75,36 @@ pnpm install
 ```
 
 3. **Configure environment variables**
-```bash
-cp .env.example .env.local
-```
 
-Edit `.env.local` with your configuration:
+Two files, both gitignored (secrets live in 1Password via secretkit — see
+`secrets.manifest.json`):
+
+```bash
+cp .env.example .env.local        # client-side VITE_* vars (Vite build/dev)
+cp .dev.vars.example .dev.vars    # server-side Worker vars for local dev
+```
 
 ```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# Stripe Configuration
-STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key_here
-STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key_here
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
-STRIPE_BEGINNER_PRICE_ID=price_your_beginner_price_id_here
-STRIPE_INTERMEDIATE_PRICE_ID=price_your_intermediate_price_id_here
-STRIPE_ADVANCED_PRICE_ID=price_your_advanced_price_id_here
-
-# App Configuration
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_ADMIN_URL=http://localhost:3000
-NEXT_PUBLIC_MOBILE_APP_SCHEME=evolutioncombatives
+# .env.local — client (inlined at build)
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_anon_key
+VITE_APP_URL=http://localhost:3000
+VITE_MOBILE_APP_SCHEME=evolutioncombatives
 
 # PostHog Analytics
-NEXT_PUBLIC_POSTHOG_KEY=phc_your_posthog_project_api_key_here
-NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
-
-# Development Mode
-NODE_ENV=development
+VITE_POSTHOG_KEY=phc_your_posthog_project_api_key_here
+VITE_POSTHOG_HOST=https://us.i.posthog.com
 ```
+
+`.dev.vars` carries the server-side values (SUPABASE_SERVICE_ROLE_KEY,
+STRIPE_*, CLOUDFLARE_* Stream credentials) — see `.dev.vars.example` for the
+full list. In deployed environments these are wrangler.jsonc `vars` plus
+`wrangler secret put` secrets per Worker.
 
 4. **Set up database**
 ```bash
-# Run the database migrations
-psql -h your-supabase-host -U postgres -d your-database -f migrations/setup-content-corrected.sql
+# Apply the Supabase migrations
+supabase db push   # migrations live in supabase/migrations/
 ```
 
 5. **Start development server**
@@ -169,9 +163,9 @@ export const ADMIN_PERMISSIONS = {
 
 ## 🚀 Deployment
 
-### Vercel Deployment
-1. Connect your repository to Vercel
-2. Configure environment variables in Vercel dashboard
+### Cloudflare Workers Deployment
+1. Fill in the real values in `wrangler.jsonc` `vars` (currently TODO placeholders) and set Worker secrets with `wrangler secret put`
+2. Deploy: `pnpm deploy:staging` or `pnpm deploy:production` (CI deploys main → production and PRs → preview versions automatically)
 3. Deploy with automatic CI/CD
 
 ### Manual Deployment
@@ -222,7 +216,7 @@ The admin dashboard integrates with the Evolution Combatives mobile app through:
 
 ### Available Scripts
 ```bash
-pnpm dev          # Start development server with Turbopack
+pnpm dev          # Start Vite dev server (Workers runtime via @cloudflare/vite-plugin)
 pnpm build        # Build for production
 pnpm start        # Start production server
 pnpm lint         # Run ESLint
@@ -232,7 +226,7 @@ pnpm type-check   # Run TypeScript type checking
 
 ### Code Quality
 - **TypeScript**: Full type safety
-- **ESLint**: Code linting with Next.js rules
+- **ESLint**: Code linting (eslint 9 flat config + typescript-eslint)
 - **Prettier**: Code formatting
 - **Husky**: Git hooks for quality checks
 

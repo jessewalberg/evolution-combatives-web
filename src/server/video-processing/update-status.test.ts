@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
+import { json as jsonResponse } from '@/src/lib/http'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler } from './update-status'
 
@@ -51,7 +51,7 @@ describe('POST /api/video-processing/update-status', () => {
 
   it('requires content.write auth (current behavior)', async () => {
     mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 }),
+      error: jsonResponse({ success: false, error: 'Authentication required' }, { status: 401 }),
     })
 
     const res = await POST(

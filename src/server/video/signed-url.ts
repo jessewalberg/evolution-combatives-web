@@ -77,8 +77,6 @@ export async function POST({ request }: { request: Request }) {
         return authResult.error
     }
 
-    const { } = authResult
-
     let videoId: string | undefined;
 
     try {

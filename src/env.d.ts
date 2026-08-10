@@ -19,3 +19,13 @@ interface ImportMetaEnv {
 interface ImportMeta {
     readonly env: ImportMetaEnv
 }
+
+/**
+ * Runtime module provided by workerd. worker-configuration.d.ts is generated
+ * env-only (--include-runtime=false) so the DOM lib stays authoritative for
+ * fetch types; declare the cloudflare:workers surface we use here.
+ */
+declare module 'cloudflare:workers' {
+    export const env: Record<string, unknown>
+    export function waitUntil(promise: Promise<unknown>): void
+}

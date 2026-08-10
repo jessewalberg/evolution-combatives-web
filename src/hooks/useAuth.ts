@@ -6,14 +6,37 @@
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createBrowserClient } from '../lib/supabase-browser'
 import { hasAccessToDiscipline } from '../lib/shared/constants/subscriptionTiers'
 import type { AdminRole, SubscriptionTier } from 'shared/types/database'
+
+/**
+ * Explicit row shapes for the profile/subscription queries. The shared
+ * Database type predates recent schema migrations, which makes supabase-js
+ * infer `never` rows for these tables; these casts keep the hook's public
+ * shape typed until the Database types are regenerated.
+ */
+interface ProfileRow {
+    id: string
+    email: string | null
+    full_name: string | null
+    admin_role: AdminRole | null
+    avatar_url: string | null
+    subscription_tier: SubscriptionTier | null
+    last_login_at: string | null
+    last_activity_at: string | null
+    created_at: string | null
+    [key: string]: unknown
+}
+
+interface SubscriptionRow {
+    tier: SubscriptionTier | null
+    status: string | null
+    [key: string]: unknown
+}
 
 const supabase = createBrowserClient()
 
@@ -54,7 +77,7 @@ export function useAuth() {
                 .select('*')
                 .eq('id', session.user.id)
                 .single()
-            return data
+            return data as ProfileRow | null
         },
         enabled: !!session?.user.id,
         staleTime: 15 * 60 * 1000, // 15 minutes - profile rarely changes
@@ -73,7 +96,7 @@ export function useAuth() {
                 .eq('user_id', session.user.id)
                 .eq('status', 'active')
                 .single()
-            return data
+            return data as SubscriptionRow | null
         },
         enabled: !!session?.user.id,
         staleTime: 15 * 60 * 1000,

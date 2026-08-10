@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { GET as GETHandler } from './health'
-const GET = (request?: Request) => GETHandler({ request: request ?? new Request('http://localhost/') } as never)
+const GET = () => GETHandler()
 
 describe('GET /api/health', () => {
   it('returns healthy status', async () => {

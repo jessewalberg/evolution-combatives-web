@@ -31,7 +31,6 @@ export function NextImageMock({
   ...props
 }: NextImageMockProps) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
     <img
       src={src}
       alt={alt}

@@ -1,16 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-// Placeholder route: replaced by a redirect to /dashboard once the dashboard
-// slice is ported.
+// Mirrors the legacy app/page.tsx: '/' immediately redirects to the
+// dashboard (the auth guard bounces unauthenticated visitors to /login).
 export const Route = createFileRoute('/')({
-    component: Home,
+    beforeLoad: () => {
+        throw redirect({ to: '/dashboard' })
+    },
 })
-
-function Home() {
-    return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-background">
-            <h1 className="text-2xl font-semibold text-foreground">Evolution Combatives Admin</h1>
-            <p className="text-muted-foreground">TanStack Start migration in progress.</p>
-        </div>
-    )
-}

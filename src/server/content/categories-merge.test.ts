@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
+import { json as jsonResponse } from '@/src/lib/http'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { authSuccess } from '@/test/helpers/auth'
 import { POST as POSTHandler } from './categories-merge'
@@ -24,7 +24,7 @@ describe('POST /api/content/categories/merge', () => {
 
   it('requires auth', async () => {
     mockAuth.mockResolvedValue({
-      error: NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 }),
+      error: jsonResponse({ success: false, error: 'Authentication required' }, { status: 401 }),
     })
     const res = await POST(
       createNextRequest('/api/content/categories/merge', {
