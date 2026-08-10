@@ -1,26 +1,24 @@
 /**
  * Evolution Combatives - Analytics Dashboard
  * Comprehensive analytics and reporting for tactical training platform
- * 
+ *
  * @description Main analytics dashboard with revenue, user, content, and system metrics
  * @author Evolution Combatives
  */
 
-'use client'
-
 import { useState, useCallback } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '../../src/hooks/useAuth'
-import { createClientComponentClient } from '../../src/lib/supabase-browser'
-import { StatsCard, StatsCardGrid, CompactStatsRow } from '../../src/components/ui/stats-card'
-import { Card, CardHeader, CardTitle, CardContent } from '../../src/components/ui/card'
-import { Button } from '../../src/components/ui/button'
-import { Badge } from '../../src/components/ui/badge'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../../src/components/ui/dropdown'
-import { EmptyState } from '../../src/components/ui/empty-state'
-import { Spinner } from '../../src/components/ui/loading'
-import { cn } from '../../src/lib/utils'
+import { useAuth } from '@/src/hooks/useAuth'
+import { createClientComponentClient } from '@/src/lib/supabase-browser'
+import { StatsCard, StatsCardGrid, CompactStatsRow } from '@/src/components/ui/stats-card'
+import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card'
+import { Button } from '@/src/components/ui/button'
+import { Badge } from '@/src/components/ui/badge'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/src/components/ui/dropdown'
+import { EmptyState } from '@/src/components/ui/empty-state'
+import { Spinner } from '@/src/components/ui/loading'
+import { cn } from '@/src/lib/utils'
 import { toast } from 'sonner'
 
 // Charts
@@ -136,8 +134,8 @@ const timeRanges: TimeRange[] = [
     { label: 'Last year', value: '1y', days: 365 }
 ]
 
-export default function AnalyticsPage() {
-    const router = useRouter()
+export function AnalyticsPage() {
+    const navigate = useNavigate()
     const { user, profile, hasPermission, isLoading: authLoading } = useAuth()
     const supabase = createClientComponentClient()
 
@@ -188,10 +186,32 @@ export default function AnalyticsPage() {
             if (progressResult.error) throw progressResult.error
 
             // Process data for analytics
-            const users = usersResult.data || []
-            const subscriptions = subscriptionsResult.data || []
-            const videos = videosResult.data || []
-            const progress = progressResult.data || []
+            const users = (usersResult.data || []) as unknown as Array<{
+                id: string
+                created_at: string
+                last_login_at: string | null
+            }>
+            const subscriptions = (subscriptionsResult.data || []) as unknown as Array<{
+                id: string
+                tier: string
+                status: string
+                created_at: string
+                current_period_end: string | null
+            }>
+            const videos = (videosResult.data || []) as unknown as Array<{
+                id: string
+                title: string
+                created_at: string
+                view_count: number | null
+                duration_seconds: number | null
+            }>
+            const progress = (progressResult.data || []) as unknown as Array<{
+                id: string
+                video_id: string
+                progress_seconds: number | null
+                completed: boolean
+                last_watched_at: string | null
+            }>
 
             // Calculate metrics
             const tierPrices = { beginner: 9, intermediate: 19, advanced: 49 }
@@ -351,7 +371,7 @@ export default function AnalyticsPage() {
                 description="You don't have permission to view analytics data."
                 primaryAction={{
                     label: "Go to Dashboard",
-                    onClick: () => router.push('/dashboard'),
+                    onClick: () => navigate({ to: '/dashboard' as never }),
                     variant: "primary"
                 }}
                 iconVariant="warning"
@@ -568,7 +588,7 @@ export default function AnalyticsPage() {
                                     dataKey="date"
                                     stroke="#9CA3AF"
                                     fontSize={12}
-                                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    tickFormatter={(value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 />
                                 <YAxis stroke="#9CA3AF" fontSize={12} />
                                 <Tooltip
@@ -578,11 +598,11 @@ export default function AnalyticsPage() {
                                         borderRadius: '8px',
                                         color: '#F9FAFB'
                                     }}
-                                    formatter={(value: number, name: string) => [
+                                    formatter={((value: number, name: string) => [
                                         name === 'revenue' ? `$${value.toLocaleString()}` : value,
                                         name === 'revenue' ? 'Revenue' : 'Subscriptions'
-                                    ]}
-                                    labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                                    ]) as never}
+                                    labelFormatter={((label: string) => new Date(label).toLocaleDateString()) as never}
                                 />
                                 <Area
                                     type="monotone"
@@ -613,7 +633,7 @@ export default function AnalyticsPage() {
                                     dataKey="date"
                                     stroke="#9CA3AF"
                                     fontSize={12}
-                                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    tickFormatter={(value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 />
                                 <YAxis stroke="#9CA3AF" fontSize={12} />
                                 <Tooltip
@@ -623,7 +643,7 @@ export default function AnalyticsPage() {
                                         borderRadius: '8px',
                                         color: '#F9FAFB'
                                     }}
-                                    labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                                    labelFormatter={((label: string) => new Date(label).toLocaleDateString()) as never}
                                 />
                                 <Legend />
                                 <Line
@@ -697,7 +717,7 @@ export default function AnalyticsPage() {
                                     outerRadius={100}
                                     fill="#8884d8"
                                     dataKey="users"
-                                    label={({ region, percent }) => `${region} ${((percent || 0) * 100).toFixed(0)}%`}
+                                    label={(props: { region?: string; percent?: number }) => `${props.region} ${((props.percent || 0) * 100).toFixed(0)}%`}
                                 >
                                     {data.geographicData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={Object.values(chartColors)[index % Object.values(chartColors).length]} />
@@ -852,3 +872,7 @@ export default function AnalyticsPage() {
         </div>
     )
 }
+
+export const Route = createFileRoute('/analytics')({
+    component: AnalyticsPage,
+})
