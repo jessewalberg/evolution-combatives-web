@@ -1,15 +1,15 @@
 /**
  * Evolution Combatives - Create Stripe Checkout Session API
  * Handles creation of Stripe checkout sessions for subscription payments
- * 
+ *
  * @description Secure API endpoint for initiating subscription payments
  * @author Evolution Combatives
  */
 
-import { NextRequest, NextResponse } from 'next/server';
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
 import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers';
 import { createAdminClient } from '@/src/lib/supabase';
+import { json } from '@/src/lib/http';
 import { z } from 'zod';
 
 // Request validation schema
@@ -21,7 +21,7 @@ const CreateCheckoutSchema = z.object({
     cancelUrl: z.string().url().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export async function POST({ request }: { request: Request }) {
     let tier, userId, userEmail;
     try {
         const body = await request.json();
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (userError || !user) {
-            return NextResponse.json(
+            return json(
                 { error: 'User not found or not authenticated' },
                 { status: 401 }
             );
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
         // Verify email matches
         if (user.email !== userEmail) {
-            return NextResponse.json(
+            return json(
                 { error: 'Email mismatch' },
                 { status: 400 }
             );
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (existingSubscription) {
-            return NextResponse.json(
+            return json(
                 {
                     error: 'User already has an active subscription',
                     currentTier: existingSubscription.tier
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         // Get Stripe price ID for the tier
         const priceId = SUBSCRIPTION_PRICING[tier].stripePriceId;
         if (!priceId) {
-            return NextResponse.json(
+            return json(
                 { error: `Price ID not configured for tier: ${tier}` },
                 { status: 500 }
             );
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
             timestamp: new Date().toISOString()
         });
 
-        return NextResponse.json({
+        return json({
             sessionId: session.id,
             url: session.url,
             tier,
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
 
         // Handle validation errors
         if (error instanceof z.ZodError) {
-            return NextResponse.json(
+            return json(
                 {
                     error: 'Invalid request data',
                     details: error.issues
@@ -135,13 +135,13 @@ export async function POST(request: NextRequest) {
 
         // Handle Stripe errors
         if (error instanceof Error && error.message.includes('Stripe')) {
-            return NextResponse.json(
+            return json(
                 { error: 'Payment processing error' },
                 { status: 500 }
             );
         }
 
-        return NextResponse.json(
+        return json(
             { error: 'Internal server error' },
             { status: 500 }
         );
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
 // Health check endpoint
 export async function GET() {
-    return NextResponse.json({
+    return json({
         status: 'ok',
         service: 'checkout-session-creation',
         timestamp: new Date().toISOString(),
