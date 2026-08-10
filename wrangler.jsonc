@@ -87,23 +87,23 @@
                 ]
             },
             "vars": {
-                "VITE_SUPABASE_URL": "https://TODO.supabase.co",
-                "VITE_SUPABASE_ANON_KEY": "TODO",
+                "VITE_SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
                 "VITE_APP_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
                 "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
-                "VITE_POSTHOG_KEY": "TODO",
+                "VITE_POSTHOG_KEY": "phc_FCJLRSEAiFD4j4mJwNC8Cp6vETZePn7A7pKeleO6qyD",
                 "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
-                "SUPABASE_URL": "https://TODO.supabase.co",
-                "SUPABASE_ANON_KEY": "TODO",
+                "SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
                 "APP_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
                 "ADMIN_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
                 "MOBILE_APP_SCHEME": "evolutioncombatives",
-                "CLOUDFLARE_ACCOUNT_ID": "TODO-stream-account-id",
-                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "TODO.cloudflarestream.com",
-                "STRIPE_PUBLISHABLE_KEY": "pk_test_TODO",
-                "STRIPE_BEGINNER_PRICE_ID": "price_TODO",
-                "STRIPE_INTERMEDIATE_PRICE_ID": "price_TODO",
-                "STRIPE_ADVANCED_PRICE_ID": "price_TODO"
+                "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
+                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
+                "STRIPE_PUBLISHABLE_KEY": "pk_test_51RcpEFPZvk6vMm8RTRWUQXPkw5dq9eQ2VuBOOGfwsxQl9V8QQo4P6MSDp4B9RMMJHGSTqLL9rj3rOLiF6YcZc9EY0004dSlRnn",
+                "STRIPE_BEGINNER_PRICE_ID": "price_1Rw1sxPZvk6vMm8RCpDc8hgB",
+                "STRIPE_INTERMEDIATE_PRICE_ID": "price_1Rw1tTPZvk6vMm8Rp0AIN6Gp",
+                "STRIPE_ADVANCED_PRICE_ID": "price_1Rw1toPZvk6vMm8RQQr20Tkv"
             }
         },
         "preview": {
@@ -124,23 +124,23 @@
                 ]
             },
             "vars": {
-                "VITE_SUPABASE_URL": "https://TODO.supabase.co",
-                "VITE_SUPABASE_ANON_KEY": "TODO",
+                "VITE_SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
                 "VITE_APP_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
                 "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
-                "VITE_POSTHOG_KEY": "TODO",
+                "VITE_POSTHOG_KEY": "phc_FCJLRSEAiFD4j4mJwNC8Cp6vETZePn7A7pKeleO6qyD",
                 "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
-                "SUPABASE_URL": "https://TODO.supabase.co",
-                "SUPABASE_ANON_KEY": "TODO",
+                "SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
                 "APP_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
                 "ADMIN_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
                 "MOBILE_APP_SCHEME": "evolutioncombatives",
-                "CLOUDFLARE_ACCOUNT_ID": "TODO-stream-account-id",
-                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "TODO.cloudflarestream.com",
-                "STRIPE_PUBLISHABLE_KEY": "pk_test_TODO",
-                "STRIPE_BEGINNER_PRICE_ID": "price_TODO",
-                "STRIPE_INTERMEDIATE_PRICE_ID": "price_TODO",
-                "STRIPE_ADVANCED_PRICE_ID": "price_TODO"
+                "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
+                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
+                "STRIPE_PUBLISHABLE_KEY": "pk_test_51RcpEFPZvk6vMm8RTRWUQXPkw5dq9eQ2VuBOOGfwsxQl9V8QQo4P6MSDp4B9RMMJHGSTqLL9rj3rOLiF6YcZc9EY0004dSlRnn",
+                "STRIPE_BEGINNER_PRICE_ID": "price_1Rw1sxPZvk6vMm8RCpDc8hgB",
+                "STRIPE_INTERMEDIATE_PRICE_ID": "price_1Rw1tTPZvk6vMm8Rp0AIN6Gp",
+                "STRIPE_ADVANCED_PRICE_ID": "price_1Rw1toPZvk6vMm8RQQr20Tkv"
             }
         }
     }
