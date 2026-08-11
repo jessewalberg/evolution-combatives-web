@@ -37,9 +37,13 @@
     "compatibility_date": "2026-08-01",
     "compatibility_flags": ["nodejs_compat"],
     "main": "@tanstack/react-start/server-entry",
-    // Production has NO public route until the custom domain is attached at
-    // cutover (workers_dev inherits, so staging/preview re-enable it).
+    // Production serves the live domain via custom domains; no workers.dev
+    // route (staging/preview re-enable workers_dev for themselves).
     "workers_dev": false,
+    "routes": [
+        { "pattern": "evolutioncombatives.com", "custom_domain": true },
+        { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
+    ],
     "observability": {
         "enabled": true,
         "head_sampling_rate": 1
