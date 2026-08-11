@@ -9,7 +9,7 @@
 
 import * as React from 'react'
 import { useState, useCallback, useMemo } from 'react'
-import Image from 'next/image'
+import Image from '@/src/components/compat/image'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'

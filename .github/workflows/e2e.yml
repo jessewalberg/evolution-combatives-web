@@ -27,8 +27,8 @@ jobs:
       # NODE_ENV must NOT be production at job scope: pnpm install would skip
       # devDependencies (including @playwright/test). Production mode for the
       # app server is set in playwright.config.ts webServer.env instead.
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
@@ -43,11 +43,11 @@ jobs:
       CLOUDFLARE_STREAM_SIGNING_KEY_ID: ${{ secrets.CLOUDFLARE_STREAM_SIGNING_KEY_ID }}
       CLOUDFLARE_STREAM_WEBHOOK_SECRET: ${{ secrets.CLOUDFLARE_STREAM_WEBHOOK_SECRET }}
       CLOUDFLARE_WEBHOOK_SECRET: ${{ secrets.CLOUDFLARE_WEBHOOK_SECRET }}
-      NEXT_PUBLIC_MOBILE_APP_SCHEME: ${{ secrets.NEXT_PUBLIC_MOBILE_APP_SCHEME }}
-      NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
-      NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
-      NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-      NEXT_PUBLIC_ADMIN_URL: ${{ secrets.NEXT_PUBLIC_ADMIN_URL }}
+      VITE_MOBILE_APP_SCHEME: ${{ secrets.VITE_MOBILE_APP_SCHEME }}
+      VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+      VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+      VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+      VITE_ADMIN_URL: ${{ secrets.VITE_ADMIN_URL }}
       E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
       E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
 
@@ -56,9 +56,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.0
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,6 +69,19 @@ jobs:
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install chromium webkit --with-deps
+
+      - name: Write .dev.vars for workerd preview server
+        # vite preview runs the app in workerd, which reads server env from
+        # .dev.vars (host process env is not inherited by the Worker).
+        run: |
+          cat > .dev.vars <<EOV
+          SUPABASE_URL=$VITE_SUPABASE_URL
+          SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+          APP_URL=$VITE_APP_URL
+          ADMIN_URL=$VITE_ADMIN_URL
+          MOBILE_APP_SCHEME=$VITE_MOBILE_APP_SCHEME
+          EOV
 
       - name: Run Playwright E2E
         run: pnpm test:e2e
@@ -97,8 +108,8 @@ jobs:
 
     env:
       CI: true
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
@@ -113,11 +124,11 @@ jobs:
       CLOUDFLARE_STREAM_SIGNING_KEY_ID: ${{ secrets.CLOUDFLARE_STREAM_SIGNING_KEY_ID }}
       CLOUDFLARE_STREAM_WEBHOOK_SECRET: ${{ secrets.CLOUDFLARE_STREAM_WEBHOOK_SECRET }}
       CLOUDFLARE_WEBHOOK_SECRET: ${{ secrets.CLOUDFLARE_WEBHOOK_SECRET }}
-      NEXT_PUBLIC_MOBILE_APP_SCHEME: ${{ secrets.NEXT_PUBLIC_MOBILE_APP_SCHEME }}
-      NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
-      NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
-      NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-      NEXT_PUBLIC_ADMIN_URL: ${{ secrets.NEXT_PUBLIC_ADMIN_URL }}
+      VITE_MOBILE_APP_SCHEME: ${{ secrets.VITE_MOBILE_APP_SCHEME }}
+      VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+      VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+      VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+      VITE_ADMIN_URL: ${{ secrets.VITE_ADMIN_URL }}
       E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
       E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
 
@@ -126,9 +137,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.0
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -141,6 +150,19 @@ jobs:
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
+
+      - name: Write .dev.vars for workerd preview server
+        # vite preview runs the app in workerd, which reads server env from
+        # .dev.vars (host process env is not inherited by the Worker).
+        run: |
+          cat > .dev.vars <<EOV
+          SUPABASE_URL=$VITE_SUPABASE_URL
+          SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+          APP_URL=$VITE_APP_URL
+          ADMIN_URL=$VITE_ADMIN_URL
+          MOBILE_APP_SCHEME=$VITE_MOBILE_APP_SCHEME
+          EOV
 
       - name: Update visual snapshots
         run: pnpm test:e2e:visual:update

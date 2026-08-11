@@ -32,8 +32,8 @@ const {
   }
 })
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => mockPush,
 }))
 
 vi.mock('sonner', () => ({

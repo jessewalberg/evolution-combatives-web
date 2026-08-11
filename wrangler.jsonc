@@ -1,0 +1,155 @@
+// Single config for all Worker targets. The @cloudflare/vite-plugin flattens
+// this into a single-env dist/server/wrangler.json at build time, based on the
+// CLOUDFLARE_ENV env var:
+//
+//   CLOUDFLARE_ENV unset       → top-level block → evolution-combatives-admin (production)
+//   CLOUDFLARE_ENV=staging     → env.staging     → evolution-combatives-admin-staging
+//   CLOUDFLARE_ENV=preview     → env.preview     → evolution-combatives-admin-preview
+//
+// Package scripts:
+//   pnpm deploy:production → production
+//   pnpm deploy:staging    → staging
+//
+// Secrets attach to the Worker by NAME (set per env with `wrangler secret put
+// <KEY>` / `wrangler secret put --env staging <KEY>`):
+//   SUPABASE_SERVICE_ROLE_KEY
+//   STRIPE_SECRET_KEY
+//   STRIPE_WEBHOOK_SECRET
+//   CLOUDFLARE_API_TOKEN            (Stream API token)
+//   CLOUDFLARE_STREAM_SIGNING_KEY
+//   CLOUDFLARE_STREAM_SIGNING_KEY_ID
+//   CLOUDFLARE_STREAM_WEBHOOK_SECRET
+//
+// Per Wrangler v4 env inheritance, `account_id`, `compatibility_date`,
+// `compatibility_flags`, `main`, and `workers_dev` flow down. `vars` and
+// `observability` do NOT inherit and must be repeated per env block.
+//
+// With this compatibility date + nodejs_compat, Workers populates
+// `process.env` from vars/secrets, so server code can keep reading
+// `process.env.X` at request time.
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "evolution-combatives-admin",
+    // Jesse's personal Cloudflare account (same as howverydareyou). If the
+    // Evolution Combatives Stream account is a different CF account, the
+    // Worker still lives here — Stream is reached via API token, not binding.
+    "account_id": "6b13f76a2d42fd29437154c35fa8a0c9",
+    "compatibility_date": "2026-08-01",
+    "compatibility_flags": ["nodejs_compat"],
+    "main": "@tanstack/react-start/server-entry",
+    // Production serves the live domain via custom domains; no workers.dev
+    // route (staging/preview re-enable workers_dev for themselves).
+    "workers_dev": false,
+    "routes": [
+        { "pattern": "evolutioncombatives.com", "custom_domain": true },
+        { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
+    ],
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+    },
+    // TODO(deploy): replace placeholder values before first production deploy.
+    // VITE_* vars are injected by vite.config.ts `define` from this file at
+    // build time (CLOUDFLARE_ENV selects the env block); the non-VITE_*
+    // duplicates are read by server code at runtime.
+    "unsafe": {
+        "bindings": [
+            { "name": "API_RATE_LIMITER", "type": "ratelimit", "namespace_id": "1001", "simple": { "limit": 100, "period": 60 } },
+            { "name": "ADMIN_RATE_LIMITER", "type": "ratelimit", "namespace_id": "1002", "simple": { "limit": 100, "period": 60 } },
+            { "name": "AUTH_RATE_LIMITER", "type": "ratelimit", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } }
+        ]
+    },
+    "vars": {
+        "VITE_SUPABASE_URL": "https://bxpxpkiubjbcmgsnfpvp.supabase.co",
+        "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cHhwa2l1YmpiY21nc25mcHZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MDMwMDYsImV4cCI6MjA2NjE3OTAwNn0.pNu3sSNs33hMvJcJuOta_udnV-lXF3LxXJqpqqPxfYw",
+        "VITE_APP_URL": "https://evolutioncombatives.com",
+        "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
+        "VITE_POSTHOG_KEY": "phc_HQY1191X359mG41VEpvieYN9qiSY3acZnopO2JZiYry",
+        "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
+        "SUPABASE_URL": "https://bxpxpkiubjbcmgsnfpvp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cHhwa2l1YmpiY21nc25mcHZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MDMwMDYsImV4cCI6MjA2NjE3OTAwNn0.pNu3sSNs33hMvJcJuOta_udnV-lXF3LxXJqpqqPxfYw",
+        "APP_URL": "https://evolutioncombatives.com",
+        "ADMIN_URL": "https://evolutioncombatives.com",
+        "MOBILE_APP_SCHEME": "evolutioncombatives",
+        "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
+        "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
+        "STRIPE_PUBLISHABLE_KEY": "update",
+        "STRIPE_BEGINNER_PRICE_ID": "update",
+        "STRIPE_INTERMEDIATE_PRICE_ID": "update",
+        "STRIPE_ADVANCED_PRICE_ID": "update"
+    },
+    "env": {
+        "staging": {
+            "name": "evolution-combatives-admin-staging",
+            "workers_dev": true,
+            "observability": {
+                "enabled": true,
+                "head_sampling_rate": 1
+            },
+            "unsafe": {
+                "bindings": [
+                    { "name": "API_RATE_LIMITER", "type": "ratelimit", "namespace_id": "2001", "simple": { "limit": 100, "period": 60 } },
+                    { "name": "ADMIN_RATE_LIMITER", "type": "ratelimit", "namespace_id": "2002", "simple": { "limit": 100, "period": 60 } },
+                    { "name": "AUTH_RATE_LIMITER", "type": "ratelimit", "namespace_id": "2003", "simple": { "limit": 10, "period": 60 } }
+                ]
+            },
+            "vars": {
+                "VITE_SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
+                "VITE_APP_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
+                "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
+                "VITE_POSTHOG_KEY": "phc_FCJLRSEAiFD4j4mJwNC8Cp6vETZePn7A7pKeleO6qyD",
+                "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
+                "SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
+                "APP_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
+                "ADMIN_URL": "https://evolution-combatives-admin-staging.jesse-6b1.workers.dev",
+                "MOBILE_APP_SCHEME": "evolutioncombatives",
+                "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
+                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
+                "STRIPE_PUBLISHABLE_KEY": "pk_test_51RcpEFPZvk6vMm8RTRWUQXPkw5dq9eQ2VuBOOGfwsxQl9V8QQo4P6MSDp4B9RMMJHGSTqLL9rj3rOLiF6YcZc9EY0004dSlRnn",
+                "STRIPE_BEGINNER_PRICE_ID": "price_1Rw1sxPZvk6vMm8RCpDc8hgB",
+                "STRIPE_INTERMEDIATE_PRICE_ID": "price_1Rw1tTPZvk6vMm8Rp0AIN6Gp",
+                "STRIPE_ADVANCED_PRICE_ID": "price_1Rw1toPZvk6vMm8RQQr20Tkv"
+            }
+        },
+        "preview": {
+            "name": "evolution-combatives-admin-preview",
+            "workers_dev": true,
+            // PR previews upload versions of this Worker via `wrangler
+            // versions upload`; preview_urls gives each version its own
+            // workers.dev URL.
+            "preview_urls": true,
+            "observability": {
+                "enabled": true,
+                "head_sampling_rate": 1
+            },
+            "unsafe": {
+                "bindings": [
+                    { "name": "API_RATE_LIMITER", "type": "ratelimit", "namespace_id": "3001", "simple": { "limit": 100, "period": 60 } },
+                    { "name": "ADMIN_RATE_LIMITER", "type": "ratelimit", "namespace_id": "3002", "simple": { "limit": 100, "period": 60 } },
+                    { "name": "AUTH_RATE_LIMITER", "type": "ratelimit", "namespace_id": "3003", "simple": { "limit": 10, "period": 60 } }
+                ]
+            },
+            "vars": {
+                "VITE_SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
+                "VITE_APP_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
+                "VITE_MOBILE_APP_SCHEME": "evolutioncombatives",
+                "VITE_POSTHOG_KEY": "phc_FCJLRSEAiFD4j4mJwNC8Cp6vETZePn7A7pKeleO6qyD",
+                "VITE_POSTHOG_HOST": "https://us.i.posthog.com",
+                "SUPABASE_URL": "https://hknjeztslvbenmlaqfqa.supabase.co",
+                "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbmplenRzbHZiZW5tbGFxZnFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTEyMDIsImV4cCI6MjA3NjgyNzIwMn0.AwOH_o7KqGML5qxDO_TBGmM3D28dvd5JFietLm3YkNs",
+                "APP_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
+                "ADMIN_URL": "https://evolution-combatives-admin-preview.jesse-6b1.workers.dev",
+                "MOBILE_APP_SCHEME": "evolutioncombatives",
+                "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
+                "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
+                "STRIPE_PUBLISHABLE_KEY": "pk_test_51RcpEFPZvk6vMm8RTRWUQXPkw5dq9eQ2VuBOOGfwsxQl9V8QQo4P6MSDp4B9RMMJHGSTqLL9rj3rOLiF6YcZc9EY0004dSlRnn",
+                "STRIPE_BEGINNER_PRICE_ID": "price_1Rw1sxPZvk6vMm8RCpDc8hgB",
+                "STRIPE_INTERMEDIATE_PRICE_ID": "price_1Rw1tTPZvk6vMm8Rp0AIN6Gp",
+                "STRIPE_ADVANCED_PRICE_ID": "price_1Rw1toPZvk6vMm8RQQr20Tkv"
+            }
+        }
+    }
+}

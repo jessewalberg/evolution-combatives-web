@@ -3,7 +3,7 @@ import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { UserTable, type User } from './user-table'
 
-vi.mock('next/image', async () => {
+vi.mock('@/src/components/compat/image', async () => {
   const { createNextImageMock } = await import('@/test/mocks/next-image')
   return createNextImageMock()
 })

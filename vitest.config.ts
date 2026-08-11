@@ -12,8 +12,18 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Supabase client factories resolve these at call time; give tests a
+    // stable dummy config (individual tests may stub their own).
+    env: {
+      VITE_SUPABASE_URL: 'https://test.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+      SUPABASE_URL: 'https://test.supabase.co',
+      SUPABASE_ANON_KEY: 'test-anon-key',
+    },
     include: ['**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', '.next', 'dist', 'e2e/**', 'playwright.config.ts'],
+    // .claude/** matters: agent worktrees under .claude/worktrees/ contain
+    // full repo copies whose test files would otherwise run 7x the suite.
+    exclude: ['node_modules', 'dist', '.wrangler', '.claude/**', 'e2e/**', 'playwright.config.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html', 'json-summary'],
@@ -22,8 +32,7 @@ export default defineConfig({
         'src/services/**/*.{ts,tsx}',
         'src/hooks/**/*.{ts,tsx}',
         'src/components/**/*.{ts,tsx}',
-        'middleware.ts',
-        'app/api/**/*.{ts,tsx}',
+        'src/server/**/*.{ts,tsx}',
       ],
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
@@ -50,7 +59,10 @@ export default defineConfig({
       // Issue #18: coverage on src/components/** is reported, not yet hard-gated
       // - revisit the threshold once real numbers exist from this issue.
       thresholds: {
-        '{src/lib/**/*.{ts,tsx},src/services/**/*.{ts,tsx},src/hooks/**/*.{ts,tsx},middleware.ts,app/api/**/*.{ts,tsx}}':
+        // Post-migration equivalent of the old gate: middleware.ts became
+        // src/start.ts (ungated, like src/components — Issue #18 successor)
+        // and app/api/** handler logic now lives in src/server/**.
+        '{src/lib/**/*.{ts,tsx},src/services/**/*.{ts,tsx},src/hooks/**/*.{ts,tsx},src/server/**/*.{ts,tsx}}':
           { lines: 85, statements: 85, branches: 75, functions: 75 },
       },
       reportOnFailure: true,
@@ -60,6 +72,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '.'),
       shared: path.resolve(__dirname, './src/lib/shared'),
+      // workerd-only module; both consumers fall back on undefined exports
+      'cloudflare:workers': path.resolve(__dirname, './test/mocks/cloudflare-workers.ts'),
     },
   },
 })

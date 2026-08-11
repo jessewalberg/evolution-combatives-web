@@ -19,6 +19,7 @@ import {
 describe('cn', () => {
   it('merges class names and resolves Tailwind conflicts', () => {
     expect(cn('px-4', 'px-6')).toContain('px-6')
+    // eslint-disable-next-line no-constant-binary-expression -- exercising cn() falsy filtering
     expect(cn('px-4', false && 'hidden', 'block')).toContain('block')
   })
 })

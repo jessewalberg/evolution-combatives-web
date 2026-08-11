@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { json as jsonResponse } from '@/src/lib/http'
 import type { Mock } from 'vitest'
 
 export interface AuthSuccessUser {
@@ -29,6 +29,6 @@ export function authSuccess(mockAuth: Mock, user: AuthSuccessUser = {}): void {
  */
 export function authFail(mockAuth: Mock, status: 401 | 403): void {
   mockAuth.mockResolvedValue({
-    error: NextResponse.json({ success: false, error: 'denied' }, { status }),
+    error: jsonResponse({ success: false, error: 'denied' }, { status }),
   })
 }

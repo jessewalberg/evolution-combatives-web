@@ -7,11 +7,12 @@ const { mockPathname } = vi.hoisted(() => ({
   mockPathname: vi.fn(() => '/dashboard'),
 }))
 
-vi.mock('next/navigation', () => ({
-  usePathname: () => mockPathname(),
+vi.mock('@tanstack/react-router', () => ({
+  useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) =>
+    opts?.select ? opts.select({ pathname: mockPathname() }) : { pathname: mockPathname() },
 }))
 
-vi.mock('next/link', () => ({
+vi.mock('@/src/components/compat/link', () => ({
   default: ({
     children,
     href,

@@ -1,0 +1,21 @@
+# Local dev secrets for the Worker runtime (read by `vite dev` through the
+# @cloudflare/vite-plugin). Copy to .dev.vars and fill in. Client-side VITE_*
+# values go in .env.local instead.
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+APP_URL=http://localhost:3000
+ADMIN_URL=http://localhost:3000
+MOBILE_APP_SCHEME=evolutioncombatives
+STRIPE_SECRET_KEY=sk_test_your_key
+STRIPE_PUBLISHABLE_KEY=pk_test_your_key
+STRIPE_WEBHOOK_SECRET=whsec_your_secret
+STRIPE_BEGINNER_PRICE_ID=price_x
+STRIPE_INTERMEDIATE_PRICE_ID=price_y
+STRIPE_ADVANCED_PRICE_ID=price_z
+CLOUDFLARE_ACCOUNT_ID=your_stream_account_id
+CLOUDFLARE_API_TOKEN=your_stream_api_token
+CLOUDFLARE_CUSTOMER_SUBDOMAIN=customer-xxxx.cloudflarestream.com
+CLOUDFLARE_STREAM_SIGNING_KEY=your_signing_key
+CLOUDFLARE_STREAM_SIGNING_KEY_ID=your_signing_key_id
+CLOUDFLARE_STREAM_WEBHOOK_SECRET=your_stream_webhook_secret

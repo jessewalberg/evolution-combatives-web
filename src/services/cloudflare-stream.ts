@@ -14,20 +14,30 @@ import type {
     SubscriptionTier
 } from 'shared/types/database'
 
-// Environment variables validation (server-side only)
-const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!
-const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!
-const CLOUDFLARE_CUSTOMER_SUBDOMAIN = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN || 'customer-235te0s698xfdejs'
+/**
+ * Cloudflare Stream credentials, resolved lazily and server-side only. On
+ * Workers, env vars are only guaranteed present at request time, and this
+ * module is also bundled for the browser (direct-upload XHR path), where
+ * process.env does not exist.
+ */
+function getStreamEnv(): { accountId: string; apiToken: string; customerSubdomain: string } {
+    if (typeof window !== 'undefined') {
+        throw new Error('Cloudflare Stream API credentials are server-side only')
+    }
 
-// Only validate environment variables on server-side
-if (typeof window === 'undefined') {
-    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN || !CLOUDFLARE_CUSTOMER_SUBDOMAIN) {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN
+    const customerSubdomain = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN || 'customer-235te0s698xfdejs'
+
+    if (!accountId || !apiToken || !customerSubdomain) {
         const missing = []
-        if (!CLOUDFLARE_ACCOUNT_ID) missing.push('CLOUDFLARE_ACCOUNT_ID')
-        if (!CLOUDFLARE_API_TOKEN) missing.push('CLOUDFLARE_API_TOKEN')
-        if (!CLOUDFLARE_CUSTOMER_SUBDOMAIN) missing.push('CLOUDFLARE_CUSTOMER_SUBDOMAIN')
+        if (!accountId) missing.push('CLOUDFLARE_ACCOUNT_ID')
+        if (!apiToken) missing.push('CLOUDFLARE_API_TOKEN')
+        if (!customerSubdomain) missing.push('CLOUDFLARE_CUSTOMER_SUBDOMAIN')
         throw new Error(`Missing Cloudflare environment variables: ${missing.join(', ')}`)
     }
+
+    return { accountId, apiToken, customerSubdomain }
 }
 
 // Cloudflare Stream API Types
@@ -170,14 +180,14 @@ const getStreamApiBase = () => {
     if (typeof window !== 'undefined') {
         throw new Error('Cloudflare Stream API can only be used on server-side')
     }
-    return `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream`
+    return `https://api.cloudflare.com/client/v4/accounts/${getStreamEnv().accountId}/stream`
 }
 
 const getStreamDirectUploadApi = () => {
     if (typeof window !== 'undefined') {
         throw new Error('Cloudflare Stream API can only be used on server-side')
     }
-    return `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/direct_upload`
+    return `https://api.cloudflare.com/client/v4/accounts/${getStreamEnv().accountId}/stream/direct_upload`
 }
 
 const getStreamHeaders = () => {
@@ -185,7 +195,7 @@ const getStreamHeaders = () => {
         throw new Error('Cloudflare Stream API can only be used on server-side')
     }
     return {
-        'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+        'Authorization': `Bearer ${getStreamEnv().apiToken}`,
         'Content-Type': 'application/json'
     }
 }
@@ -514,8 +524,8 @@ export const videoManagement = {
             try {
                 await this.updateVideoSettings(videoId, { requireSignedURLs: false });
                 const publicUrl = format === 'mp4'
-                    ? `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/downloads/default.mp4`
-                    : `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/manifest/video.m3u8`;
+                    ? `https://${getStreamEnv().customerSubdomain}/${videoId}/downloads/default.mp4`
+                    : `https://${getStreamEnv().customerSubdomain}/${videoId}/manifest/video.m3u8`;
 
                 console.log('🔐 Returning public URL (DEVELOPMENT ONLY):', publicUrl);
                 return publicUrl;
@@ -593,11 +603,11 @@ export const videoManagement = {
                 if (format === 'mp4') {
                     // MP4 download format for better mobile compatibility
                     // Format: https://customer-subdomain.cloudflarestream.com/video-id/downloads/default.mp4?token=signed-token
-                    return `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/downloads/default.mp4?token=${data.result.token}`
+                    return `https://${getStreamEnv().customerSubdomain}/${videoId}/downloads/default.mp4?token=${data.result.token}`
                 } else {
                     // HLS streaming format (default)
                     // Format: https://customer-subdomain.cloudflarestream.com/video-id/manifest/video.m3u8?token=signed-token
-                    return `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/manifest/video.m3u8?token=${data.result.token}`
+                    return `https://${getStreamEnv().customerSubdomain}/${videoId}/manifest/video.m3u8?token=${data.result.token}`
                 }
             } catch (error) {
                 throw new CloudflareStreamError(
@@ -632,7 +642,7 @@ export const videoManagement = {
         if (options.fit) params.set('fit', options.fit)
 
         const queryString = params.toString()
-        const baseUrl = `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/thumbnails/thumbnail.jpg`
+        const baseUrl = `https://${getStreamEnv().customerSubdomain}/${videoId}/thumbnails/thumbnail.jpg`
 
         return queryString ? `${baseUrl}?${queryString}` : baseUrl
     },
@@ -753,7 +763,7 @@ export const webhookHandling = {
             }
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
-                // eslint-disable-next-line no-console
+                 
                 console.error('Webhook processing error:', error)
             }
             throw new CloudflareStreamError(
@@ -825,7 +835,7 @@ export const webhookHandling = {
 
             if (!video) {
                 if (process.env.NODE_ENV === 'development') {
-                    // eslint-disable-next-line no-console
+                     
                     console.warn(`Video with cloudflare_video_id ${videoId} not found in database`)
                 }
                 return
@@ -851,7 +861,7 @@ export const webhookHandling = {
 
             // TODO: Send notification to admin about completed processing
             if (process.env.NODE_ENV === 'development') {
-                // eslint-disable-next-line no-console
+                 
                 console.log(`Video processing completed for ${video.title} (${videoId})`)
             }
         } catch (error) {
@@ -889,7 +899,7 @@ export const securityFunctions = {
         // For now, we'll just reference the parameters to avoid linting errors
         if (payload && signature && secret) {
             if (process.env.NODE_ENV === 'development') {
-                // eslint-disable-next-line no-console
+                 
                 console.warn('Webhook signature validation not implemented yet')
             }
         }

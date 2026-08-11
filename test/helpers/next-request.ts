@@ -1,4 +1,9 @@
-import { NextRequest } from 'next/server'
+/**
+ * Request fixture builders for handler tests. Historically these produced
+ * NextRequest instances; the TanStack Start handlers take plain Web
+ * Requests, so these now build standard Request objects. The names are
+ * kept to avoid churn across the ported test suites.
+ */
 
 export function createNextRequest(
   url: string,
@@ -8,7 +13,7 @@ export function createNextRequest(
     body?: string | null
     cookies?: Record<string, string>
   }
-): NextRequest {
+): Request {
   const headers = new Headers(init?.headers)
   if (init?.cookies) {
     const cookieHeader = Object.entries(init.cookies)
@@ -17,7 +22,7 @@ export function createNextRequest(
     headers.set('cookie', cookieHeader)
   }
 
-  return new NextRequest(new URL(url, 'http://localhost:3000'), {
+  return new Request(new URL(url, 'http://localhost:3000'), {
     method: init?.method ?? 'GET',
     headers,
     body: init?.body ?? undefined,
@@ -33,7 +38,7 @@ export function createAuthenticatedRequest(
     body?: string | null
     cookies?: Record<string, string>
   }
-): NextRequest {
+): Request {
   return createNextRequest(url, {
     ...init,
     headers: {

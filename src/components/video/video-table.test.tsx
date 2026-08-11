@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { VideoTable, type Video } from './video-table'
 
-vi.mock('next/image', async () => {
+vi.mock('@/src/components/compat/image', async () => {
   const { createNextImageMock } = await import('@/test/mocks/next-image')
   return createNextImageMock()
 })

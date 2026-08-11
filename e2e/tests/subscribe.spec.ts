@@ -102,7 +102,7 @@ test.describe('Subscription deep-link flow', () => {
     await expect(page.getByText(/invalid request/i)).toHaveCount(0)
 
     const headers = await fetchCsrfHeaders(request)
-    const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const base = process.env.VITE_APP_URL || 'http://localhost:3000'
     const response = await request.post('/api/subscriptions/create-checkout', {
       headers,
       data: {

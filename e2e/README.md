@@ -20,7 +20,7 @@ Vault / item for local-dev:
 Per field:
 
 ```bash
-op read "op://evolution-combatives-web-app/preview/NEXT_PUBLIC_SUPABASE_URL"
+op read "op://evolution-combatives-web-app/preview/VITE_SUPABASE_URL"
 # …repeat for each field, or:
 op item get preview --vault evolution-combatives-web-app
 ```
@@ -29,8 +29,8 @@ Required fields (same names as app env / GitHub Actions secrets):
 
 | Variable |
 |----------|
-| `NEXT_PUBLIC_SUPABASE_URL` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| `VITE_SUPABASE_URL` |
+| `VITE_SUPABASE_ANON_KEY` |
 | `SUPABASE_SERVICE_ROLE_KEY` |
 | `STRIPE_SECRET_KEY` |
 | `STRIPE_PUBLISHABLE_KEY` |
