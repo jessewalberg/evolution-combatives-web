@@ -31,7 +31,7 @@ interface User {
     id: string
     name: string
     email: string
-    role: 'super_admin' | 'content_admin' | 'support_admin' | 'user'
+    role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | 'user'
     subscription: 'None' | 'Beginner' | 'Intermediate' | 'Advanced'
     joinDate: string
     lastActive: string
@@ -643,4 +643,4 @@ const TableExample: React.FC = () => {
     )
 }
 
-export default TableExample 
+export default TableExample

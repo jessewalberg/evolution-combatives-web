@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import packageJson from '../../../package.json'
 
 /**
  * GET /api/health
@@ -17,10 +18,10 @@ export async function GET() {
         return NextResponse.json({
             status: 'healthy',
             timestamp: new Date().toISOString(),
-            version: process.env.npm_package_version || '1.0.0',
+            version: packageJson.version,
             environment: process.env.NODE_ENV || 'development'
         })
-    } catch (error) {
+    } catch {
         return NextResponse.json(
             {
                 status: 'unhealthy',

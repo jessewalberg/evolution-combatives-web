@@ -17,7 +17,11 @@ export const ROLE_PERMISSIONS: Record<string, Set<string>> = {
         'support.read', 'support.write'
     ]),
     content_admin: new Set(['content.read', 'content.write', 'content.delete', 'users.read']),
-    support_admin: new Set(['users.read', 'support.read', 'support.write'])
+    support_admin: new Set(['users.read', 'support.read', 'support.write']),
+    content_support_admin: new Set([
+        'content.read', 'content.write', 'content.delete',
+        'users.read', 'support.read', 'support.write'
+    ])
 }
 
 export function extractUserFromRequest(request: NextRequest): ApiUser | null {
@@ -86,7 +90,7 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
                 email: user.email || ''
             }
         }
-    } catch (error) {
+    } catch {
         return {
             error: new Response(
                 JSON.stringify({ success: false, error: 'Authentication failed' }),

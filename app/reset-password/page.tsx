@@ -98,7 +98,7 @@ function ResetPasswordContent() {
                 } else {
                     setIsValidToken(true)
                 }
-            } catch (error) {
+            } catch {
                 setIsValidToken(false)
             }
         }

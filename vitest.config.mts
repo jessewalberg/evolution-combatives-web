@@ -58,8 +58,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, '.'),
-      shared: path.resolve(__dirname, './src/lib/shared'),
+      '@': path.resolve(import.meta.dirname, '.'),
+      shared: path.resolve(import.meta.dirname, './src/lib/shared'),
     },
   },
 })

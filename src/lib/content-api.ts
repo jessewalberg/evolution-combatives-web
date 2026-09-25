@@ -64,7 +64,7 @@ export class ContentApiClient {
         let result: ContentApiResponse<T>
         try {
             result = JSON.parse(responseText)
-        } catch (parseError) {
+        } catch {
             throw new Error(`API returned non-JSON response: ${responseText.substring(0, 200)}`)
         }
 
@@ -90,7 +90,7 @@ export class ContentApiClient {
             const retryResponseText = await retryResponse.text()
             try {
                 result = JSON.parse(retryResponseText)
-            } catch (parseError) {
+            } catch {
                 throw new Error(`API returned non-JSON response on retry: ${retryResponseText.substring(0, 200)}`)
             }
         }
@@ -114,7 +114,7 @@ export class ContentApiClient {
         let result: ContentApiResponse<T>
         try {
             result = JSON.parse(responseText)
-        } catch (parseError) {
+        } catch {
             throw new Error(`API returned non-JSON response: ${responseText.substring(0, 200)}`)
         }
 

@@ -27,6 +27,10 @@ const ROLE_PERMISSIONS: Record<NonNullable<AdminRole>, Set<string>> = {
     ]),
     content_admin: new Set(['content.read', 'content.write', 'content.delete', 'users.read']),
     support_admin: new Set(['users.read', 'support.read', 'support.write']),
+    content_support_admin: new Set([
+        'content.read', 'content.write', 'content.delete',
+        'users.read', 'support.read', 'support.write'
+    ]),
 }
 
 export function useAuth() {
@@ -155,4 +159,4 @@ export function useAuth() {
 
 // Export types and constants
 export { ROLE_PERMISSIONS }
-export type { AdminRole } 
+export type { AdminRole }

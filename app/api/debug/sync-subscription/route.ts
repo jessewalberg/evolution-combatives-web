@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '../../../../src/lib/stripe'
 import { createAdminClient } from '../../../../src/lib/supabase'
+import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 import Stripe from 'stripe'
 
 /**
@@ -8,6 +9,16 @@ import Stripe from 'stripe'
  * Use this to fix subscription state when webhooks don't work in development
  */
 export async function POST(request: NextRequest) {
+    // This repair utility must never be reachable in a production deployment.
+    if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    const authResult = await validateApiAuthWithSession('admin.all')
+    if ('error' in authResult) {
+        return authResult.error
+    }
+
     try {
         const { email, stripeSubscriptionId } = await request.json()
 

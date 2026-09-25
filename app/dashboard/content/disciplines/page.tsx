@@ -98,9 +98,9 @@ function EmptyState({
 // Subscription tier options
 const SUBSCRIPTION_TIERS = [
     { value: 'none', label: 'Free', color: 'secondary' },
-    { value: 'tier1', label: 'Tier 1 ($9)', color: 'info' },
-    { value: 'tier2', label: 'Tier 2 ($19)', color: 'secondary' },
-    { value: 'tier3', label: 'Tier 3 ($49)', color: 'success' },
+    { value: 'tier1', label: 'Tier 1 ($19)', color: 'info' },
+    { value: 'tier2', label: 'Tier 2 ($29)', color: 'secondary' },
+    { value: 'tier3', label: 'Tier 3 ($39)', color: 'success' },
 ] as const
 
 type SubscriptionTier = typeof SUBSCRIPTION_TIERS[number]['value']
@@ -262,7 +262,7 @@ export default function DisciplinesPage() {
             } else {
                 createMutation.mutate(disciplineData)
             }
-        } catch (error) {
+        } catch {
             toast.error('An unexpected error occurred')
         }
     }
@@ -654,4 +654,4 @@ export default function DisciplinesPage() {
             />
         </div>
     )
-} 
+}

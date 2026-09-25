@@ -31,7 +31,6 @@ const ROUTE_CONFIG = {
         '/api/auth/sign-up',
         '/api/auth/logout',
         '/api/csrf-token',
-        '/api/subscriptions/create-checkout',
         '/api/webhooks/stripe',
         '/api/webhooks/cloudflare',
         '/.well-known*',
@@ -71,6 +70,15 @@ const ROUTE_CONFIG = {
             '/dashboard',
             '/users',
             '/qa',
+            '/api/support'
+        ],
+        content_support_admin: [
+            '/dashboard',
+            '/users',
+            '/analytics',
+            '/qa',
+            '/api/content',
+            '/api/cloudflare',
             '/api/support'
         ]
     }
@@ -229,6 +237,13 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     return response
 }
 
+function redirectWithResponseState(url: URL, source: NextResponse): NextResponse {
+    const redirect = addSecurityHeaders(NextResponse.redirect(url))
+
+    source.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
+    return redirect
+}
+
 /**
  * Main middleware function
  */
@@ -285,8 +300,9 @@ export async function middleware(request: NextRequest) {
             const rateLimit = checkRateLimit(`auth:${clientIP}`, RATE_LIMITS.auth)
 
             if (!rateLimit.allowed) {
-                return NextResponse.redirect(
-                    new URL(`/login?error=rate_limit&retry_after=${rateLimit.resetTime}`, request.url)
+                return redirectWithResponseState(
+                    new URL(`/login?error=rate_limit&retry_after=${rateLimit.resetTime}`, request.url),
+                    response
                 )
             }
         }
@@ -297,18 +313,20 @@ export async function middleware(request: NextRequest) {
         }
 
         // Create Supabase client for middleware
-        const supabase = createMiddlewareClient(request, response)
+        const supabase = createMiddlewareClient(request, response, (updatedResponse) => {
+            response = updatedResponse
+        })
 
-        // Get session with automatic token refresh
+        // Validate the current user and refresh auth cookies when needed.
         const {
-            data: { session },
-            error: sessionError
-        } = await supabase.auth.getSession()
+            data: { user },
+            error: userError
+        } = await supabase.auth.getUser()
 
-        if (sessionError) {
+        if (userError) {
             if (process.env.NODE_ENV === 'development') {
                 // eslint-disable-next-line no-console
-                console.error('Middleware session error:', sessionError)
+                console.error('Middleware user error:', userError)
             }
 
             // For API routes, let them handle authentication themselves
@@ -316,11 +334,14 @@ export async function middleware(request: NextRequest) {
                 return response
             }
 
-            return NextResponse.redirect(new URL('/login?error=session_error', request.url))
+            return redirectWithResponseState(
+                new URL('/login?error=session_error', request.url),
+                response
+            )
         }
 
-        // Handle missing session differently for API routes vs page routes
-        if (!session) {
+        // Handle a missing user differently for API routes vs page routes
+        if (!user) {
             // For API routes, let them handle authentication themselves
             if (pathname.startsWith('/api/')) {
                 return response
@@ -329,11 +350,11 @@ export async function middleware(request: NextRequest) {
             // For page routes, redirect to login
             const loginUrl = new URL('/login', request.url)
             loginUrl.searchParams.set('redirectTo', pathname)
-            return NextResponse.redirect(loginUrl)
+            return redirectWithResponseState(loginUrl, response)
         }
 
         // Get user profile with admin role (with caching)
-        const cacheKey = `profile:${session.user.id}`
+        const cacheKey = `profile:${user.id}`
         type ProfileData = { admin_role: string; full_name: string; last_login_at: string }
         let profile: ProfileData | null = null
 
@@ -347,7 +368,7 @@ export async function middleware(request: NextRequest) {
             const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('admin_role, full_name, last_login_at')
-                .eq('id', session.user.id)
+                .eq('id', user.id)
                 .single()
 
             if (profileError || !profileData) {
@@ -355,7 +376,10 @@ export async function middleware(request: NextRequest) {
                     // eslint-disable-next-line no-console
                     console.error('Middleware profile error:', profileError)
                 }
-                return NextResponse.redirect(new URL('/login?error=profile_error', request.url))
+                return redirectWithResponseState(
+                    new URL('/login?error=profile_error', request.url),
+                    response
+                )
             }
 
             profile = profileData
@@ -371,7 +395,10 @@ export async function middleware(request: NextRequest) {
 
         // Check if user has admin role
         if (!profile.admin_role) {
-            return NextResponse.redirect(new URL('/login?error=access_denied', request.url))
+            return redirectWithResponseState(
+                new URL('/login?error=access_denied', request.url),
+                response
+            )
         }
 
         // Check role-based route access (skip for API routes - they handle their own auth)
@@ -383,16 +410,19 @@ export async function middleware(request: NextRequest) {
                     allowedRoutes: ROUTE_CONFIG.roleAccess[profile.admin_role as AdminRole]
                 })
             }
-            return NextResponse.redirect(new URL('/dashboard?error=insufficient_permissions', request.url))
+            return redirectWithResponseState(
+                new URL('/dashboard?error=insufficient_permissions', request.url),
+                response
+            )
         }
 
         // Add user info to request headers for pages/API routes
-        response.headers.set('X-User-ID', session.user.id)
+        response.headers.set('X-User-ID', user.id)
         response.headers.set('X-User-Role', profile.admin_role)
-        response.headers.set('X-User-Email', session.user.email || '')
+        response.headers.set('X-User-Email', user.email || '')
 
         // Update last activity timestamp (throttled to prevent too many updates)
-        const lastActivityKey = `activity:${session.user.id}`
+        const lastActivityKey = `activity:${user.id}`
         const lastActivity = profileCache.get(lastActivityKey)
 
         if (!lastActivity || Date.now() - lastActivity.expires > 5 * 60 * 1000) {
@@ -402,7 +432,7 @@ export async function middleware(request: NextRequest) {
                     await supabase
                         .from('profiles')
                         .update({ last_activity_at: new Date().toISOString() })
-                        .eq('id', session.user.id)
+                        .eq('id', user.id)
 
                     profileCache.set(lastActivityKey, {
                         data: profile,
@@ -436,7 +466,10 @@ export async function middleware(request: NextRequest) {
                     }
                 }
 
-                return NextResponse.redirect(new URL('/login?error=session_expired', request.url))
+                return redirectWithResponseState(
+                    new URL('/login?error=session_expired', request.url),
+                    response
+                )
             }
         }
 
@@ -470,4 +503,4 @@ export const config = {
          */
         '/((?!_next/static|_next/image|favicon.ico|public/|_vercel|ingest/).*)',
     ],
-} 
+}

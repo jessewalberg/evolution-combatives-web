@@ -424,7 +424,7 @@ export default function CategoriesPage() {
             } else {
                 createMutation.mutate(categoryData)
             }
-        } catch (error) {
+        } catch {
             toast.error('An unexpected error occurred')
         }
     }
@@ -790,4 +790,4 @@ export default function CategoriesPage() {
 
         </div>
     )
-} 
+}

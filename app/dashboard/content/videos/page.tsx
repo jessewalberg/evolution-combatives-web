@@ -629,9 +629,9 @@ export default function VideoLibraryPage() {
                                 >
                                     <option value="">All Tiers</option>
                                     <option value="none">Free Content</option>
-                                    <option value="tier1">Tier 1 ($9)</option>
-                                    <option value="tier2">Tier 2 ($19)</option>
-                                    <option value="tier3">Tier 3 ($49)</option>
+                                    <option value="tier1">Tier 1 ($19)</option>
+                                    <option value="tier2">Tier 2 ($29)</option>
+                                    <option value="tier3">Tier 3 ($39)</option>
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
                                     <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -762,4 +762,4 @@ export default function VideoLibraryPage() {
             </div>
         </div>
     )
-} 
+}

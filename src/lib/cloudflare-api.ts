@@ -61,7 +61,7 @@ export class CloudflareApiClient {
         let result: CloudflareApiResponse<T>
         try {
             result = JSON.parse(responseText)
-        } catch (parseError) {
+        } catch {
             throw new Error(`Cloudflare API returned non-JSON response: ${responseText.substring(0, 200)}`)
         }
 
@@ -87,7 +87,7 @@ export class CloudflareApiClient {
             const retryResponseText = await retryResponse.text()
             try {
                 result = JSON.parse(retryResponseText)
-            } catch (parseError) {
+            } catch {
                 throw new Error(`Cloudflare API returned non-JSON response on retry: ${retryResponseText.substring(0, 200)}`)
             }
         }

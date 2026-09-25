@@ -312,7 +312,7 @@ export default function AnalyticsPage() {
             } else {
                 toast.success(`Analytics data exported to ${format.toUpperCase()} successfully`)
             }
-        } catch (error) {
+        } catch {
             toast.error('Export failed. Please try again.')
         } finally {
             setIsExporting(false)

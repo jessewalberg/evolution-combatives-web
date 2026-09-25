@@ -1,4 +1,4 @@
-name: Unit Tests
+name: Quality Gates
 
 on:
   pull_request:
@@ -11,10 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  vitest:
-    name: Vitest Coverage
+  quality:
+    name: Lint, Types, Tests, and Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -34,8 +34,38 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm type-check
+
       - name: Run unit tests with coverage
         run: pnpm test:coverage
+
+      - name: Build production application
+        run: pnpm build
+        # Build-time placeholders are scoped to this step so unit tests can
+        # exercise their missing-credential branches deterministically.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+          STRIPE_BEGINNER_PRICE_ID: price_ci_beginner
+          STRIPE_INTERMEDIATE_PRICE_ID: price_ci_intermediate
+          STRIPE_ADVANCED_PRICE_ID: price_ci_advanced
+          CLOUDFLARE_ACCOUNT_ID: ci-cloudflare-account
+          CLOUDFLARE_API_TOKEN: ci-cloudflare-token
+          CLOUDFLARE_CUSTOMER_SUBDOMAIN: customer-ci.example.com
+          CLOUDFLARE_STREAM_SIGNING_KEY_ID: ci-signing-key-id
+          CLOUDFLARE_STREAM_SIGNING_KEY: ci-signing-key
+          CLOUDFLARE_STREAM_WEBHOOK_SECRET: ci-stream-webhook-secret
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_PUBLIC_ADMIN_URL: http://localhost:3000
+          NEXT_PUBLIC_MOBILE_APP_SCHEME: evolutioncombatives
+          MOBILE_APP_SCHEMES: evolutioncombatives,evolutioncombatives-dev,evolutioncombatives-staging,evolutioncombatives-preview,evolutioncombatives-testflight
 
       - name: Upload coverage report
         if: always()

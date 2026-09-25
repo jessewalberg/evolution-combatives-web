@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { afterEach, describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { POST } from './route'
 
@@ -19,8 +19,13 @@ vi.mock('../../../../src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
+vi.mock('../../../../src/lib/api-auth', () => ({
+  validateApiAuthWithSession: vi.fn(),
+}))
+
 import { stripe } from '../../../../src/lib/stripe'
 import { createAdminClient } from '../../../../src/lib/supabase'
+import { validateApiAuthWithSession } from '../../../../src/lib/api-auth'
 
 const mockStripe = vi.mocked(stripe)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
@@ -28,15 +33,52 @@ const mockSubscriptionsRetrieve = mockStripe.subscriptions.retrieve as unknown a
 const mockSubscriptionsList = mockStripe.subscriptions.list as unknown as Mock
 const mockCustomersList = mockStripe.customers.list as unknown as Mock
 const mockCustomersRetrieve = mockStripe.customers.retrieve as unknown as Mock
+const mockValidateApiAuthWithSession = vi.mocked(validateApiAuthWithSession)
 
-/**
- * Current behavior: this debug endpoint has NO auth check in the handler.
- * It proceeds directly to business logic when given valid input.
- */
 describe('POST /api/debug/sync-subscription', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv('NODE_ENV', 'test')
+    mockValidateApiAuthWithSession.mockResolvedValue({
+      user: { userId: 'admin-1', role: 'super_admin', email: 'admin@example.com' },
+    })
+  })
 
-  it('does not enforce auth middleware - proceeds to Stripe lookup', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('is unavailable in production before any authentication or Stripe work', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const res = await POST(
+      createNextRequest('/api/debug/sync-subscription', {
+        method: 'POST',
+        body: JSON.stringify({ stripeSubscriptionId: 'sub_123' }),
+      })
+    )
+
+    expect(res.status).toBe(404)
+    expect(mockValidateApiAuthWithSession).not.toHaveBeenCalled()
+    expect(mockSubscriptionsRetrieve).not.toHaveBeenCalled()
+  })
+
+  it('requires a super-admin session outside production', async () => {
+    mockValidateApiAuthWithSession.mockResolvedValue({
+      error: Response.json({ success: false, error: 'Authentication required' }, { status: 401 }),
+    })
+    const res = await POST(
+      createNextRequest('/api/debug/sync-subscription', {
+        method: 'POST',
+        body: JSON.stringify({ stripeSubscriptionId: 'sub_123' }),
+      })
+    )
+
+    expect(res.status).toBe(401)
+    expect(mockValidateApiAuthWithSession).toHaveBeenCalledWith('admin.all')
+    expect(mockSubscriptionsRetrieve).not.toHaveBeenCalled()
+  })
+
+  it('allows an authenticated super admin to proceed to Stripe lookup', async () => {
     mockSubscriptionsRetrieve.mockResolvedValue({
       id: 'sub_123',
       status: 'active',
@@ -94,8 +136,6 @@ describe('POST /api/debug/sync-subscription', () => {
     )
     const body = await res.json()
 
-    // Not 401 - handler has no auth gate
-    expect(res.status).not.toBe(401)
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.message).toBe('Subscription synced successfully')

@@ -49,7 +49,7 @@ import { PlusIcon } from 'lucide-react'
 /**
  * Admin user roles for navigation visibility
  */
-type AdminRole = 'super_admin' | 'content_admin' | 'support_admin'
+type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin'
 
 /**
  * Navigation item interface
@@ -73,31 +73,31 @@ const navigation: NavItem[] = [
         name: 'Dashboard',
         href: ROUTES.DASHBOARD.HOME,
         icon: HomeIcon,
-        roles: ['super_admin', 'content_admin', 'support_admin'],
+        roles: ['super_admin', 'content_admin', 'support_admin', 'content_support_admin'],
     },
     {
         name: 'Content',
         href: ROUTES.DASHBOARD.CONTENT.VIDEOS,
         icon: PlayIcon,
-        roles: ['super_admin', 'content_admin'],
+        roles: ['super_admin', 'content_admin', 'content_support_admin'],
         children: [
             {
                 name: 'Videos',
                 href: ROUTES.DASHBOARD.CONTENT.VIDEOS,
                 icon: VideoCameraIcon,
-                roles: ['super_admin', 'content_admin'],
+                roles: ['super_admin', 'content_admin', 'content_support_admin'],
             },
             {
                 name: 'Categories',
                 href: ROUTES.DASHBOARD.CONTENT.CATEGORIES,
                 icon: DocumentTextIcon,
-                roles: ['super_admin', 'content_admin'],
+                roles: ['super_admin', 'content_admin', 'content_support_admin'],
             },
             {
                 name: 'Disciplines',
                 href: ROUTES.DASHBOARD.CONTENT.DISCIPLINES,
                 icon: DocumentTextIcon,
-                roles: ['super_admin', 'content_admin'],
+                roles: ['super_admin', 'content_admin', 'content_support_admin'],
             },
         ],
     },
@@ -105,13 +105,13 @@ const navigation: NavItem[] = [
         name: 'Users',
         href: ROUTES.USERS.LIST,
         icon: UsersIcon,
-        roles: ['super_admin', 'support_admin'],
+        roles: ['super_admin', 'support_admin', 'content_support_admin'],
     },
     {
         name: 'Analytics',
         href: ROUTES.ANALYTICS.HOME,
         icon: ChartBarIcon,
-        roles: ['super_admin', 'content_admin'],
+        roles: ['super_admin', 'content_admin', 'content_support_admin'],
         disabled: true,
         comingSoon: true,
     },
@@ -120,7 +120,7 @@ const navigation: NavItem[] = [
         href: ROUTES.QA.LIST,
         icon: ChatBubbleLeftRightIcon,
         badge: 5, // Example notification count
-        roles: ['super_admin', 'support_admin'],
+        roles: ['super_admin', 'support_admin', 'content_support_admin'],
         disabled: true,
         comingSoon: true,
     },

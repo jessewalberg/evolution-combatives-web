@@ -1,158 +1,111 @@
 /**
- * Evolution Combatives - Create Stripe Checkout Session API
- * Handles creation of Stripe checkout sessions for subscription payments
- * 
- * @description Secure API endpoint for initiating subscription payments
- * @author Evolution Combatives
+ * Browser checkout endpoint. Identity is derived exclusively from the verified
+ * Supabase cookie session; request bodies cannot select another user/customer.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
-import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers';
-import { createAdminClient } from '@/src/lib/supabase';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
+import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers'
+import { createServerClient } from '@/src/lib/supabase'
 
-// Request validation schema
-const CreateCheckoutSchema = z.object({
-    tier: z.enum(['none', 'tier1', 'tier2', 'tier3']),
-    userId: z.string().uuid(),
-    userEmail: z.string().email(),
-    successUrl: z.string().url().optional(),
-    cancelUrl: z.string().url().optional(),
-});
+const CreateCheckoutSchema = z
+    .object({
+        tier: z.enum(['tier1', 'tier2', 'tier3']),
+    })
+    .strict()
 
 export async function POST(request: NextRequest) {
-    let tier, userId, userEmail;
     try {
-        const body = await request.json();
-        const validatedData = CreateCheckoutSchema.parse(body);
+        const validated = CreateCheckoutSchema.parse(await request.json())
+        const supabase = await createServerClient()
+        const {
+            data: { user },
+            error: authError,
+        } = await supabase.auth.getUser()
 
-        ({ tier, userId, userEmail } = validatedData);
-        const { successUrl, cancelUrl } = validatedData;
-
-        // Verify user exists and is authenticated
-        const supabase = createAdminClient();
-        const { data: user, error: userError } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .eq('id', userId)
-            .single();
-
-        if (userError || !user) {
+        if (authError || !user?.id || !user.email) {
             return NextResponse.json(
-                { error: 'User not found or not authenticated' },
+                { error: 'Authentication required' },
                 { status: 401 }
-            );
+            )
         }
 
-        // Verify email matches
-        if (user.email !== userEmail) {
-            return NextResponse.json(
-                { error: 'Email mismatch' },
-                { status: 400 }
-            );
-        }
+        const { data: existingSubscription, error: subscriptionError } =
+            await supabase
+                .from('subscriptions')
+                .select('id, status, tier')
+                .eq('user_id', user.id)
+                .in('status', ['active', 'trialing'])
+                .limit(1)
+                .maybeSingle()
 
-        // Check if user already has an active subscription
-        const { data: existingSubscription } = await supabase
-            .from('subscriptions')
-            .select('id, status, tier')
-            .eq('user_id', userId)
-            .eq('status', 'active')
-            .single();
+        if (subscriptionError) {
+            throw new Error('Unable to verify subscription state')
+        }
 
         if (existingSubscription) {
             return NextResponse.json(
                 {
                     error: 'User already has an active subscription',
-                    currentTier: existingSubscription.tier
+                    currentTier: existingSubscription.tier,
                 },
-                { status: 400 }
-            );
+                { status: 409 }
+            )
         }
 
-        // Get Stripe price ID for the tier
-        const priceId = SUBSCRIPTION_PRICING[tier].stripePriceId;
-        if (!priceId) {
+        const pricing = SUBSCRIPTION_PRICING[validated.tier]
+        if (!pricing?.stripePriceId) {
             return NextResponse.json(
-                { error: `Price ID not configured for tier: ${tier}` },
-                { status: 500 }
-            );
+                { error: `Price ID not configured for tier: ${validated.tier}` },
+                { status: 503 }
+            )
         }
 
-        // Get or create Stripe customer
-        const customer = await getOrCreateCustomer(userEmail, userId);
+        const customer = await getOrCreateCustomer(user.email, user.id)
+        const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
+        const origin =
+            configuredOrigin ||
+            (process.env.NODE_ENV === 'production'
+                ? 'https://www.evolutioncombatives.com'
+                : request.nextUrl.origin)
 
-        // Default URLs - redirect back to mobile app
-        const defaultSuccessUrl = successUrl || `${process.env.NEXT_PUBLIC_MOBILE_APP_SCHEME}://subscription/success?tier=${tier}`;
-        const defaultCancelUrl = cancelUrl || `${process.env.NEXT_PUBLIC_MOBILE_APP_SCHEME}://subscription/cancel`;
-
-        // Create checkout session
         const session = await createCheckoutSession({
-            priceId,
+            priceId: pricing.stripePriceId,
             customerId: customer.id,
-            userId,
-            tier,
-            successUrl: defaultSuccessUrl,
-            cancelUrl: defaultCancelUrl,
-        });
-
-        // Log the checkout session creation
-        console.log('✅ Checkout session created successfully:', {
-            userId,
-            tier,
-            sessionId: session.id,
-            url: session.url,
-            customerEmail: session.customer_details?.email || userEmail,
-            timestamp: new Date().toISOString()
-        });
+            userId: user.id,
+            tier: validated.tier,
+            successUrl: `${origin}/subscription-success?session_id={CHECKOUT_SESSION_ID}&tier=${validated.tier}`,
+            cancelUrl: `${origin}/subscription-cancel`,
+        })
 
         return NextResponse.json({
             sessionId: session.id,
             url: session.url,
-            tier,
-            price: SUBSCRIPTION_PRICING[tier].monthly,
-        });
-
+            tier: validated.tier,
+            price: pricing.monthly,
+        })
     } catch (error) {
-        console.error('❌ Error creating checkout session:', {
-            error: error instanceof Error ? error.message : error,
-            stack: error instanceof Error ? error.stack : undefined,
-            requestBody: { tier, userId, userEmail },
-            timestamp: new Date().toISOString()
-        });
-
-        // Handle validation errors
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                {
-                    error: 'Invalid request data',
-                    details: error.errors
-                },
+                { error: 'Invalid request data', details: error.errors },
                 { status: 400 }
-            );
+            )
         }
 
-        // Handle Stripe errors
-        if (error instanceof Error && error.message.includes('Stripe')) {
-            return NextResponse.json(
-                { error: 'Payment processing error' },
-                { status: 500 }
-            );
-        }
-
+        console.error('Checkout creation failed', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+        })
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: 'Unable to create checkout session' },
             { status: 500 }
-        );
+        )
     }
 }
 
-// Health check endpoint
 export async function GET() {
     return NextResponse.json({
         status: 'ok',
         service: 'checkout-session-creation',
-        timestamp: new Date().toISOString(),
-    });
+    })
 }

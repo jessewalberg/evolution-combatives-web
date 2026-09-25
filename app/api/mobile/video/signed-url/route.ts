@@ -1,230 +1,170 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { authenticateMobileBearer } from '../../../../../src/lib/mobile-auth'
+import {
+    SUBSCRIPTION_TIER_HIERARCHY,
+    type SubscriptionTier,
+} from '../../../../../src/lib/shared/constants/subscriptionTiers'
 
-// Use exact subscription tiers from .cursorrules
-type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
+const SignedUrlRequestSchema = z
+    .object({
+        videoId: z.string().uuid(),
+        format: z.enum(['hls', 'mp4']).default('hls'),
+    })
+    .strict()
 
-async function validateMobileAppAuth(request: NextRequest) {
-    try {
-        const authHeader = request.headers.get('Authorization')
-        const mobileClient = request.headers.get('X-Mobile-Client')
-        const userAgent = request.headers.get('User-Agent')
-
-        console.log('🔐 [Mobile API] Auth Debug:', {
-            hasAuthHeader: !!authHeader,
-            authHeaderStart: authHeader?.substring(0, 20) + '...',
-            headerLength: authHeader?.length,
-            mobileClient,
-            userAgent
-        });
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'Bearer token required for mobile API' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        // Verify this is actually a mobile client request
-        if (!mobileClient || !userAgent?.includes('EvolutionCombatives-Mobile')) {
-            console.warn('🚨 [Mobile API] Non-mobile client accessing mobile endpoint:', {
-                mobileClient,
-                userAgent
-            });
-            // Allow it but log the warning
-        }
-
-        const token = authHeader.replace('Bearer ', '')
-
-        // Create Supabase client with the provided JWT token
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                global: {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            }
-        )
-
-        // Verify the user with the token
-        const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-
-        console.log('🔐 [Mobile API] User Validation Result:', {
-            hasUser: !!user,
-            userId: user?.id,
-            userEmail: user?.email,
-            hasError: !!userError,
-            errorMessage: userError?.message
-        });
-
-        if (userError || !user) {
-            console.error('❌ [Mobile API] User validation failed:', userError);
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'Invalid authentication token' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        console.log('✅ [Mobile API] User authenticated successfully:', user.email);
-        return { user, supabase }
-    } catch (error) {
-        console.error('[Mobile API] Auth validation error:', error)
-        return {
-            error: NextResponse.json(
-                { success: false, error: 'Authentication failed' },
-                { status: 500 }
-            )
-        }
-    }
+const SIGNED_URL_TTL_SECONDS: Record<SubscriptionTier, number> = {
+    none: 30 * 60,
+    tier1: 2 * 60 * 60,
+    tier2: 8 * 60 * 60,
+    tier3: 24 * 60 * 60,
 }
 
+const isSubscriptionTier = (value: unknown): value is SubscriptionTier =>
+    typeof value === 'string' && value in SUBSCRIPTION_TIER_HIERARCHY
+
+const errorResponse = (status: number, error: string) =>
+    NextResponse.json({ success: false, error }, { status })
+
 /**
- * Mobile-specific video API endpoint
- * This endpoint bypasses CSRF protection since mobile apps use Bearer token auth
- * and are not subject to CSRF attacks like web browsers
+ * Generate a signed playback URL for a published application video.
+ * Identity, content metadata, and entitlement are all resolved server-side.
  */
 export async function POST(request: NextRequest) {
-    console.log('📱 [Mobile API] Incoming video request');
+    const authResult = await authenticateMobileBearer(request)
+    if ('error' in authResult) return authResult.error
 
-    const authResult = await validateMobileAppAuth(request)
-    if ('error' in authResult) {
-        return authResult.error
+    let requestData: z.infer<typeof SignedUrlRequestSchema>
+    try {
+        requestData = SignedUrlRequestSchema.parse(await request.json())
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return errorResponse(400, 'Invalid request data')
+        }
+        return errorResponse(400, 'Invalid JSON body')
     }
 
-    const { user } = authResult
+    const { user, supabase } = authResult.data
+    const { videoId, format } = requestData
 
-    let videoId: string | undefined;
+    const { data: video, error: videoError } = await supabase
+        .from('videos')
+        .select(
+            'id, cloudflare_video_id, duration_seconds, thumbnail_url, tier_required, processing_status, is_published'
+        )
+        .eq('id', videoId)
+        .maybeSingle()
+
+    if (videoError) {
+        return errorResponse(500, 'Unable to verify video access')
+    }
+
+    if (!video || !video.is_published) {
+        return errorResponse(404, 'Video not found')
+    }
+
+    if (video.processing_status !== 'ready' || !video.cloudflare_video_id) {
+        return errorResponse(409, 'Video is not ready for playback')
+    }
+
+    if (!isSubscriptionTier(video.tier_required)) {
+        return errorResponse(500, 'Video entitlement is not configured')
+    }
+
+    const { data: subscription, error: subscriptionError } = await supabase
+        .from('subscriptions')
+        .select('tier, status, current_period_end, created_at')
+        .eq('user_id', user.id)
+        .in('status', ['active', 'trialing'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (subscriptionError) {
+        return errorResponse(500, 'Unable to verify subscription access')
+    }
+
+    const periodIsCurrent =
+        !subscription?.current_period_end ||
+        new Date(subscription.current_period_end).getTime() > Date.now()
+    const userTier =
+        subscription &&
+        periodIsCurrent &&
+        isSubscriptionTier(subscription.tier)
+            ? subscription.tier
+            : 'none'
+
+    if (
+        SUBSCRIPTION_TIER_HIERARCHY[userTier] <
+        SUBSCRIPTION_TIER_HIERARCHY[video.tier_required]
+    ) {
+        return errorResponse(403, 'Subscription tier does not permit this video')
+    }
+
+    // Offline/download access begins at tier 2, regardless of the video's tier.
+    if (
+        format === 'mp4' &&
+        SUBSCRIPTION_TIER_HIERARCHY[userTier] <
+            SUBSCRIPTION_TIER_HIERARCHY.tier2
+    ) {
+        return errorResponse(403, 'Subscription tier does not permit downloads')
+    }
+
+    if (
+        !process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID ||
+        !process.env.CLOUDFLARE_STREAM_SIGNING_KEY
+    ) {
+        return errorResponse(503, 'Secure video playback is not configured')
+    }
 
     try {
-        // Import videoManagement inside the function to avoid environment variable issues
-        const { videoManagement } = await import('../../../../../src/services/cloudflare-stream')
-        const requestBody = await request.json()
-        const { videoId: requestVideoId, subscriptionTier = 'tier1', format = 'hls' } = requestBody
-        videoId = requestVideoId; // Store for error handling
+        const { videoManagement } = await import(
+            '../../../../../src/services/cloudflare-stream'
+        )
+        const cloudflareVideoId = video.cloudflare_video_id
+        const details = await videoManagement.getVideoDetails(cloudflareVideoId)
 
-        if (!videoId) {
-            return NextResponse.json(
-                { success: false, error: 'Video ID is required' },
-                { status: 400 }
-            )
+        if (!details.readyToStream || details.status.state !== 'ready') {
+            return errorResponse(409, 'Video is not ready for playback')
         }
 
-        console.log('🎥 [Mobile API] Generating signed URL:', {
-            videoId,
-            subscriptionTier,
-            format,
-            userId: user.id,
-            userEmail: user.email
-        });
-
-        // First, verify the video exists in Cloudflare Stream
-        try {
-            const videoDetails = await videoManagement.getVideoDetails(videoId);
-            console.log('🎥 [Mobile API] Video exists in Cloudflare Stream:', {
-                videoId,
-                status: videoDetails.status,
-                duration: videoDetails.duration,
-                readyToStream: videoDetails.readyToStream
-            });
-        } catch (error) {
-            console.error('❌ [Mobile API] Video not found in Cloudflare Stream:', error);
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'Video not found in Cloudflare Stream',
-                    details: `Video ${videoId} does not exist in Cloudflare Stream or is not accessible.`,
-                    videoId: videoId
-                },
-                { status: 404 }
-            );
+        if (!details.requireSignedURLs) {
+            await videoManagement.updateVideoSettings(cloudflareVideoId, {
+                requireSignedURLs: true,
+            })
         }
 
-        // Generate signed URL with appropriate expiration based on subscription tier
+        const expiresAtSeconds =
+            Math.floor(Date.now() / 1000) + SIGNED_URL_TTL_SECONDS[userTier]
         const signedUrl = await videoManagement.generateSignedUrl(
-            videoId,
-            subscriptionTier as SubscriptionTier,
+            cloudflareVideoId,
+            userTier,
             {
-                downloadable: format === 'mp4', // Enable download for MP4 format
-                // Set expiration based on subscription tier
-                exp: Math.floor(Date.now() / 1000) + (
-                    subscriptionTier === 'none' ? 30 * 60 : // 30 minutes for free
-                        subscriptionTier === 'tier1' ? 2 * 60 * 60 : // 2 hours for tier1
-                            subscriptionTier === 'tier2' ? 8 * 60 * 60 : // 8 hours for tier2
-                                24 * 60 * 60 // 24 hours for tier3
-                )
+                downloadable: format === 'mp4',
+                exp: expiresAtSeconds,
             },
-            format as 'hls' | 'mp4' // Pass format to the service
+            format
         )
 
-        console.log('🎥 [Mobile API] Generated signed URL:', {
-            url: signedUrl,
-            urlLength: signedUrl.length,
-            hasToken: signedUrl.includes('token='),
-            tokenPreview: signedUrl.split('token=')[1]?.substring(0, 50) + '...'
-        });
-
-        // Test the signed URL by fetching it
-        try {
-            console.log('🧪 [Mobile API] Testing signed URL accessibility...');
-            const testResponse = await fetch(signedUrl, { method: 'HEAD' });
-            console.log('🧪 [Mobile API] URL test result:', {
-                status: testResponse.status,
-                statusText: testResponse.statusText,
-                contentType: testResponse.headers.get('content-type'),
-                accessible: testResponse.ok
-            });
-        } catch (testError) {
-            console.error('🧪 [Mobile API] URL test failed:', testError);
+        const parsedUrl = new URL(signedUrl)
+        if (
+            parsedUrl.protocol !== 'https:' ||
+            !parsedUrl.searchParams.has('token')
+        ) {
+            throw new Error('Cloudflare returned an unsigned playback URL')
         }
 
-        // Get video metadata for additional info
-        const videoDetails = await videoManagement.getVideoDetails(videoId)
-
-        const response = {
+        return NextResponse.json({
             success: true,
             data: {
                 signed_url: signedUrl,
-                video_id: videoId,
-                duration: videoDetails.duration || 0,
-                thumbnail_url: videoDetails.thumbnail || null,
-                expires_at: new Date(Date.now() + (subscriptionTier === 'tier1' ? 2 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)).toISOString()
-            }
-        };
-
-        console.log('✅ [Mobile API] Successfully generated video response for user:', user.email);
-
-        return NextResponse.json(response)
-
-    } catch (error) {
-        console.error('[Mobile API] Error generating signed video URL:', error)
-
-        // Handle specific Cloudflare Stream errors
-        if (error instanceof Error && error.message.includes('Not Found')) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'Video not found',
-                    details: `Video ${videoId || 'unknown'} does not exist in Cloudflare Stream. This may be a development/test video that hasn't been uploaded yet.`,
-                    videoId: videoId
-                },
-                { status: 404 }
-            )
-        }
-
-        return NextResponse.json(
-            {
-                success: false,
-                error: 'Failed to generate signed video URL',
-                details: error instanceof Error ? error.message : 'Unknown error'
+                video_id: video.id,
+                duration: details.duration ?? video.duration_seconds ?? 0,
+                thumbnail_url: details.thumbnail || video.thumbnail_url || null,
+                expires_at: new Date(expiresAtSeconds * 1000).toISOString(),
             },
-            { status: 500 }
-        )
+        })
+    } catch {
+        return errorResponse(502, 'Secure video playback is temporarily unavailable')
     }
 }

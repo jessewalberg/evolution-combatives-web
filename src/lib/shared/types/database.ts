@@ -18,7 +18,7 @@ export interface Database {
                     department: string | null;
                     rank: string | null;
                     avatar_url: string | null;
-                    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null;
+                    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null;
                     is_active: boolean;
                     last_login_at: string | null;
                     created_at: string;
@@ -32,7 +32,7 @@ export interface Database {
                     department?: string | null;
                     rank?: string | null;
                     avatar_url?: string | null;
-                    admin_role?: 'super_admin' | 'content_admin' | 'support_admin' | null;
+                    admin_role?: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null;
                     is_active?: boolean;
                     last_login_at?: string | null;
                 };
@@ -44,7 +44,7 @@ export interface Database {
                     department?: string | null;
                     rank?: string | null;
                     avatar_url?: string | null;
-                    admin_role?: 'super_admin' | 'content_admin' | 'support_admin' | null;
+                    admin_role?: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null;
                     is_active?: boolean;
                     last_login_at?: string | null;
                     updated_at?: string;
@@ -399,7 +399,7 @@ export interface Database {
         };
         Enums: {
             subscription_tier: 'tier1' | 'tier2' | 'tier3';
-            admin_role: 'super_admin' | 'content_admin' | 'support_admin';
+            admin_role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin';
             subscription_status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
             video_difficulty: 'none' | 'tier1' | 'tier2' | 'tier3';
             processing_status: 'uploading' | 'processing' | 'ready' | 'error';
@@ -418,7 +418,7 @@ export type Enums<T extends keyof Database['public']['Enums']> = Database['publi
 
 // Use database enum for subscription tiers to match the database schema
 export type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
-export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin';
+export type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin';
 export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'trialing' | 'unpaid';
 export type VideoDifficulty = 'none' | 'tier1' | 'tier2' | 'tier3';
 export type ProcessingStatus = 'uploading' | 'processing' | 'ready' | 'error';
@@ -512,11 +512,17 @@ export const ADMIN_PERMISSIONS = {
     content_admin: [
         'manage_content',
         'view_analytics',
-        'moderate_questions',
     ],
     support_admin: [
         'manage_users',
         'manage_subscriptions',
+        'moderate_questions',
+    ],
+    content_support_admin: [
+        'manage_users',
+        'manage_subscriptions',
+        'manage_content',
+        'view_analytics',
         'moderate_questions',
     ],
 } as const;

@@ -1,367 +1,468 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
 import crypto from 'crypto'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
-import { POST } from './route'
-
-const WEBHOOK_SECRET = 'test-stream-webhook-secret'
-
-vi.mock('next/headers', () => ({
-  headers: vi.fn(),
-}))
+import { createFakeSupabaseClient } from '@/test/mocks/supabase'
 
 vi.mock('../../../../src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-import { headers } from 'next/headers'
 import { createAdminClient } from '../../../../src/lib/supabase'
+import {
+  DELETE,
+  GET,
+  POST,
+  PUT,
+} from './route'
+import { verifyCloudflareWebhookSignature } from './signature'
 
-const mockHeaders = vi.mocked(headers)
+const WEBHOOK_SECRET = 'test-stream-webhook-secret'
+const NOW_SECONDS = 1_800_000_000
+const THUMBNAIL_URL =
+  'https://customer.example.cloudflarestream.com/cf-video-1/thumbnails/thumbnail.jpg'
+
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
-function signPayload(payload: string, secret = WEBHOOK_SECRET) {
-  const digest = crypto.createHmac('sha256', secret).update(payload).digest('hex')
-  return `sha256=${digest}`
-}
-
-function buildEvent(overrides: Record<string, unknown> = {}) {
+function buildPayload(overrides: Record<string, unknown> = {}) {
   return {
-    eventId: 'evt-1',
-    eventTimestamp: new Date().toISOString(),
-    eventType: 'video.ready',
     uid: 'cf-video-1',
-    duration: 120,
-    input: { width: 1920, height: 1080 },
-    playback: { hls: 'https://hls', dash: 'https://dash' },
-    thumbnail: 'https://thumb',
-    preview: 'https://preview',
+    readyToStream: true,
+    status: {
+      state: 'ready',
+      pctComplete: '100.000000',
+      errorReasonCode: '',
+      errorReasonText: '',
+    },
+    meta: { name: 'Test video' },
+    created: '2026-08-18T12:00:00.000Z',
+    modified: '2026-08-18T12:02:00.000Z',
+    duration: 120.4,
     size: 1024,
+    thumbnail: THUMBNAIL_URL,
+    playback: {
+      hls: 'https://customer.example.cloudflarestream.com/cf-video-1/manifest/video.m3u8',
+      dash: 'https://customer.example.cloudflarestream.com/cf-video-1/manifest/video.mpd',
+    },
+    input: { width: 1920, height: 1080 },
     ...overrides,
   }
 }
 
-function buildSupabase(videoFound = true) {
-  const updateEq = vi.fn().mockResolvedValue({ error: null })
-  const update = vi.fn().mockReturnValue({ eq: updateEq })
-  const videoSingle = vi.fn().mockResolvedValue({
-    data: videoFound
-      ? { id: 'db-video-1', title: 'Test Video', cloudflare_video_id: 'cf-video-1' }
-      : null,
-    error: videoFound ? null : { message: 'not found' },
-  })
+function signPayload(
+  rawBody: string,
+  timestamp = NOW_SECONDS,
+  secret = WEBHOOK_SECRET
+) {
+  const digest = crypto
+    .createHmac('sha256', secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex')
 
-  const from = vi.fn((table: string) => {
-    if (table === 'videos') {
-      return {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({ single: videoSingle }),
-        }),
-        update,
-      }
-    }
-    if (table === 'profiles') {
-      return {
-        select: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({
-            data: [{ id: 'admin-1', email: 'admin@test.com', admin_role: 'super_admin' }],
-            error: null,
-          }),
-        }),
-      }
-    }
-    if (table === 'notifications' || table === 'system_logs' || table === 'webhook_logs') {
-      return {
-        insert: vi.fn().mockResolvedValue({ error: null }),
-      }
-    }
-    return {}
-  })
-
-  return { from, update, updateEq }
+  return `time=${timestamp},sig1=${digest}`
 }
 
+function requestFor(
+  rawBody: string,
+  signature = signPayload(rawBody),
+  extraHeaders: Record<string, string> = {}
+) {
+  return createNextRequest('/api/webhooks/cloudflare', {
+    method: 'POST',
+    headers: {
+      'Webhook-Signature': signature,
+      ...extraHeaders,
+    },
+    body: rawBody,
+  })
+}
+
+function storedVideo(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'db-video-1',
+    processing_status: 'processing',
+    is_published: false,
+    duration_seconds: 0,
+    thumbnail_url: null,
+    file_size: null,
+    ...overrides,
+  }
+}
+
+describe('Cloudflare Stream signature verification', () => {
+  it('accepts the official time.body HMAC contract without normalizing the body', () => {
+    const rawBody = `${JSON.stringify(buildPayload())}\n`
+
+    expect(
+      verifyCloudflareWebhookSignature(
+        rawBody,
+        signPayload(rawBody),
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: true, timestamp: NOW_SECONDS })
+
+    expect(
+      verifyCloudflareWebhookSignature(
+        rawBody.trim(),
+        signPayload(rawBody),
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: false, reason: 'mismatch' })
+  })
+
+  it('supports key rotation headers containing more than one sig1 value', () => {
+    const rawBody = JSON.stringify(buildPayload())
+    const valid = signPayload(rawBody).split('sig1=')[1]
+    const header = `time=${NOW_SECONDS},sig1=${'0'.repeat(64)},sig1=${valid}`
+
+    expect(
+      verifyCloudflareWebhookSignature(
+        rawBody,
+        header,
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: true, timestamp: NOW_SECONDS })
+  })
+
+  it.each([
+    [null, 'missing'],
+    ['', 'missing'],
+    [`sig1=${'0'.repeat(64)}`, 'malformed'],
+    [`time=${NOW_SECONDS}`, 'malformed'],
+    [`time=${NOW_SECONDS},time=${NOW_SECONDS},sig1=${'0'.repeat(64)}`, 'malformed'],
+    [`time=not-a-number,sig1=${'0'.repeat(64)}`, 'malformed'],
+    [`time=${NOW_SECONDS},sig1=not-hex`, 'mismatch'],
+  ])('rejects an invalid header %#', (header, reason) => {
+    expect(
+      verifyCloudflareWebhookSignature(
+        '{}',
+        header,
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: false, reason })
+  })
+
+  it('rejects stale and implausibly future timestamps while accepting the boundary', () => {
+    const rawBody = JSON.stringify(buildPayload())
+
+    expect(
+      verifyCloudflareWebhookSignature(
+        rawBody,
+        signPayload(rawBody, NOW_SECONDS - 301),
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: false, reason: 'expired' })
+    expect(
+      verifyCloudflareWebhookSignature(
+        rawBody,
+        signPayload(rawBody, NOW_SECONDS + 301),
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: false, reason: 'expired' })
+    expect(
+      verifyCloudflareWebhookSignature(
+        rawBody,
+        signPayload(rawBody, NOW_SECONDS - 300),
+        WEBHOOK_SECRET,
+        NOW_SECONDS * 1000
+      )
+    ).toEqual({ valid: true, timestamp: NOW_SECONDS - 300 })
+  })
+})
+
 describe('POST /api/webhooks/cloudflare', () => {
-  let supabase: ReturnType<typeof buildSupabase>
-
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_SECONDS * 1000)
     process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET = WEBHOOK_SECRET
-    supabase = buildSupabase()
-    mockCreateAdminClient.mockReturnValue(supabase as never)
   })
 
-  it('returns 401 for invalid signature', async () => {
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': 'sha256=invalid' }) as never
-    )
-    const payload = JSON.stringify(buildEvent())
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    const body = await res.json()
-
-    expect(res.status).toBe(401)
-    expect(body.error).toBe('Invalid signature')
-    expect(supabase.update).not.toHaveBeenCalled()
+  afterEach(() => {
+    vi.restoreAllMocks()
+    delete process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
   })
 
-  it('processes video.ready by writing status, publish flag, and stream metadata', async () => {
-    const event = buildEvent({ eventType: 'video.ready' })
-    const payload = JSON.stringify(event)
-    const signature = signPayload(payload)
+  it('fails closed when webhook verification is not configured', async () => {
+    delete process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
+    const rawBody = JSON.stringify(buildPayload())
 
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signature }) as never
-    )
+    const response = await POST(requestFor(rawBody))
 
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body).toMatchObject({
-      success: true,
-      eventId: 'evt-1',
-      eventType: 'video.ready',
-      videoUid: 'cf-video-1',
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      success: false,
+      error: 'Webhook verification is not configured',
     })
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        processing_status: 'ready',
-        is_published: true,
-        duration_seconds: 120,
-        resolution: '1920x1080',
-        hls_url: 'https://hls',
-        dash_url: 'https://dash',
-        thumbnail_url: 'https://thumb',
-        preview_url: 'https://preview',
-        file_size: 1024,
-      })
-    )
-    expect(supabase.updateEq).toHaveBeenCalledWith('id', 'db-video-1')
+    expect(mockCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('processes video.processing.failed by writing error status and reason', async () => {
-    const event = buildEvent({
-      eventType: 'video.processing.failed',
-      status: { state: 'error', errorReasonCode: 'E001', errorReasonText: 'Transcode failed' },
+  it('rejects missing, legacy, and incorrectly signed headers before database access', async () => {
+    const rawBody = JSON.stringify(buildPayload())
+    const missing = createNextRequest('/api/webhooks/cloudflare', {
+      method: 'POST',
+      body: rawBody,
     })
-    const payload = JSON.stringify(event)
-    const signature = signPayload(payload)
+    const legacy = createNextRequest('/api/webhooks/cloudflare', {
+      method: 'POST',
+      headers: { 'x-signature': signPayload(rawBody) },
+      body: rawBody,
+    })
 
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signature }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
+    for (const request of [
+      missing,
+      legacy,
+      requestFor(rawBody, signPayload(rawBody, NOW_SECONDS, 'wrong-secret')),
+    ]) {
+      const response = await POST(request)
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({
+        success: false,
+        error: 'Invalid signature',
       })
-    )
+    }
 
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        processing_status: 'error',
-        is_published: false,
-        error_code: 'E001',
-        error_message: 'Transcode failed',
-      })
-    )
+    expect(mockCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('returns 500 when video not found in database', async () => {
-    vi.useFakeTimers()
-    supabase = buildSupabase(false)
-    mockCreateAdminClient.mockReturnValue(supabase as never)
-    const event = buildEvent()
-    const payload = JSON.stringify(event)
-    const signature = signPayload(payload)
-
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signature }) as never
+  it('rejects replayed requests before database access', async () => {
+    const rawBody = JSON.stringify(buildPayload())
+    const response = await POST(
+      requestFor(rawBody, signPayload(rawBody, NOW_SECONDS - 301))
     )
 
-    const resPromise = POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    await vi.runAllTimersAsync()
-    const res = await resPromise
-    const body = await res.json()
-    vi.useRealTimers()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Webhook processing failed')
-    expect(body.message).toContain('not found')
-    expect(supabase.update).not.toHaveBeenCalled()
+    expect(response.status).toBe(401)
+    expect(mockCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('returns 401 when signature header missing', async () => {
-    mockHeaders.mockResolvedValue(new Headers({}) as never)
-    const payload = JSON.stringify(buildEvent())
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    expect(res.status).toBe(401)
-  })
-
-  it('processes video.upload.complete by marking status processing and unpublished', async () => {
-    const event = buildEvent({ eventType: 'video.upload.complete' })
-    const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'processing', is_published: false })
-    )
-  })
-
-  it('processes video.processing.started by marking status processing and unpublished', async () => {
-    const event = buildEvent({ eventType: 'video.processing.started' })
-    const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'processing', is_published: false })
-    )
-  })
-
-  it('processes video.processing.complete by writing ready status and metadata', async () => {
-    const event = buildEvent({ eventType: 'video.processing.complete' })
-    const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        processing_status: 'ready',
-        is_published: true,
-        duration_seconds: 120,
-        resolution: '1920x1080',
-      })
-    )
-  })
-
-  it('processes video.deleted by marking status deleted and unpublished', async () => {
-    const event = buildEvent({ eventType: 'video.deleted' })
-    const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'deleted', is_published: false })
-    )
-  })
-
-  it('handles unknown event types via default branch, writing queued status', async () => {
-    const event = buildEvent({ eventType: 'video.unknown' as never })
-    const payload = JSON.stringify(event)
-    mockHeaders.mockResolvedValue(
-      new Headers({ 'x-signature': signPayload(payload) }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'queued', is_published: false })
-    )
-  })
-})
-
-describe('GET /api/webhooks/cloudflare', () => {
-  it('returns endpoint info', async () => {
-    const { GET, PUT, DELETE } = await import('./route')
-    const res = await GET()
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.message).toContain('Cloudflare Stream webhook')
-    expect((await PUT()).status).toBe(405)
-    expect((await DELETE()).status).toBe(405)
-  })
-})
-
-describe('POST /api/webhooks/cloudflare payload validation', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET = WEBHOOK_SECRET
-    mockCreateAdminClient.mockReturnValue(buildSupabase() as never)
-  })
-
-  it('returns 400 for empty payload', async () => {
-    mockHeaders.mockResolvedValue(new Headers({}) as never)
-    const res = await POST(
+  it('validates the signed JSON and current Stream payload shape', async () => {
+    const empty = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: '',
       })
     )
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe('Empty payload')
+    expect(empty.status).toBe(400)
+    expect((await empty.json()).error).toBe('Empty payload')
+
+    const invalidJson = 'not-json'
+    const invalidJsonResponse = await POST(requestFor(invalidJson))
+    expect(invalidJsonResponse.status).toBe(400)
+    expect((await invalidJsonResponse.json()).error).toBe(
+      'Invalid JSON payload'
+    )
+
+    const obsoleteEnvelope = JSON.stringify({
+      eventId: 'evt-1',
+      eventType: 'video.ready',
+      uid: 'cf-video-1',
+    })
+    const obsoleteResponse = await POST(requestFor(obsoleteEnvelope))
+    expect(obsoleteResponse.status).toBe(400)
+    expect((await obsoleteResponse.json()).error).toBe(
+      'Invalid webhook payload'
+    )
+    expect(mockCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('returns 400 for invalid JSON', async () => {
-    mockHeaders.mockResolvedValue(new Headers({}) as never)
-    const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: 'not-json',
+  it('stores terminal ready metadata without auto-publishing or invented columns', async () => {
+    const supabase = createFakeSupabaseClient()
+    supabase.queueResult({ data: storedVideo(), error: null })
+    supabase.queueResult({ data: null, error: null })
+    mockCreateAdminClient.mockReturnValue(supabase as never)
+    const rawBody = `${JSON.stringify(buildPayload())}\n`
+
+    const response = await POST(requestFor(rawBody))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toEqual({
+      success: true,
+      videoUid: 'cf-video-1',
+      state: 'ready',
+      videoId: 'db-video-1',
+      updated: true,
+      ignored: false,
+    })
+
+    const update = supabase.calls.find((call) => call.method === 'update')
+    expect(update?.table).toBe('videos')
+    expect(update?.payload).toEqual({
+      processing_status: 'ready',
+      duration_seconds: 120,
+      thumbnail_url: THUMBNAIL_URL,
+      file_size: 1024,
+      updated_at: expect.any(String),
+    })
+    expect(update?.filters).toEqual(
+      expect.arrayContaining([
+        { type: 'eq', args: ['id', 'db-video-1'] },
+        { type: 'eq', args: ['cloudflare_video_id', 'cf-video-1'] },
+      ])
+    )
+    expect(update?.payload).not.toHaveProperty('is_published')
+    expect(update?.payload).not.toHaveProperty('hls_url')
+    expect(update?.payload).not.toHaveProperty('dash_url')
+    expect(update?.payload).not.toHaveProperty('resolution')
+    expect(update?.payload).not.toHaveProperty('preview_url')
+  })
+
+  it('preserves an explicit published state when a ready delivery arrives', async () => {
+    const supabase = createFakeSupabaseClient()
+    supabase.queueResult({
+      data: storedVideo({ is_published: true }),
+      error: null,
+    })
+    supabase.queueResult({ data: null, error: null })
+    mockCreateAdminClient.mockReturnValue(supabase as never)
+
+    const response = await POST(requestFor(JSON.stringify(buildPayload())))
+
+    expect(response.status).toBe(200)
+    const update = supabase.calls.find((call) => call.method === 'update')
+    expect(update?.payload).not.toHaveProperty('is_published')
+  })
+
+  it('marks terminal errors unavailable using actual Stream error fields', async () => {
+    const supabase = createFakeSupabaseClient()
+    supabase.queueResult({
+      data: storedVideo({ processing_status: 'ready', is_published: true }),
+      error: null,
+    })
+    supabase.queueResult({ data: null, error: null })
+    mockCreateAdminClient.mockReturnValue(supabase as never)
+    const rawBody = JSON.stringify(
+      buildPayload({
+        readyToStream: false,
+        status: {
+          state: 'error',
+          pctComplete: '67.500000',
+          errReasonCode: 'ERR_NON_VIDEO',
+          errReasonText: 'The uploaded file is not a supported video.',
+        },
       })
     )
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe('Invalid JSON payload')
+
+    const response = await POST(requestFor(rawBody))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      success: true,
+      state: 'error',
+      updated: true,
+      ignored: false,
+    })
+    const update = supabase.calls.find((call) => call.method === 'update')
+    expect(update?.payload).toEqual({
+      processing_status: 'error',
+      is_published: false,
+      updated_at: expect.any(String),
+    })
+    expect(update?.payload).not.toHaveProperty('error_code')
+    expect(update?.payload).not.toHaveProperty('error_message')
+  })
+
+  it('makes duplicate terminal delivery a no-op when stored state already matches', async () => {
+    const supabase = createFakeSupabaseClient()
+    supabase.queueResult({
+      data: storedVideo({
+        processing_status: 'ready',
+        is_published: true,
+        duration_seconds: 120,
+        thumbnail_url: THUMBNAIL_URL,
+        file_size: 1024,
+      }),
+      error: null,
+    })
+    mockCreateAdminClient.mockReturnValue(supabase as never)
+
+    const response = await POST(requestFor(JSON.stringify(buildPayload())))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      success: true,
+      videoId: 'db-video-1',
+      updated: false,
+      ignored: false,
+    })
+    expect(supabase.calls).toHaveLength(1)
+    expect(supabase.calls[0].method).toBe('select')
+  })
+
+  it.each([
+    ['inprogress', false],
+    ['queued', false],
+    ['ready', false],
+  ])(
+    'acknowledges unexpected non-terminal state %s without changing the database',
+    async (state, readyToStream) => {
+      const rawBody = JSON.stringify(
+        buildPayload({ readyToStream, status: { state, pctComplete: '50' } })
+      )
+
+      const response = await POST(requestFor(rawBody))
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        success: true,
+        state,
+        updated: false,
+        ignored: true,
+      })
+      expect(mockCreateAdminClient).not.toHaveBeenCalled()
+    }
+  )
+
+  it('fails closed and exposes no database detail when the video lookup fails', async () => {
+    const supabase = createFakeSupabaseClient()
+    supabase.queueResult({
+      data: null,
+      error: { message: 'connection string and private table detail' },
+    })
+    mockCreateAdminClient.mockReturnValue(supabase as never)
+
+    const response = await POST(requestFor(JSON.stringify(buildPayload())))
+
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({
+      success: false,
+      error: 'Webhook processing failed',
+    })
+    expect(supabase.calls).toHaveLength(1)
+  })
+
+  it('returns a retryable generic failure when the deterministic update fails', async () => {
+    const supabase = createFakeSupabaseClient()
+    supabase.queueResult({ data: storedVideo(), error: null })
+    supabase.queueResult({ data: null, error: { message: 'write failed' } })
+    mockCreateAdminClient.mockReturnValue(supabase as never)
+
+    const response = await POST(requestFor(JSON.stringify(buildPayload())))
+
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({
+      success: false,
+      error: 'Webhook processing failed',
+    })
+    expect(supabase.calls.filter((call) => call.method === 'update')).toHaveLength(
+      1
+    )
+  })
+})
+
+describe('other /api/webhooks/cloudflare methods', () => {
+  it('exposes endpoint information and rejects unsupported methods', async () => {
+    const response = await GET()
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      message: 'Cloudflare Stream webhook endpoint',
+    })
+    expect((await PUT()).status).toBe(405)
+    expect((await DELETE()).status).toBe(405)
   })
 })

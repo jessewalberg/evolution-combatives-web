@@ -169,13 +169,13 @@ export default function VideoPreviewPage() {
     const renderTierBadge = (tier: string) => {
         const tierConfig = {
             'none': { label: 'Free Content', color: 'secondary' },
-            'tier1': { label: 'Tier 1 ($9)', color: 'info' },
-            'tier2': { label: 'Tier 2 ($19)', color: 'warning' },
-            'tier3': { label: 'Tier 3 ($49)', color: 'success' },
+            'tier1': { label: 'Tier 1 ($19)', color: 'info' },
+            'tier2': { label: 'Tier 2 ($29)', color: 'warning' },
+            'tier3': { label: 'Tier 3 ($39)', color: 'success' },
             // Legacy support for old values
-            'beginner': { label: 'Tier 1 ($9)', color: 'info' },
-            'intermediate': { label: 'Tier 2 ($19)', color: 'warning' },
-            'advanced': { label: 'Tier 3 ($49)', color: 'success' }
+            'beginner': { label: 'Tier 1 ($19)', color: 'info' },
+            'intermediate': { label: 'Tier 2 ($29)', color: 'warning' },
+            'advanced': { label: 'Tier 3 ($39)', color: 'success' }
         }[tier] || { label: tier, color: 'secondary' }
 
         return (

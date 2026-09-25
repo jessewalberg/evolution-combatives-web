@@ -71,9 +71,9 @@ interface VideoMetadata {
  */
 const SUBSCRIPTION_TIERS = [
     { value: 'none', label: 'Free Content', description: 'Free content available to all users' },
-    { value: 'tier1', label: 'Tier 1 ($9)', description: 'Basic tactical content for new practitioners' },
-    { value: 'tier2', label: 'Tier 2 ($19)', description: 'Advanced techniques for experienced practitioners' },
-    { value: 'tier3', label: 'Tier 3 ($49)', description: 'Elite content for law enforcement professionals' },
+    { value: 'tier1', label: 'Tier 1 ($19)', description: 'Basic tactical content for new practitioners' },
+    { value: 'tier2', label: 'Tier 2 ($29)', description: 'Advanced techniques for experienced practitioners' },
+    { value: 'tier3', label: 'Tier 3 ($39)', description: 'Elite content for law enforcement professionals' },
 ] as const
 
 
@@ -292,7 +292,7 @@ const VideoUploadForm = React.forwardRef<HTMLDivElement, VideoUploadFormProps>(
 
                 try {
                     upload.thumbnailUrl = await generateThumbnail(file)
-                } catch (error) {
+                } catch {
                     // Silently fail thumbnail generation
                 }
 
@@ -940,4 +940,4 @@ VideoUploadForm.displayName = 'VideoUploadForm'
 
 export default VideoUploadForm
 export { VideoUploadForm }
-export type { VideoUploadFormProps, FileUpload, VideoMetadata } 
+export type { VideoUploadFormProps, FileUpload, VideoMetadata }

@@ -1,8 +1,8 @@
 /**
  * Evolution Combatives - Subscription Selection Page
- * Subscription tier selection and checkout initiation for mobile app users
+ * Subscription tier selection for authenticated web users.
  * 
- * @description Public page for subscription selection, accessed via mobile app redirect
+ * @description Checkout identity is resolved from the server-side session.
  * @author Evolution Combatives
  */
 
@@ -26,40 +26,15 @@ function SubscribeContent() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Extract parameters from URL (passed from mobile app)
-    const userId = searchParams.get('userId');
-    const userEmail = searchParams.get('email');
     const preselectedTier = searchParams.get('tier') as SubscriptionTier | null;
 
     useEffect(() => {
-        if (preselectedTier && ['beginner', 'intermediate', 'advanced'].includes(preselectedTier)) {
+        if (preselectedTier && ['tier1', 'tier2', 'tier3'].includes(preselectedTier)) {
             setSelectedTier(preselectedTier);
         }
     }, [preselectedTier]);
 
-    // Validate required parameters
-    if (!userId || !userEmail) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <Card className="max-w-md mx-auto p-6 text-center">
-                    <h1 className="text-xl font-semibold text-red-600 mb-4">Invalid Request</h1>
-                    <p className="text-gray-600">
-                        This page must be accessed through the Evolution Combatives mobile app.
-                    </p>
-                    <Button
-                        onClick={() => router.push('/')}
-                        className="mt-4"
-                    >
-                        Go to Dashboard
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
-
     const handleSubscribe = async (tier: SubscriptionTier) => {
-        if (!userId || !userEmail) return;
-
         setLoading(true);
         setError(null);
 
@@ -87,14 +62,16 @@ function SubscribeContent() {
                 credentials: 'include',
                 body: JSON.stringify({
                     tier,
-                    userId,
-                    userEmail,
                 }),
             });
 
             const data = await response.json();
 
             if (!response.ok) {
+                if (response.status === 401) {
+                    router.push(`/login?redirectTo=${encodeURIComponent(`/subscribe?tier=${tier}`)}`);
+                    return;
+                }
                 throw new Error(data.error || 'Failed to create checkout session');
             }
 

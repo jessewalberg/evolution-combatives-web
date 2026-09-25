@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NextResponse } from 'next/server'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { generateCSRFToken } from '@/src/lib/csrf-protection'
 
@@ -46,19 +47,20 @@ function createSupabaseMiddlewareMock(options: {
   const signOut = signOutError
     ? vi.fn().mockRejectedValue(signOutError)
     : vi.fn().mockResolvedValue({ error: null })
+  const getUser = vi.fn().mockResolvedValue({
+    data: { user: session?.user ?? null },
+    error: sessionError,
+  })
 
   const client = {
     auth: {
-      getSession: vi.fn().mockResolvedValue({
-        data: { session },
-        error: sessionError,
-      }),
+      getUser,
       signOut,
     },
     from,
   }
 
-  return { client, signOut, from, update, eq, single }
+  return { client, getUser, signOut, from, update, eq, single }
 }
 
 function authenticatedSession(overrides?: Partial<{ id: string; email: string }>) {
@@ -275,6 +277,28 @@ describe('middleware', () => {
       expect(location).toContain('redirectTo=%2Fdashboard')
     })
 
+    it('preserves refreshed auth cookies on an authentication redirect', async () => {
+      const { client } = createSupabaseMiddlewareMock({ session: null })
+      mockCreateMiddlewareClient.mockImplementation((
+        _request: unknown,
+        _response: unknown,
+        onResponseChange?: (response: NextResponse) => void
+      ) => {
+        const refreshedResponse = NextResponse.next()
+        refreshedResponse.cookies.set('sb-auth-token', 'refreshed')
+        onResponseChange?.(refreshedResponse)
+        return client
+      })
+
+      const response = await middleware(
+        createNextRequest('/dashboard', { headers: withUniqueIp() })
+      )
+
+      expect(response.status).toBe(307)
+      expect(response.headers.get('set-cookie')).toContain('sb-auth-token=refreshed')
+      expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+    })
+
     it('redirects to login on session error for page routes', async () => {
       mockCreateMiddlewareClient.mockImplementation(() => {
         const { client } = createSupabaseMiddlewareMock({
@@ -394,6 +418,30 @@ describe('middleware', () => {
       expect(response.headers.get('location')).toContain('error=insufficient_permissions')
     })
 
+    it('allows content_support_admin to use both content and support areas', async () => {
+      mockCreateMiddlewareClient.mockImplementation(() => {
+        const { client } = createSupabaseMiddlewareMock({
+          session: authenticatedSession(),
+          profile: {
+            admin_role: 'content_support_admin',
+            full_name: 'Content & Support Admin',
+            last_login_at: new Date().toISOString(),
+          },
+        })
+        return client
+      })
+
+      const contentResponse = await middleware(
+        createNextRequest('/dashboard/content/videos', { headers: withUniqueIp() })
+      )
+      const supportResponse = await middleware(
+        createNextRequest('/users', { headers: withUniqueIp() })
+      )
+
+      expect(contentResponse.status).toBe(200)
+      expect(supportResponse.status).toBe(200)
+    })
+
     it('allows super_admin access to /analytics', async () => {
       mockCreateMiddlewareClient.mockImplementation(() => {
         const { client } = createSupabaseMiddlewareMock({
@@ -441,15 +489,39 @@ describe('middleware', () => {
 
   describe('successful authenticated requests', () => {
     it('sets user identity headers for authorized page requests', async () => {
-      mockCreateMiddlewareClient.mockImplementation(() => {
-        const { client } = createSupabaseMiddlewareMock({
-          session: authenticatedSession({ id: 'user-abc', email: 'super@test.com' }),
-          profile: {
-            admin_role: 'super_admin',
-            full_name: 'Super Admin',
-            last_login_at: new Date().toISOString(),
-          },
-        })
+      const { client, getUser } = createSupabaseMiddlewareMock({
+        session: authenticatedSession({ id: 'user-abc', email: 'super@test.com' }),
+        profile: {
+          admin_role: 'super_admin',
+          full_name: 'Super Admin',
+          last_login_at: new Date().toISOString(),
+        },
+      })
+      mockCreateMiddlewareClient.mockImplementation(() => client)
+
+      const response = await middleware(
+        createNextRequest('/dashboard', { headers: withUniqueIp() })
+      )
+
+      expect(getUser).toHaveBeenCalled()
+      expect(response.status).toBe(200)
+      expect(response.headers.get('X-User-ID')).toBe('user-abc')
+      expect(response.headers.get('X-User-Role')).toBe('super_admin')
+      expect(response.headers.get('X-User-Email')).toBe('super@test.com')
+    })
+
+    it('returns the replacement response when Supabase refreshes auth cookies', async () => {
+      const { client } = createSupabaseMiddlewareMock({
+        session: authenticatedSession(),
+      })
+      mockCreateMiddlewareClient.mockImplementation((
+        _request: unknown,
+        _response: unknown,
+        onResponseChange?: (response: NextResponse) => void
+      ) => {
+        const refreshedResponse = NextResponse.next()
+        refreshedResponse.cookies.set('sb-auth-token', 'refreshed')
+        onResponseChange?.(refreshedResponse)
         return client
       })
 
@@ -457,10 +529,12 @@ describe('middleware', () => {
         createNextRequest('/dashboard', { headers: withUniqueIp() })
       )
 
-      expect(response.status).toBe(200)
-      expect(response.headers.get('X-User-ID')).toBe('user-abc')
-      expect(response.headers.get('X-User-Role')).toBe('super_admin')
-      expect(response.headers.get('X-User-Email')).toBe('super@test.com')
+      expect(response.headers.get('set-cookie')).toContain('sb-auth-token=refreshed')
+      expect(mockCreateMiddlewareClient).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Function)
+      )
     })
   })
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { GET } from './route'
+import packageJson from '../../../package.json'
 
 describe('GET /api/health', () => {
   it('returns healthy status', async () => {
@@ -10,6 +11,6 @@ describe('GET /api/health', () => {
     expect(body.status).toBe('healthy')
     expect(body.timestamp).toBeDefined()
     expect(body.environment).toBe('test')
-    expect(body.version).toBeDefined()
+    expect(body.version).toBe(packageJson.version)
   })
 })

@@ -17,7 +17,7 @@ import type {
 // Environment variables validation (server-side only)
 const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!
-const CLOUDFLARE_CUSTOMER_SUBDOMAIN = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN || 'customer-235te0s698xfdejs'
+const CLOUDFLARE_CUSTOMER_SUBDOMAIN = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN
 
 // Only validate environment variables on server-side
 if (typeof window === 'undefined') {
@@ -296,30 +296,13 @@ export const uploadFunctions = {
         }
 
         try {
-            console.log('DEBUG: Raw options passed to getUploadUrl:', JSON.stringify(options, null, 2))
-            console.log('DEBUG: Constructed payload before stringification:', JSON.stringify(payload, null, 2))
-            console.log('DEBUG: Stringified payload:', JSON.stringify(payload))
-
-            console.log('Cloudflare Stream API Request:', {
-                url: getStreamDirectUploadApi(),
-                headers: getStreamHeaders(),
-                payload: payload
-            })
-
             const response = await fetch(getStreamDirectUploadApi(), {
                 method: 'POST',
                 headers: getStreamHeaders(),
                 body: JSON.stringify(payload)
             })
 
-            console.log('Cloudflare Stream API Response:', {
-                status: response.status,
-                statusText: response.statusText,
-                headers: Object.fromEntries(response.headers.entries())
-            })
-
             const responseText = await response.text()
-            console.log('Cloudflare Stream API Response Body:', responseText)
 
             let data
             try {
@@ -506,32 +489,13 @@ export const videoManagement = {
         const hasSigningKeys = process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID && process.env.CLOUDFLARE_STREAM_SIGNING_KEY;
 
         if (!hasSigningKeys) {
-            console.warn('🔐 Missing Cloudflare Stream signing keys - using temporary public access for development');
-            console.warn('🔐 ⚠️  SECURITY WARNING: Videos will be publicly accessible without authentication');
-            console.warn('🔐 To secure videos, configure CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY');
-
-            // Temporarily use public URLs for development (with warning)
-            try {
-                await this.updateVideoSettings(videoId, { requireSignedURLs: false });
-                const publicUrl = format === 'mp4'
-                    ? `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/downloads/default.mp4`
-                    : `https://${CLOUDFLARE_CUSTOMER_SUBDOMAIN}/${videoId}/manifest/video.m3u8`;
-
-                console.log('🔐 Returning public URL (DEVELOPMENT ONLY):', publicUrl);
-                return publicUrl;
-            } catch (settingsError) {
-                console.error('🔐 Could not configure video for public access:', settingsError);
-                throw new CloudflareStreamError('Video access configuration failed', undefined, settingsError);
-            }
+            throw new CloudflareStreamError(
+                'Cloudflare Stream signing keys are required for video playback'
+            )
         }
 
         // Configure video to require signed URLs for security
-        try {
-            await this.updateVideoSettings(videoId, { requireSignedURLs: true });
-            console.log('🔐 Video configured to require signed URLs (secure mode)');
-        } catch (error) {
-            console.warn('🔐 Could not configure video settings:', error);
-        }
+        await this.updateVideoSettings(videoId, { requireSignedURLs: true })
 
         // Set expiration based on subscription tier
         const now = Math.floor(Date.now() / 1000)
@@ -563,12 +527,6 @@ export const videoManagement = {
                 accessRules: options.accessRules || []
             }
 
-            console.log('🔐 Generating secure JWT token with RSA signing:', {
-                videoId,
-                keyId: process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID,
-                expiration: new Date(expiration * 1000).toISOString()
-            });
-
             // TODO: Implement proper RSA JWT signing here
             // For now, we'll use Cloudflare's token generation API as fallback
             // In production, you should use a JWT library like 'jsonwebtoken' with RSA signing
@@ -580,14 +538,11 @@ export const videoManagement = {
                     body: JSON.stringify(payload)
                 })
 
-                console.log('🔐 Token response status:', response.status);
                 const data = await handleStreamResponse<{ result: { token: string } }>(response)
 
-                console.log('🔐 Token generated successfully:', {
-                    hasToken: !!data.result.token,
-                    tokenLength: data.result.token?.length,
-                    tokenPreview: data.result.token?.substring(0, 50) + '...'
-                });
+                if (!data.result.token) {
+                    throw new CloudflareStreamError('Cloudflare did not return a playback token')
+                }
 
                 // Construct the signed URL based on requested format using customer subdomain
                 if (format === 'mp4') {
@@ -926,4 +881,4 @@ export const cloudflareStreamService = {
     security: securityFunctions
 }
 
-export default cloudflareStreamService 
+export default cloudflareStreamService

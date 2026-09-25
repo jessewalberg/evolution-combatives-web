@@ -148,7 +148,7 @@ interface UserEditForm {
     badge_number: string
     department: string
     rank: string
-    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | null
+    admin_role: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
 }
 
 export default function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -1555,4 +1555,4 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             )}
         </div>
     )
-} 
+}

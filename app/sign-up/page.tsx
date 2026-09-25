@@ -99,7 +99,7 @@ function SignUpContent() {
                         await supabase.auth.signOut()
                     }
                 }
-            } catch (error) {
+            } catch {
                 // Session check failed, user will need to sign up
             }
         }

@@ -50,7 +50,7 @@ type UserStatus = 'active' | 'suspended' | 'pending' | 'inactive'
 /**
  * Admin role types
  */
-type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | null
+type AdminRole = 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin' | null
 
 /**
  * Activity status types
@@ -171,9 +171,9 @@ interface UserTableProps {
  * Subscription tier options
  */
 const SUBSCRIPTION_TIERS = [
-    { value: 'tier1', label: 'Tier 1 ($9)', color: 'info' },
-    { value: 'tier2', label: 'Tier 2 ($19)', color: 'warning' },
-    { value: 'tier3', label: 'Tier 3 ($49)', color: 'success' },
+    { value: 'tier1', label: 'Tier 1 ($19)', color: 'info' },
+    { value: 'tier2', label: 'Tier 2 ($29)', color: 'warning' },
+    { value: 'tier3', label: 'Tier 3 ($39)', color: 'success' },
     { value: 'none', label: 'Free', color: 'secondary' },
 ] as const
 
@@ -194,6 +194,7 @@ const ADMIN_ROLES = [
     { value: 'super_admin', label: 'Super Admin', color: 'error' },
     { value: 'content_admin', label: 'Content Admin', color: 'warning' },
     { value: 'support_admin', label: 'Support Admin', color: 'info' },
+    { value: 'content_support_admin', label: 'Content & Support Admin', color: 'success' },
 ] as const
 
 /**
@@ -959,4 +960,4 @@ UserTable.displayName = 'UserTable'
 
 export default UserTable
 export { UserTable }
-export type { UserTableProps, User, UserStatus, AdminRole, ActivityStatus } 
+export type { UserTableProps, User, UserStatus, AdminRole, ActivityStatus }

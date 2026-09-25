@@ -176,7 +176,7 @@ export interface AvatarProps
     /**
      * Admin role for badge overlay
      */
-    role?: 'super_admin' | 'content_admin' | 'support_admin'
+    role?: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin'
 
     /**
      * Whether the avatar is clickable
@@ -311,6 +311,12 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.712 4.33a9.027 9.027 0 011.652 1.306c.51.51.944 1.064 1.306 1.652M16.712 4.33l-3.448 4.138m3.448-4.138a9.014 9.014 0 00-9.424 0M19.67 7.288l-4.138 3.448m4.138-3.448a9.014 9.014 0 010 9.424m-4.138-3.448a1.5 1.5 0 010 2.12m0-2.12a1.5 1.5 0 00-2.12 0m2.12 0l-2.879 2.879m2.879-2.879l2.879-2.879m0 0a9.027 9.027 0 001.306-1.652M4.33 16.712a9.027 9.027 0 01-1.306-1.652M4.33 16.712l4.138-3.448m-4.138 3.448a9.014 9.014 0 000-9.424m4.138 3.448a1.5 1.5 0 000-2.12m0 2.12a1.5 1.5 0 002.12 0m-2.12 0l2.879-2.879m-2.879 2.879l-2.879 2.879m0 0a9.027 9.027 0 01-1.306 1.652" />
                         </svg>
                     )
+                case 'content_support_admin':
+                    return (
+                        <svg className={cn(iconSize, 'text-white')} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.623 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                        </svg>
+                    )
                 default:
                     return null
             }
@@ -324,6 +330,8 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
                     return 'bg-primary-600'
                 case 'support_admin':
                     return 'bg-success-600'
+                case 'content_support_admin':
+                    return 'bg-info-600'
                 default:
                     return 'bg-neutral-600'
             }
@@ -442,7 +450,7 @@ export interface AvatarGroupProps extends React.HTMLAttributes<HTMLDivElement> {
         src?: string
         alt?: string
         status?: 'online' | 'offline' | 'away' | 'busy'
-        role?: 'super_admin' | 'content_admin' | 'support_admin'
+        role?: 'super_admin' | 'content_admin' | 'support_admin' | 'content_support_admin'
     }>
 
     /**
@@ -564,4 +572,4 @@ export {
     avatarVariants,
     statusIndicatorVariants,
     roleBadgeVariants
-} 
+}

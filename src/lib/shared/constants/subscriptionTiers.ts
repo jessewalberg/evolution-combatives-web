@@ -2,7 +2,7 @@
  * Evolution Combatives - Subscription Tiers Constants
  * Business logic for subscription tiers, pricing, and features
  * 
- * @description Clean tier system: Tier 1 ($9), Tier 2 ($19), Tier 3 ($49)
+ * @description Clean tier system: Tier 1 ($19), Tier 2 ($29), Tier 3 ($39)
  * @author Evolution Combatives
  */
 
@@ -198,4 +198,4 @@ export const getTierPrice = (tier: SubscriptionTier): number => {
 
 export const getTierFeatures = (tier: SubscriptionTier): readonly string[] => {
     return SUBSCRIPTION_FEATURES[tier];
-}; 
+};

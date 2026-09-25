@@ -1,252 +1,212 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { createCheckoutSession, getOrCreateCustomer } from '../../../../../src/lib/stripe'
-import { SUBSCRIPTION_PRICING } from '../../../../../src/lib/shared/constants/subscriptionTiers'
 import { z } from 'zod'
+import {
+    createCheckoutSession,
+    getOrCreateCustomer,
+    stripe,
+} from '../../../../../src/lib/stripe'
+import { authenticateMobileBearer } from '../../../../../src/lib/mobile-auth'
+import {
+    isAllowedMobileRedirect,
+    mobileDeepLink,
+} from '../../../../../src/lib/mobile-redirects'
+import {
+    SUBSCRIPTION_PRICING,
+    SUBSCRIPTION_TIER_HIERARCHY,
+    type SubscriptionTier,
+} from '../../../../../src/lib/shared/constants/subscriptionTiers'
 
-// Use exact subscription tiers from .cursorrules
-type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
+const PaidTierSchema = z.enum(['tier1', 'tier2', 'tier3'])
 
-// Request validation schema
-const CreateCheckoutSchema = z.object({
-    tier: z.enum(['none', 'tier1', 'tier2', 'tier3']),
-    successUrl: z.string().url().optional(),
-    cancelUrl: z.string().url().optional(),
-    upgradeFromTier: z.enum(['none', 'tier1', 'tier2', 'tier3']).optional(),
-    stripeSubscriptionId: z.string().optional(),
-})
+const CreateCheckoutSchema = z
+    .object({
+        tier: PaidTierSchema,
+        successUrl: z
+            .string()
+            .refine(isAllowedMobileRedirect, 'Untrusted success URL')
+            .optional(),
+        cancelUrl: z
+            .string()
+            .refine(isAllowedMobileRedirect, 'Untrusted cancel URL')
+            .optional(),
+    })
+    .strict()
 
-async function validateMobileAppAuth(request: NextRequest) {
-    try {
-        const authHeader = request.headers.get('Authorization')
-        const mobileClient = request.headers.get('X-Mobile-Client')
-        const userAgent = request.headers.get('User-Agent')
-
-        console.log('🔐 [Mobile Subscription API] Auth Debug:', {
-            hasAuthHeader: !!authHeader,
-            authHeaderStart: authHeader?.substring(0, 20) + '...',
-            headerLength: authHeader?.length,
-            mobileClient,
-            userAgent
-        });
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'Bearer token required for mobile API' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        // Verify this is actually a mobile client request
-        if (!mobileClient || !userAgent?.includes('EvolutionCombatives-Mobile')) {
-            console.warn('🚨 [Mobile Subscription API] Non-mobile client accessing mobile endpoint:', {
-                mobileClient,
-                userAgent
-            });
-            // Allow it but log the warning
-        }
-
-        const token = authHeader.replace('Bearer ', '')
-
-        // Create Supabase client with the provided JWT token
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                global: {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            }
-        )
-
-        // Verify the user with the token
-        const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-
-        console.log('🔐 [Mobile Subscription API] User Validation Result:', {
-            hasUser: !!user,
-            userId: user?.id,
-            userEmail: user?.email,
-            hasError: !!userError,
-            errorMessage: userError?.message
-        });
-
-        if (userError || !user) {
-            console.error('❌ [Mobile Subscription API] User validation failed:', userError);
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'Invalid authentication token' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        // Get user profile for additional security verification
-        const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('id, email, subscription_tier')
-            .eq('id', user.id)
-            .single()
-
-        if (profileError || !profile) {
-            console.error('❌ [Mobile Subscription API] Profile validation failed:', profileError);
-            return {
-                error: NextResponse.json(
-                    { success: false, error: 'User profile not found' },
-                    { status: 401 }
-                )
-            }
-        }
-
-        console.log('✅ [Mobile Subscription API] User authenticated successfully:', user.email);
-        return { user, profile, supabase }
-    } catch (error) {
-        console.error('[Mobile Subscription API] Auth validation error:', error)
-        return {
-            error: NextResponse.json(
-                { success: false, error: 'Authentication failed' },
-                { status: 500 }
-            )
-        }
-    }
-}
+const errorResponse = (status: number, error: string) =>
+    NextResponse.json({ success: false, error }, { status })
 
 /**
- * Mobile-specific subscription checkout API endpoint
- * This endpoint bypasses CSRF protection since mobile apps use Bearer token auth
- * and are not subject to CSRF attacks like web browsers
+ * Create a first-time Stripe checkout or an authenticated update-confirm flow.
+ * Existing subscription/customer IDs are always loaded from the caller's own
+ * RLS-protected records; client-provided ownership claims are rejected.
  */
 export async function POST(request: NextRequest) {
-    console.log('📱 [Mobile Subscription API] Incoming subscription checkout request');
+    const authResult = await authenticateMobileBearer(request)
+    if ('error' in authResult) return authResult.error
 
-    const authResult = await validateMobileAppAuth(request)
-    if ('error' in authResult) {
-        return authResult.error
+    let requestData: z.infer<typeof CreateCheckoutSchema>
+    try {
+        requestData = CreateCheckoutSchema.parse(await request.json())
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return errorResponse(400, 'Invalid request data')
+        }
+        return errorResponse(400, 'Invalid JSON body')
     }
 
-    const { user, profile } = authResult
+    const { user, supabase } = authResult.data
+    if (!user.email) {
+        return errorResponse(400, 'Authenticated account has no email address')
+    }
+
+    const { tier } = requestData
+    const successUrl =
+        requestData.successUrl ||
+        mobileDeepLink(`subscription/success?tier=${tier}`)
+    const cancelUrl =
+        requestData.cancelUrl || mobileDeepLink('subscription/cancel')
+    const pricing = SUBSCRIPTION_PRICING[tier]
+
+    if (!pricing.stripePriceId) {
+        return errorResponse(503, 'Subscription price is not configured')
+    }
+
+    const { data: currentSubscription, error: subscriptionError } = await supabase
+        .from('subscriptions')
+        .select(
+            'tier, status, platform, stripe_subscription_id, stripe_customer_id, external_subscription_id, created_at'
+        )
+        .eq('user_id', user.id)
+        .in('status', ['active', 'trialing'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (subscriptionError) {
+        return errorResponse(500, 'Unable to verify current subscription')
+    }
 
     try {
-        const requestBody = await request.json()
-        const validatedData = CreateCheckoutSchema.parse(requestBody)
-        const { tier, successUrl, cancelUrl, upgradeFromTier, stripeSubscriptionId } = validatedData
+        if (currentSubscription) {
+            if (
+                typeof currentSubscription.tier !== 'string' ||
+                !(currentSubscription.tier in SUBSCRIPTION_TIER_HIERARCHY)
+            ) {
+                return errorResponse(500, 'Current subscription tier is invalid')
+            }
+            const currentTier = currentSubscription.tier as SubscriptionTier
 
-        console.log('💳 [Mobile Subscription API] Processing checkout request:', {
-            tier,
-            userId: user.id,
-            userEmail: user.email,
-            currentTier: profile.subscription_tier,
-            isUpgrade: !!upgradeFromTier,
-            upgradeFromTier,
-            hasStripeSubscriptionId: !!stripeSubscriptionId
-        });
-
-        // Validate tier hierarchy for upgrades
-        if (upgradeFromTier) {
-            const tierLevels = { none: 0, tier1: 1, tier2: 2, tier3: 3 }
-            const currentLevel = tierLevels[upgradeFromTier]
-            const newLevel = tierLevels[tier]
-
-            if (newLevel <= currentLevel) {
-                return NextResponse.json(
-                    {
-                        success: false,
-                        error: 'Invalid upgrade: Cannot downgrade or switch to same tier',
-                        details: `Cannot upgrade from ${upgradeFromTier} to ${tier}`
-                    },
-                    { status: 400 }
+            if (
+                SUBSCRIPTION_TIER_HIERARCHY[tier] <=
+                SUBSCRIPTION_TIER_HIERARCHY[currentTier]
+            ) {
+                return errorResponse(
+                    409,
+                    'Requested tier must be higher than the current subscription tier'
                 )
             }
-        }
 
-        // Get or create Stripe customer
-        const customer = await getOrCreateCustomer(user.email!, user.id)
+            if (
+                currentSubscription.platform !== 'stripe' ||
+                !currentSubscription.stripe_customer_id
+            ) {
+                return errorResponse(
+                    409,
+                    'This subscription must be managed through its original platform'
+                )
+            }
 
-        console.log('👤 [Mobile Subscription API] Stripe customer:', {
-            customerId: customer.id,
-            userEmail: user.email
-        });
+            const stripeSubscriptionId =
+                currentSubscription.stripe_subscription_id ||
+                currentSubscription.external_subscription_id
 
-        // Get pricing for the tier
-        const pricing = SUBSCRIPTION_PRICING[tier as SubscriptionTier]
-        if (!pricing) {
-            return NextResponse.json(
-                { success: false, error: 'Invalid subscription tier' },
-                { status: 400 }
+            if (!stripeSubscriptionId) {
+                return errorResponse(409, 'Subscription billing record is incomplete')
+            }
+
+            const stripeSubscription = await stripe.subscriptions.retrieve(
+                stripeSubscriptionId
             )
+            const stripeCustomerId =
+                typeof stripeSubscription.customer === 'string'
+                    ? stripeSubscription.customer
+                    : stripeSubscription.customer.id
+
+            if (
+                stripeCustomerId !== currentSubscription.stripe_customer_id ||
+                !['active', 'trialing'].includes(stripeSubscription.status)
+            ) {
+                return errorResponse(409, 'Subscription billing state has changed')
+            }
+
+            const item = stripeSubscription.items.data[0]
+            if (!item) {
+                return errorResponse(409, 'Subscription has no updatable item')
+            }
+
+            const session = await stripe.billingPortal.sessions.create({
+                customer: stripeCustomerId,
+                return_url: cancelUrl,
+                flow_data: {
+                    type: 'subscription_update_confirm',
+                    after_completion: {
+                        type: 'redirect',
+                        redirect: { return_url: successUrl },
+                    },
+                    subscription_update_confirm: {
+                        subscription: stripeSubscription.id,
+                        items: [
+                            {
+                                id: item.id,
+                                price: pricing.stripePriceId,
+                                quantity: item.quantity || 1,
+                            },
+                        ],
+                    },
+                },
+            })
+
+            return NextResponse.json({
+                success: true,
+                data: {
+                    sessionId: session.id,
+                    url: session.url,
+                    tier,
+                    price: pricing.monthly,
+                    currency: pricing.currency.toLowerCase(),
+                    expiresAt: null,
+                    mode: 'subscription_update',
+                },
+            })
         }
 
-        // Create Stripe checkout session
+        const customer = await getOrCreateCustomer(user.email, user.id)
         const session = await createCheckoutSession({
             customerId: customer.id,
             priceId: pricing.stripePriceId,
             userId: user.id,
-            tier: tier,
-            successUrl: successUrl || `evolutioncombatives://subscription/success?tier=${tier}`,
-            cancelUrl: cancelUrl || `evolutioncombatives://subscription/cancel`,
+            tier,
+            successUrl,
+            cancelUrl,
         })
 
-        console.log('✅ [Mobile Subscription API] Stripe checkout session created:', {
-            sessionId: session.id,
-            url: session.url,
-            tier,
-            amount: session.amount_total,
-            currency: session.currency
-        });
+        if (!session.url) {
+            return errorResponse(502, 'Payment provider did not return a checkout URL')
+        }
 
-        const response = {
+        return NextResponse.json({
             success: true,
             data: {
                 sessionId: session.id,
-                url: session.url!,
+                url: session.url,
                 tier,
-                price: (session.amount_total || 0) / 100, // Convert from cents
-                currency: session.currency || 'usd',
-                expiresAt: new Date(session.expires_at * 1000).toISOString()
-            }
-        }
-
-        console.log('✅ [Mobile Subscription API] Successfully created checkout session for user:', user.email);
-
-        return NextResponse.json(response)
-
-    } catch (error) {
-        console.error('[Mobile Subscription API] Error creating checkout session:', error)
-
-        // Handle validation errors
-        if (error instanceof z.ZodError) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'Invalid request data',
-                    details: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
-                },
-                { status: 400 }
-            )
-        }
-
-        // Handle Stripe errors
-        if (error instanceof Error && error.message.includes('stripe')) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'Payment processing error',
-                    details: 'Unable to create checkout session. Please try again.'
-                },
-                { status: 500 }
-            )
-        }
-
-        return NextResponse.json(
-            {
-                success: false,
-                error: 'Failed to create checkout session',
-                details: error instanceof Error ? error.message : 'Unknown error'
+                price: (session.amount_total || 0) / 100,
+                currency: session.currency || pricing.currency.toLowerCase(),
+                expiresAt: new Date(session.expires_at * 1000).toISOString(),
+                mode: 'checkout',
             },
-            { status: 500 }
-        )
+        })
+    } catch {
+        return errorResponse(502, 'Payment processing is temporarily unavailable')
     }
 }

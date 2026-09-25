@@ -369,24 +369,11 @@ describe('videoManagement', () => {
     ).rejects.toThrow(/Failed to update video settings/)
   })
 
-  it('generateSignedUrl uses public URL when signing keys missing', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true, result: {} }))
-
-    const url = await videoManagement.generateSignedUrl('vid-1', 'tier1')
-    expect(url).toContain('customer-test-subdomain')
-    expect(url).toContain('vid-1/manifest/video.m3u8')
-
-    const mp4 = await videoManagement.generateSignedUrl('vid-1', 'none', {}, 'mp4')
-    expect(mp4).toContain('downloads/default.mp4')
-  })
-
-  it('generateSignedUrl throws when public settings update fails without keys', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({ success: false, errors: [{ message: 'denied' }] }, { ok: false, status: 403, statusText: 'Forbidden' })
-    )
+  it('generateSignedUrl fails closed when signing keys are missing', async () => {
     await expect(videoManagement.generateSignedUrl('vid-1', 'tier1')).rejects.toThrow(
-      /Video access configuration failed/
+      /signing keys are required/
     )
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('generateSignedUrl uses token API when signing keys present', async () => {
@@ -446,20 +433,17 @@ describe('videoManagement', () => {
     nowSpy.mockRestore()
   })
 
-  it('generateSignedUrl continues when settings fail but signing keys exist', async () => {
+  it('generateSignedUrl fails closed when signed-url settings cannot be enabled', async () => {
     process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID = 'kid'
     process.env.CLOUDFLARE_STREAM_SIGNING_KEY = 'secret'
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockFetch
-      .mockResolvedValueOnce(
-        jsonResponse({ success: false, errors: [{ message: 'settings denied' }] }, { ok: false, status: 400, statusText: 'Bad' })
-      )
-      .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'still-works' } }))
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ success: false, errors: [{ message: 'settings denied' }] }, { ok: false, status: 400, statusText: 'Bad' })
+    )
 
-    const url = await videoManagement.generateSignedUrl('vid-1', 'tier1')
-    expect(url).toContain('token=still-works')
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
+    await expect(videoManagement.generateSignedUrl('vid-1', 'tier1')).rejects.toThrow(
+      /Failed to update video settings/
+    )
+    expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
   it('generateSignedUrl wraps token API failures', async () => {
@@ -896,11 +880,11 @@ describe('securityFunctions', () => {
     vi.unstubAllEnvs()
   })
 
-  it('generateAdminPreviewUrl delegates to signed url without keys', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true, result: {} }))
-    const url = await securityFunctions.generateAdminPreviewUrl('vid-1')
-    expect(url).toContain('vid-1')
-    expect(url).toContain('manifest/video.m3u8')
+  it('generateAdminPreviewUrl also fails closed without signing keys', async () => {
+    await expect(securityFunctions.generateAdminPreviewUrl('vid-1')).rejects.toThrow(
+      /signing keys are required/
+    )
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('generateAdminPreviewUrl uses token path when signing keys set', async () => {

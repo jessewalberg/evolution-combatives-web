@@ -14,7 +14,6 @@ process.env.STRIPE_BEGINNER_PRICE_ID ??= 'price_test_tier1'
 process.env.STRIPE_INTERMEDIATE_PRICE_ID ??= 'price_test_tier2'
 process.env.STRIPE_ADVANCED_PRICE_ID ??= 'price_test_tier3'
 process.env.NEXT_PUBLIC_MOBILE_APP_SCHEME ??= 'evolutioncombatives'
-process.env.CLOUDFLARE_WEBHOOK_SECRET ??= 'test-cloudflare-webhook-secret'
 Object.defineProperty(process.env, 'NODE_ENV', {
   value: 'test',
   writable: true,

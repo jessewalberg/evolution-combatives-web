@@ -1,6 +1,9 @@
-# Evolution Combatives - Admin Dashboard
+# Evolution Combatives Web & Admin Dashboard
 
-A comprehensive admin dashboard for managing tactical training content, built with Next.js 15, TypeScript, and Supabase. This standalone application provides content administrators with powerful tools to manage video libraries, user subscriptions, and training analytics for law enforcement and tactical professionals.
+A Next.js 15 admin dashboard and trusted API boundary for the Evolution
+Combatives mobile client. It manages content, subscriptions, protected
+Cloudflare Stream playback, Stripe billing, and training analytics through
+Supabase.
 
 ## 🎯 Overview
 
@@ -23,9 +26,9 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### User & Subscription Management
 - **User Administration**: Comprehensive user account management
-- **Subscription Tiers**: Beginner ($9/mo), Intermediate ($19/mo), Advanced ($49/mo)
+- **Subscription Tiers**: Beginner ($19/mo), Intermediate ($29/mo), Advanced ($39/mo)
 - **Stripe Integration**: Complete payment processing and subscription management
-- **Access Control**: Role-based permissions (Super Admin, Content Admin, Support Admin)
+- **Access Control**: Role-based permissions (Super Admin, Content Admin, Support Admin, Combined Content/Support Admin)
 
 ### Analytics & Reporting
 - **Dashboard Overview**: Key metrics and performance indicators
@@ -55,8 +58,9 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 ## 📦 Installation
 
 ### Prerequisites
-- Node.js 22.22.2+ (or 24.15.0+, or 26+); see `package.json` `engines.node` 
-- pnpm 7+
+- Node.js 22.22.2 (the repository default in `.nvmrc`; the additional supported
+  ranges are declared in `package.json`)
+- pnpm 9.15.0 (pinned by `packageManager`)
 - Supabase account
 - Cloudflare Stream account
 - Stripe account
@@ -65,39 +69,56 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 1. **Clone the repository**
 ```bash
-git clone <repository-url>
-cd evolution-combatives-admin-standalone
+git clone git@github.com:jessewalberg/evolution-combatives-web.git
+cd evolution-combatives-web
 ```
 
-2. **Install dependencies**
+2. **Activate the pinned runtime and package manager**
 ```bash
-pnpm install
+nvm use
+corepack enable
+corepack prepare pnpm@9.15.0 --activate
 ```
 
-3. **Configure environment variables**
+3. **Install the locked dependency graph**
+```bash
+pnpm install --frozen-lockfile
+```
+
+4. **Configure environment variables**
 ```bash
 cp .env.example .env.local
 ```
 
-Edit `.env.local` with your configuration:
+Use test/development credentials in `.env.local`. The complete template is
+`.env.example`; the required names are:
 
 ```env
 # Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # Stripe Configuration
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key_here
-STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key_here
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 STRIPE_BEGINNER_PRICE_ID=price_your_beginner_price_id_here
 STRIPE_INTERMEDIATE_PRICE_ID=price_your_intermediate_price_id_here
 STRIPE_ADVANCED_PRICE_ID=price_your_advanced_price_id_here
 
+# Cloudflare Stream Configuration
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+CLOUDFLARE_CUSTOMER_SUBDOMAIN=customer-your-stream-subdomain
+CLOUDFLARE_STREAM_SIGNING_KEY_ID=your_stream_signing_key_id
+CLOUDFLARE_STREAM_SIGNING_KEY=your_stream_signing_private_key
+CLOUDFLARE_STREAM_WEBHOOK_SECRET=your_stream_webhook_secret
+
 # App Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_ADMIN_URL=http://localhost:3000
 NEXT_PUBLIC_MOBILE_APP_SCHEME=evolutioncombatives
+MOBILE_APP_SCHEMES=evolutioncombatives,evolutioncombatives-dev,evolutioncombatives-staging,evolutioncombatives-preview,evolutioncombatives-testflight
 
 # PostHog Analytics
 NEXT_PUBLIC_POSTHOG_KEY=phc_your_posthog_project_api_key_here
@@ -107,13 +128,39 @@ NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 NODE_ENV=development
 ```
 
-4. **Set up database**
+`STRIPE_PUBLISHABLE_KEY` and the PostHog variables are documented in
+`.env.example` for optional or deployment-specific features.
+Confirm the three configured Stripe Price objects charge the documented
+$19/$29/$39 monthly amounts before enabling checkout in an environment.
+For authenticated E2E tests, create the gitignored `.env.test.local` described
+in `e2e/README.md` and set `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` there.
+
+5. **Set up database**
+
+The timestamped files in `supabase/migrations` are the canonical migration
+ledger for both the web and mobile applications. Link the CLI to a testing
+project first, review the dry run, and only then promote the same migrations to
+production:
+
 ```bash
-# Run the database migrations
-psql -h your-supabase-host -U postgres -d your-database -f migrations/setup-content-corrected.sql
+supabase link --project-ref <testing-project-ref>
+supabase db push --dry-run
+supabase db push
 ```
 
-5. **Start development server**
+Before applying `20260818000000_harden_profile_privileges_and_admin_policies.sql`,
+audit existing non-null admin roles and paid profile tiers against your trusted
+billing/admin records. The migration prevents future self-promotion, but it
+cannot decide whether an already-stored privileged value is legitimate.
+Regenerate shared database types from the linked project after migrations land.
+Do not separately apply the historical migration copy in the mobile repository.
+
+The mobile playback API now treats an active/trialing `subscriptions` row as
+the entitlement source of truth. Before rollout, reconcile every legitimate
+paid profile with its Stripe/App Store/Play subscription record; do not restore
+the old client-controlled `profiles.subscription_tier` fallback.
+
+6. **Start development server**
 ```bash
 pnpm dev
 ```
@@ -133,9 +180,9 @@ The application will be available at `http://localhost:3000`
 - **questions/answers**: Q&A system for community support
 
 ### Subscription Tiers
-- **Beginner** ($9/month): Basic content access
-- **Intermediate** ($19/month): Advanced techniques and Q&A access
-- **Advanced** ($49/month): Full platform access including law enforcement content
+- **Beginner** ($19/month): Basic content access
+- **Intermediate** ($29/month): Advanced techniques and Q&A access
+- **Advanced** ($39/month): Full platform access including law enforcement content
 
 ## 🎨 UI Components
 
@@ -157,13 +204,15 @@ Key UI features:
 - **Super Admin**: Full system access
 - **Content Admin**: Content management and analytics
 - **Support Admin**: User management and Q&A moderation
+- **Combined Content/Support Admin**: Content management plus user/support moderation
 
 ### Permissions System
 ```typescript
 export const ADMIN_PERMISSIONS = {
-    super_admin: ['manage_users', 'manage_content', 'manage_subscriptions', 'manage_admins', 'view_analytics', 'system_settings'],
-    content_admin: ['manage_content', 'view_analytics', 'moderate_questions'],
-    support_admin: ['manage_users', 'manage_subscriptions', 'moderate_questions']
+    super_admin: ['admin.all'],
+    content_admin: ['content.read', 'content.write', 'content.delete', 'users.read'],
+    support_admin: ['users.read', 'support.read', 'support.write'],
+    content_support_admin: ['content.read', 'content.write', 'content.delete', 'users.read', 'support.read', 'support.write']
 }
 ```
 
@@ -228,6 +277,18 @@ pnpm start        # Start production server
 pnpm lint         # Run ESLint
 pnpm lint:fix     # Fix ESLint issues
 pnpm type-check   # Run TypeScript type checking
+pnpm test         # Run the Vitest unit suite once
+pnpm test:coverage # Run unit tests with coverage gates
+pnpm test:e2e     # Run Chromium and WebKit E2E tests
+```
+
+Before opening a pull request, run the same local quality gates as CI:
+
+```bash
+pnpm lint
+pnpm type-check
+pnpm test:coverage
+pnpm build
 ```
 
 ### Code Quality

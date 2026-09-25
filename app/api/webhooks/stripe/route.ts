@@ -11,16 +11,30 @@ import { validateWebhookSignature } from '@/src/lib/stripe';
 import { createAdminClient } from '@/src/lib/supabase';
 import Stripe from 'stripe';
 
-// Extended interface for Stripe Subscription with period properties
-interface StripeSubscriptionWithPeriod extends Stripe.Subscription {
-    current_period_start: number;
-    current_period_end: number;
-}
+type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
+type SubscriptionIdentity = { userId: string; tier: SubscriptionTier };
+type AdminClient = ReturnType<typeof createAdminClient>;
 
-// Extended interface for Stripe Invoice with subscription property
-interface StripeInvoiceWithSubscription extends Stripe.Invoice {
-    subscription: string | Stripe.Subscription | null;
-}
+const subscriptionTiers = new Set<SubscriptionTier>([
+    'none',
+    'tier1',
+    'tier2',
+    'tier3',
+]);
+const accessGrantingStatuses = new Set<Stripe.Subscription.Status>([
+    'active',
+    'trialing',
+]);
+const accessRevokingStatuses = new Set<Stripe.Subscription.Status>([
+    'canceled',
+    'incomplete_expired',
+    'paused',
+    'unpaid',
+]);
+const irreversibleStatuses = new Set<Stripe.Subscription.Status>([
+    'canceled',
+    'incomplete_expired',
+]);
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -53,23 +67,26 @@ export async function POST(request: NextRequest) {
                 break;
 
             case 'customer.subscription.created':
-                await handleSubscriptionCreated(event.data.object as StripeSubscriptionWithPeriod);
+                await handleSubscriptionCreated(event.data.object);
                 break;
 
             case 'customer.subscription.updated':
-                await handleSubscriptionUpdated(event.data.object as StripeSubscriptionWithPeriod);
+            case 'customer.subscription.paused':
+            case 'customer.subscription.resumed':
+                await handleSubscriptionUpdated(event.data.object);
                 break;
 
             case 'customer.subscription.deleted':
-                await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+                await handleSubscriptionDeleted(event.data.object);
                 break;
 
+            case 'invoice.paid':
             case 'invoice.payment_succeeded':
-                await handlePaymentSucceeded(event.data.object as StripeInvoiceWithSubscription);
+                await handlePaymentSucceeded(event.data.object);
                 break;
 
             case 'invoice.payment_failed':
-                await handlePaymentFailed(event.data.object as StripeInvoiceWithSubscription);
+                await handlePaymentFailed(event.data.object);
                 break;
 
             default:
@@ -85,6 +102,206 @@ export async function POST(request: NextRequest) {
             { status: 400 }
         );
     }
+}
+
+function getExpandableId(value: string | { id: string } | null | undefined) {
+    return typeof value === 'string' ? value : value?.id || null;
+}
+
+function getSubscriptionIdentity(
+    subscription: Stripe.Subscription
+): SubscriptionIdentity | null {
+    const { userId, tier } = subscription.metadata;
+
+    if (
+        typeof userId !== 'string' ||
+        typeof tier !== 'string' ||
+        !subscriptionTiers.has(tier as SubscriptionTier)
+    ) {
+        return null;
+    }
+
+    return { userId, tier: tier as SubscriptionTier };
+}
+
+/**
+ * Basil moved billing periods from the subscription to each subscription item.
+ * Evolution subscriptions contain one tier item, so that item is the canonical
+ * access period persisted in the existing single-period database columns.
+ */
+function getSubscriptionPeriod(subscription: Stripe.Subscription) {
+    const item = subscription.items.data[0];
+
+    if (
+        !item ||
+        !Number.isFinite(item.current_period_start) ||
+        !Number.isFinite(item.current_period_end) ||
+        item.current_period_end < item.current_period_start
+    ) {
+        throw new Error(`Subscription ${subscription.id} has no valid billing period`);
+    }
+
+    return {
+        current_period_start: new Date(
+            item.current_period_start * 1000
+        ).toISOString(),
+        current_period_end: new Date(item.current_period_end * 1000).toISOString(),
+    };
+}
+
+function getCanceledAt(
+    subscription: Stripe.Subscription,
+    status: Stripe.Subscription.Status
+) {
+    const timestamp =
+        status === 'canceled'
+            ? subscription.ended_at || subscription.canceled_at
+            : subscription.canceled_at;
+
+    return timestamp ? new Date(timestamp * 1000).toISOString() : null;
+}
+
+function getSubscriptionState(
+    subscription: Stripe.Subscription,
+    status: Stripe.Subscription.Status = subscription.status
+) {
+    return {
+        status,
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: getExpandableId(subscription.customer),
+        ...getSubscriptionPeriod(subscription),
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        canceled_at: getCanceledAt(subscription, status),
+        updated_at: new Date().toISOString(),
+    };
+}
+
+async function getStoredSubscription(
+    supabase: AdminClient,
+    subscriptionId: string
+) {
+    const { data, error } = await supabase
+        .from('subscriptions')
+        .select('user_id, tier, status')
+        .eq('stripe_subscription_id', subscriptionId)
+        .maybeSingle();
+
+    if (error) {
+        throw error;
+    }
+
+    return data;
+}
+
+async function updateProfileTier(
+    supabase: AdminClient,
+    userId: string,
+    tier: SubscriptionTier | null
+) {
+    const { error } = await supabase
+        .from('profiles')
+        .update({ subscription_tier: tier })
+        .eq('id', userId);
+
+    if (error) {
+        throw error;
+    }
+}
+
+async function syncProfileAccess(
+    supabase: AdminClient,
+    subscriptionId: string,
+    status: Stripe.Subscription.Status,
+    identity?: SubscriptionIdentity | null
+) {
+    if (
+        !accessGrantingStatuses.has(status) &&
+        !accessRevokingStatuses.has(status)
+    ) {
+        return;
+    }
+
+    const stored = identity
+        ? null
+        : await getStoredSubscription(supabase, subscriptionId);
+    const userId = identity?.userId || stored?.user_id;
+
+    if (!userId) {
+        return;
+    }
+
+    const tier = accessGrantingStatuses.has(status)
+        ? identity?.tier || (stored?.tier as SubscriptionTier | undefined)
+        : null;
+
+    if (accessGrantingStatuses.has(status) && !tier) {
+        return;
+    }
+
+    await updateProfileTier(supabase, userId, tier || null);
+}
+
+async function isTerminalRegression(
+    supabase: AdminClient,
+    subscription: Stripe.Subscription,
+    nextStatus: Stripe.Subscription.Status
+) {
+    if (irreversibleStatuses.has(nextStatus)) {
+        return false;
+    }
+
+    const stored = await getStoredSubscription(supabase, subscription.id);
+    return Boolean(
+        stored &&
+            irreversibleStatuses.has(stored.status as Stripe.Subscription.Status)
+    );
+}
+
+async function upsertSubscription(
+    supabase: AdminClient,
+    subscription: Stripe.Subscription,
+    identity: SubscriptionIdentity,
+    status: Stripe.Subscription.Status = subscription.status
+) {
+    const { error } = await supabase.from('subscriptions').upsert(
+        {
+            user_id: identity.userId,
+            platform: 'stripe',
+            external_subscription_id: subscription.id,
+            tier: identity.tier,
+            ...getSubscriptionState(subscription, status),
+        },
+        { onConflict: 'user_id,platform' }
+    );
+
+    if (error) {
+        throw error;
+    }
+}
+
+async function updateExistingSubscription(
+    supabase: AdminClient,
+    subscription: Stripe.Subscription,
+    status: Stripe.Subscription.Status = subscription.status
+) {
+    const { error } = await supabase
+        .from('subscriptions')
+        .update(getSubscriptionState(subscription, status))
+        .eq('stripe_subscription_id', subscription.id);
+
+    if (error) {
+        throw error;
+    }
+}
+
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {
+    if (invoice.parent?.type !== 'subscription_details') {
+        return null;
+    }
+
+    return getExpandableId(
+        invoice.parent.subscription_details?.subscription || null
+    );
 }
 
 /**
@@ -107,91 +324,59 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 /**
  * Handle subscription creation
  */
-async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPeriod) {
-    const { userId, tier } = subscription.metadata || {};
+async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
+    const identity = getSubscriptionIdentity(subscription);
 
-    if (!userId || !tier) {
+    if (!identity) {
         console.error('Missing metadata in subscription:', subscription.id);
         return;
     }
 
     const supabase = createAdminClient();
 
-    // Create subscription record in database
-    const { error } = await supabase
-        .from('subscriptions')
-        .insert({
-            user_id: userId,
-            platform: 'stripe',
-            external_subscription_id: subscription.id,
-            tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
-            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: subscription.customer as string,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
-            updated_at: new Date().toISOString(),
-        });
-
-    if (error) {
-        console.error('Error creating subscription in database:', error);
-        throw error;
+    if (await isTerminalRegression(supabase, subscription, subscription.status)) {
+        console.log(`Ignoring stale subscription creation: ${subscription.id}`);
+        return;
     }
 
-    // Update user profile with subscription tier
-    const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ subscription_tier: tier })
-        .eq('id', userId);
+    // Upsert makes repeated deliveries and update-before-create delivery safe.
+    await upsertSubscription(supabase, subscription, identity);
+    await syncProfileAccess(
+        supabase,
+        subscription.id,
+        subscription.status,
+        identity
+    );
 
-    if (profileError) {
-        console.error('Error updating user profile:', profileError);
-    }
-
-    console.log(`Subscription created in database for user ${userId}, tier ${tier}`);
+    console.log(
+        `Subscription created in database for user ${identity.userId}, tier ${identity.tier}`
+    );
 }
 
 /**
  * Handle subscription updates
  */
-async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPeriod) {
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     const supabase = createAdminClient();
+    const identity = getSubscriptionIdentity(subscription);
 
-    // Update subscription record
-    const { error } = await supabase
-        .from('subscriptions')
-        .update({
-            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
-            updated_at: new Date().toISOString(),
-        })
-        .eq('stripe_subscription_id', subscription.id);
-
-    if (error) {
-        console.error('Error updating subscription in database:', error);
-        throw error;
+    if (await isTerminalRegression(supabase, subscription, subscription.status)) {
+        console.log(`Ignoring stale subscription update: ${subscription.id}`);
+        return;
     }
 
-    // If subscription was cancelled, update user profile
-    if (subscription.status === 'canceled') {
-        const { data: subscriptionData } = await supabase
-            .from('subscriptions')
-            .select('user_id')
-            .eq('stripe_subscription_id', subscription.id)
-            .single();
-
-        if (subscriptionData) {
-            await supabase
-                .from('profiles')
-                .update({ subscription_tier: null })
-                .eq('id', subscriptionData.user_id);
-        }
+    if (identity) {
+        await upsertSubscription(supabase, subscription, identity);
+    } else {
+        await updateExistingSubscription(supabase, subscription);
     }
+
+    await syncProfileAccess(
+        supabase,
+        subscription.id,
+        subscription.status,
+        identity
+    );
 
     console.log(`Subscription updated: ${subscription.id}, status: ${subscription.status}`);
 }
@@ -201,35 +386,15 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
  */
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     const supabase = createAdminClient();
+    const identity = getSubscriptionIdentity(subscription);
 
-    // Update subscription status to canceled
-    const { error } = await supabase
-        .from('subscriptions')
-        .update({
-            status: 'canceled',
-            canceled_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        })
-        .eq('stripe_subscription_id', subscription.id);
-
-    if (error) {
-        console.error('Error updating canceled subscription:', error);
-        throw error;
+    if (identity) {
+        await upsertSubscription(supabase, subscription, identity, 'canceled');
+    } else {
+        await updateExistingSubscription(supabase, subscription, 'canceled');
     }
 
-    // Remove subscription tier from user profile
-    const { data: subscriptionData } = await supabase
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_subscription_id', subscription.id)
-        .single();
-
-    if (subscriptionData) {
-        await supabase
-            .from('profiles')
-            .update({ subscription_tier: null })
-            .eq('id', subscriptionData.user_id);
-    }
+    await syncProfileAccess(supabase, subscription.id, 'canceled', identity);
 
     console.log(`Subscription canceled: ${subscription.id}`);
 }
@@ -237,35 +402,75 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 /**
  * Handle successful payment
  */
-async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription) {
-    if (invoice.subscription) {
-        const supabase = createAdminClient();
+async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
 
-        // Update subscription status to active (in case it was past_due)
-        await supabase
-            .from('subscriptions')
-            .update({ status: 'active', updated_at: new Date().toISOString() })
-            .eq('stripe_subscription_id', invoice.subscription as string);
-
-        console.log(`Payment succeeded for subscription: ${invoice.subscription}`);
+    if (!subscriptionId) {
+        return;
     }
+
+    const supabase = createAdminClient();
+    const stored = await getStoredSubscription(supabase, subscriptionId);
+
+    // Subscription lifecycle events are authoritative for terminal states.
+    // This prevents a delayed invoice event from resurrecting a canceled row.
+    if (
+        !stored ||
+        irreversibleStatuses.has(stored.status as Stripe.Subscription.Status) ||
+        stored.status === 'paused'
+    ) {
+        return;
+    }
+
+    const { error } = await supabase
+        .from('subscriptions')
+        .update({ status: 'active', updated_at: new Date().toISOString() })
+        .eq('stripe_subscription_id', subscriptionId);
+
+    if (error) {
+        throw error;
+    }
+
+    await updateProfileTier(
+        supabase,
+        stored.user_id,
+        stored.tier as SubscriptionTier
+    );
+
+    console.log(`Payment succeeded for subscription: ${subscriptionId}`);
 }
 
 /**
  * Handle failed payment
  */
-async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription) {
-    if (invoice.subscription) {
-        const supabase = createAdminClient();
+async function handlePaymentFailed(invoice: Stripe.Invoice) {
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
 
-        // Update subscription status to past_due
-        await supabase
-            .from('subscriptions')
-            .update({ status: 'past_due', updated_at: new Date().toISOString() })
-            .eq('stripe_subscription_id', invoice.subscription as string);
-
-        console.log(`Payment failed for subscription: ${invoice.subscription}`);
+    if (!subscriptionId) {
+        return;
     }
+
+    const supabase = createAdminClient();
+    const stored = await getStoredSubscription(supabase, subscriptionId);
+
+    if (
+        !stored ||
+        irreversibleStatuses.has(stored.status as Stripe.Subscription.Status) ||
+        stored.status === 'paused'
+    ) {
+        return;
+    }
+
+    const { error } = await supabase
+        .from('subscriptions')
+        .update({ status: 'past_due', updated_at: new Date().toISOString() })
+        .eq('stripe_subscription_id', subscriptionId);
+
+    if (error) {
+        throw error;
+    }
+
+    console.log(`Payment failed for subscription: ${subscriptionId}`);
 }
 
 // Health check endpoint

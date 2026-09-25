@@ -99,7 +99,7 @@ function LoginContent() {
                         })
                     }
                 }
-            } catch (error) {
+            } catch {
                 // Session check failed, user will need to login
                 // Error is handled by staying on login page
             }
@@ -495,4 +495,4 @@ export default function LoginPage() {
             <LoginContent />
         </Suspense>
     )
-} 
+}
