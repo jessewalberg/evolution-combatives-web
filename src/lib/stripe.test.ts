@@ -64,7 +64,8 @@ describe('stripe helpers', () => {
         customer: 'cus_1',
         metadata: { userId: 'u1', tier: 'tier1' },
         line_items: [{ price: 'price_1', quantity: 1 }],
-      })
+      }),
+      undefined,
     )
     expect(fakeStripe.checkout.sessions.create.mock.calls[0][0].customer_creation).toBeUndefined()
   })
@@ -82,7 +83,8 @@ describe('stripe helpers', () => {
     })
 
     expect(fakeStripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({ customer_creation: 'always' })
+      expect.objectContaining({ customer_creation: 'always' }),
+      undefined,
     )
   })
 

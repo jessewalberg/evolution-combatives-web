@@ -9,21 +9,6 @@
 -- Every write that changes subscription_tier requires a matching profiles
 -- row and raises inside the same transaction otherwise, so a missing
 -- profile rolls back the entire write (subscription row included).
---
--- ACCEPTED RESIDUAL RACE: the "fetch, then write" step is not atomic across
--- the JS call and this RPC. If two *different* Stripe events for the same
--- subscription id are handled concurrently (for example a `created` and a
--- later `updated` webhook delivered close together), each does its own
--- stripe.subscriptions.retrieve() before either calls this RPC, and the two
--- writes can land out of order - the older fetch's write can commit last,
--- leaving stale status/period data until the next webhook or a client
--- retry corrects it. Closing this fully needs a lock that spans the
--- Stripe API round trip and the DB write (e.g. a distributed lock keyed by
--- subscription id), which a pooled/serverless Postgres connection over
--- PostgREST likely can't provide via a plain session-level advisory lock
--- across two separate RPC calls. Given how narrow the window is (both
--- events must be in flight within the same few hundred milliseconds) this
--- is accepted as a known limitation rather than built out here.
 CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
     event_id text PRIMARY KEY,
     processed_at timestamptz NOT NULL DEFAULT now()

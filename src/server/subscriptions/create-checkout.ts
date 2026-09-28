@@ -6,11 +6,11 @@
  * @author Evolution Combatives
  */
 
-import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
 import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers';
 import { getStripePriceId } from './price-id';
-import { createServerClient } from '@/src/lib/supabase';
+import { createServerClient, createAdminClient } from '@/src/lib/supabase';
 import { requireAuthenticatedSession } from '@/src/lib/session-auth';
+import { assertSingleNonTerminalSubscription, createReservedCheckoutSession } from './checkout-flow';
 import { json } from '@/src/lib/http';
 import { z } from 'zod';
 
@@ -59,51 +59,19 @@ export async function POST({ request }: { request: Request }) {
             );
         }
 
-        // Block on *any* non-terminal subscription, not just 'active': the
-        // webhook state machine (apply_stripe_subscription_event) only
-        // allows one live subscription per user, and only lets a new one
-        // take over once the old one is genuinely terminal (canceled/
-        // incomplete_expired/unpaid). Allowing checkout while past_due/
-        // incomplete/trialing would create two concurrent Stripe
-        // subscriptions our single-row-per-user model can't represent.
-        //
-        // Accepted residual gap: this check and the Stripe session it gates
-        // are not atomic with each other. Two checkout requests for the
-        // same user racing within this window (web+web, web+mobile, or two
-        // mobile calls) can both pass this SELECT before either has a
-        // subscriptions row, and both create a live Stripe subscription.
-        // Closing this fully needs a reservation row (an atomic INSERT ...
-        // ON CONFLICT placeholder claimed before the Stripe call, released
-        // on failure) shared by this endpoint and
-        // src/server/mobile/subscriptions-create-checkout.ts. That is a
-        // deliberate, separately-reviewed change, not a fix folded into
-        // this pass.
-        const { data: existingSubscription, error: existingSubscriptionError } = await supabase
-            .from('subscriptions')
-            .select('id, status, tier')
-            .eq('user_id', userId)
-            .not('status', 'in', '(canceled,incomplete_expired,unpaid)')
-            .single();
-
-        // PGRST116 = no matching row, the expected/common case. Any other
-        // error means we can't verify the guard, so fail closed rather than
-        // risk creating a second concurrent Stripe subscription.
-        if (existingSubscriptionError && existingSubscriptionError.code !== 'PGRST116') {
-            console.error('Error checking existing subscription:', existingSubscriptionError);
-            return json(
-                { error: 'Unable to verify subscription status' },
-                { status: 500 }
-            );
-        }
-
-        if (existingSubscription) {
+        const subscriptionGuard = await assertSingleNonTerminalSubscription(supabase, userId);
+        if (!subscriptionGuard.ok) {
             return json(
                 {
-                    error: 'User already has a subscription in progress',
-                    currentTier: existingSubscription.tier,
-                    currentStatus: existingSubscription.status,
+                    error: subscriptionGuard.error,
+                    ...(subscriptionGuard.currentStatus
+                        ? {
+                              currentTier: subscriptionGuard.currentTier,
+                              currentStatus: subscriptionGuard.currentStatus,
+                          }
+                        : {}),
                 },
-                { status: 400 }
+                { status: subscriptionGuard.status },
             );
         }
 
@@ -115,32 +83,45 @@ export async function POST({ request }: { request: Request }) {
             );
         }
 
-        const customer = await getOrCreateCustomer(userEmail, userId);
-
         const defaultSuccessUrl = successUrl || `${(process.env.MOBILE_APP_SCHEME || 'evolutioncombatives')}://subscription/success?tier=${tier}`;
         const defaultCancelUrl = cancelUrl || `${(process.env.MOBILE_APP_SCHEME || 'evolutioncombatives')}://subscription/cancel`;
 
-        const session = await createCheckoutSession({
-            priceId,
-            customerId: customer.id,
+        const admin = createAdminClient();
+        const checkout = await createReservedCheckoutSession({
+            admin,
             userId,
+            userEmail,
             tier,
+            priceId,
             successUrl: defaultSuccessUrl,
             cancelUrl: defaultCancelUrl,
         });
 
+        if (!checkout.ok) {
+            return json(
+                {
+                    error: checkout.error,
+                    ...(checkout.currentStatus
+                        ? { currentTier: checkout.currentTier, currentStatus: checkout.currentStatus }
+                        : {}),
+                },
+                { status: checkout.status },
+            );
+        }
+
         console.log('✅ Checkout session created successfully:', {
             userId,
             tier,
-            sessionId: session.id,
-            url: session.url,
-            customerEmail: session.customer_details?.email || userEmail,
+            sessionId: checkout.sessionId,
+            url: checkout.url,
+            reused: checkout.reused,
+            customerEmail: userEmail,
             timestamp: new Date().toISOString()
         });
 
         return json({
-            sessionId: session.id,
-            url: session.url,
+            sessionId: checkout.sessionId,
+            url: checkout.url,
             tier,
             price: SUBSCRIPTION_PRICING[tier as keyof typeof SUBSCRIPTION_PRICING].monthly,
         });

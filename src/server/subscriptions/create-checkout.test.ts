@@ -3,27 +3,28 @@ import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler, GET } from './create-checkout'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
-vi.mock('@/src/lib/stripe', () => ({
-  createCheckoutSession: vi.fn(),
-  getOrCreateCustomer: vi.fn(),
-}))
-
 vi.mock('@/src/lib/session-auth', () => ({
   requireAuthenticatedSession: vi.fn(),
 }))
 
 vi.mock('@/src/lib/supabase', () => ({
   createServerClient: vi.fn(),
+  createAdminClient: vi.fn(),
 }))
 
-import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
+vi.mock('./checkout-flow', () => ({
+  assertSingleNonTerminalSubscription: vi.fn(),
+  createReservedCheckoutSession: vi.fn(),
+}))
+
 import { requireAuthenticatedSession } from '@/src/lib/session-auth'
 import { createServerClient } from '@/src/lib/supabase'
+import { assertSingleNonTerminalSubscription, createReservedCheckoutSession } from './checkout-flow'
 
-const mockCreateCheckoutSession = vi.mocked(createCheckoutSession)
-const mockGetOrCreateCustomer = vi.mocked(getOrCreateCustomer)
 const mockRequireAuthenticatedSession = vi.mocked(requireAuthenticatedSession)
 const mockCreateServerClient = vi.mocked(createServerClient)
+const mockAssertSubscription = vi.mocked(assertSingleNonTerminalSubscription)
+const mockCreateReservedCheckoutSession = vi.mocked(createReservedCheckoutSession)
 
 const validUserId = '11111111-1111-4111-8111-111111111111'
 const otherUserId = '22222222-2222-4222-8222-222222222222'
@@ -32,16 +33,10 @@ const validEmail = 'user@example.com'
 function buildSupabase(options: {
   user?: { id: string; email: string } | null
   userError?: boolean
-  existingSubscription?: { id: string; status: string; tier: string } | null
-  existingSubscriptionError?: { code: string; message: string } | null
 }) {
   const profilesSingle = vi.fn().mockResolvedValue({
     data: options.user ?? null,
     error: options.userError ? { message: 'not found' } : null,
-  })
-  const subscriptionsSingle = vi.fn().mockResolvedValue({
-    data: options.existingSubscription ?? null,
-    error: options.existingSubscriptionError ?? null,
   })
 
   return {
@@ -50,15 +45,6 @@ function buildSupabase(options: {
         return {
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({ single: profilesSingle }),
-          }),
-        }
-      }
-      if (table === 'subscriptions') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              not: vi.fn().mockReturnValue({ single: subscriptionsSingle }),
-            }),
           }),
         }
       }
@@ -80,12 +66,6 @@ describe('POST /api/subscriptions/create-checkout', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetOrCreateCustomer.mockResolvedValue({ id: 'cus_123' } as never)
-    mockCreateCheckoutSession.mockResolvedValue({
-      id: 'cs_123',
-      url: 'https://checkout.stripe.com/session',
-      customer_details: { email: validEmail },
-    } as never)
     mockRequireAuthenticatedSession.mockResolvedValue({
       userId: validUserId,
       email: validEmail,
@@ -93,6 +73,13 @@ describe('POST /api/subscriptions/create-checkout', () => {
     mockCreateServerClient.mockResolvedValue(
       buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
     )
+    mockAssertSubscription.mockResolvedValue({ ok: true })
+    mockCreateReservedCheckoutSession.mockResolvedValue({
+      ok: true,
+      sessionId: 'cs_123',
+      url: 'https://checkout.stripe.com/session',
+      reused: false,
+    })
   })
 
   it('returns 401 when there is no authenticated session', async () => {
@@ -157,19 +144,19 @@ describe('POST /api/subscriptions/create-checkout', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
-    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: validUserId })
+    expect(mockCreateReservedCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: validUserId, userEmail: validEmail, tier: 'tier1' })
     )
   })
 
   it('returns 400 when user already has active subscription', async () => {
-    mockCreateServerClient.mockResolvedValue(
-      buildSupabase({
-        user: { id: validUserId, email: validEmail },
-        existingSubscription: { id: 'sub1', status: 'active', tier: 'tier1' },
-      }) as never
-    )
+    mockAssertSubscription.mockResolvedValue({
+      ok: false,
+      status: 400,
+      error: 'User already has a subscription in progress',
+      currentTier: 'tier1',
+      currentStatus: 'active',
+    })
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
@@ -185,12 +172,12 @@ describe('POST /api/subscriptions/create-checkout', () => {
   })
 
   it('blocks checkout while an existing subscription is past_due, not just active', async () => {
-    mockCreateServerClient.mockResolvedValue(
-      buildSupabase({
-        user: { id: validUserId, email: validEmail },
-        existingSubscription: { id: 'sub1', status: 'past_due', tier: 'tier2' },
-      }) as never
-    )
+    mockAssertSubscription.mockResolvedValue({
+      ok: false,
+      status: 400,
+      error: 'User already has a subscription in progress',
+      currentStatus: 'past_due',
+    })
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
@@ -206,12 +193,11 @@ describe('POST /api/subscriptions/create-checkout', () => {
   })
 
   it('fails closed (500) when the existing-subscription lookup itself errors', async () => {
-    mockCreateServerClient.mockResolvedValue(
-      buildSupabase({
-        user: { id: validUserId, email: validEmail },
-        existingSubscriptionError: { code: 'PGRST500', message: 'connection reset' },
-      }) as never
-    )
+    mockAssertSubscription.mockResolvedValue({
+      ok: false,
+      status: 500,
+      error: 'Unable to verify subscription status',
+    })
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
@@ -223,7 +209,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
 
     expect(res.status).toBe(500)
     expect(body.error).toBe('Unable to verify subscription status')
-    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
+    expect(mockCreateReservedCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('returns 500 when priceId missing for none tier', async () => {
@@ -257,13 +243,11 @@ describe('POST /api/subscriptions/create-checkout', () => {
       tier: 'tier1',
       price: 19,
     })
-    expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
-    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
+    expect(mockCreateReservedCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        priceId: 'price_runtime_tier1',
-        customerId: 'cus_123',
         userId: validUserId,
         tier: 'tier1',
+        priceId: 'price_runtime_tier1',
       })
     )
   })

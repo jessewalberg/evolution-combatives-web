@@ -74,6 +74,7 @@ export const createCheckoutSession = async ({
     tier,
     successUrl,
     cancelUrl,
+    idempotencyKey,
 }: {
     priceId: string;
     customerId?: string;
@@ -81,6 +82,7 @@ export const createCheckoutSession = async ({
     tier: string;
     successUrl: string;
     cancelUrl: string;
+    idempotencyKey?: string;
 }): Promise<Stripe.Checkout.Session> => {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
         mode: 'subscription',
@@ -112,7 +114,8 @@ export const createCheckoutSession = async ({
         sessionParams.customer_creation = 'always';
     }
 
-    return await stripe.checkout.sessions.create(sessionParams);
+    const requestOptions = idempotencyKey ? { idempotencyKey } : undefined;
+    return await stripe.checkout.sessions.create(sessionParams, requestOptions);
 };
 
 /**

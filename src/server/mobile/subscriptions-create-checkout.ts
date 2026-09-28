@@ -1,6 +1,8 @@
-import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
 import { getStripePriceId } from '@/src/server/subscriptions/price-id'
+import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers'
 import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
+import { createAdminClient } from '@/src/lib/supabase'
+import { assertSingleNonTerminalSubscription, createReservedCheckoutSession } from '@/src/server/subscriptions/checkout-flow'
 import { json } from '@/src/lib/http'
 import { z } from 'zod'
 
@@ -76,44 +78,17 @@ export async function POST({ request }: { request: Request }) {
             }
         }
 
-        // Block on *any* non-terminal subscription, matching the web
-        // checkout endpoint (src/server/subscriptions/create-checkout.ts):
-        // the webhook state machine only allows one live subscription per
-        // user. Note this also blocks the upgradeFromTier path above: that
-        // flow validates a tier hierarchy but never calls
-        // stripe.subscriptions.update() on stripeSubscriptionId, it just
-        // starts a brand-new Checkout Session, which would create a second
-        // live Stripe subscription rather than a real in-place upgrade.
-        // Blocking it here is strictly safer than the prior behavior, not
-        // a new regression; a true in-place upgrade needs its own
-        // stripe.subscriptions.update() implementation, out of scope here.
-        //
-        // Accepted residual gap: same TOCTOU as the web endpoint (see its
-        // comment) - this check is not atomic with the Stripe session
-        // creation below.
-        const { data: existingSubscription, error: existingSubscriptionError } = await supabase
-            .from('subscriptions')
-            .select('id, status, tier')
-            .eq('user_id', user.id)
-            .not('status', 'in', '(canceled,incomplete_expired,unpaid)')
-            .single()
-
-        if (existingSubscriptionError && existingSubscriptionError.code !== 'PGRST116') {
-            console.error('❌ [Mobile Subscription API] Error checking existing subscription:', existingSubscriptionError);
-            return json(
-                { success: false, error: 'Unable to verify subscription status' },
-                { status: 500 }
-            )
-        }
-
-        if (existingSubscription) {
+        const subscriptionGuard = await assertSingleNonTerminalSubscription(supabase, user.id)
+        if (!subscriptionGuard.ok) {
             return json(
                 {
                     success: false,
-                    error: 'User already has a subscription in progress',
-                    currentStatus: existingSubscription.status
+                    error: subscriptionGuard.error,
+                    ...(subscriptionGuard.currentStatus
+                        ? { currentStatus: subscriptionGuard.currentStatus }
+                        : {}),
                 },
-                { status: 400 }
+                { status: subscriptionGuard.status },
             )
         }
 
@@ -125,41 +100,44 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Get or create Stripe customer
-        const customer = await getOrCreateCustomer(user.email!, user.id)
-
-        console.log('👤 [Mobile Subscription API] Stripe customer:', {
-            customerId: customer.id,
-            userEmail: user.email
-        });
-
-        // Create Stripe checkout session
-        const session = await createCheckoutSession({
-            customerId: customer.id,
-            priceId,
+        const admin = createAdminClient()
+        const checkout = await createReservedCheckoutSession({
+            admin,
             userId: user.id,
-            tier: tier,
+            userEmail: user.email!,
+            tier,
+            priceId,
             successUrl: successUrl || `evolutioncombatives://subscription/success?tier=${tier}`,
             cancelUrl: cancelUrl || `evolutioncombatives://subscription/cancel`,
         })
 
+        if (!checkout.ok) {
+            return json(
+                {
+                    success: false,
+                    error: checkout.error,
+                    ...(checkout.currentStatus ? { currentStatus: checkout.currentStatus } : {}),
+                },
+                { status: checkout.status },
+            )
+        }
+
         console.log('✅ [Mobile Subscription API] Stripe checkout session created:', {
-            sessionId: session.id,
-            url: session.url,
+            sessionId: checkout.sessionId,
+            url: checkout.url,
             tier,
-            amount: session.amount_total,
-            currency: session.currency
+            reused: checkout.reused,
         });
 
         const response = {
             success: true,
             data: {
-                sessionId: session.id,
-                url: session.url!,
+                sessionId: checkout.sessionId,
+                url: checkout.url,
                 tier,
-                price: (session.amount_total || 0) / 100, // Convert from cents
-                currency: session.currency || 'usd',
-                expiresAt: new Date(session.expires_at * 1000).toISOString()
+                price: SUBSCRIPTION_PRICING[tier].monthly,
+                currency: 'usd',
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             }
         }
 

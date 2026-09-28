@@ -22,10 +22,13 @@ const mockValidateWebhookSignature = vi.mocked(validateWebhookSignature)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
 let nextEventId = 0
+let nextEventCreated = 1700000000
 
-function makeEvent(type: string, object: Record<string, unknown>, id?: string) {
+function makeEvent(type: string, object: Record<string, unknown>, id?: string, created?: number) {
   nextEventId += 1
-  return { id: id ?? `evt_${nextEventId}`, type, data: { object } } as unknown as Stripe.Event
+  nextEventCreated += 1
+  const eventCreated = created ?? nextEventCreated
+  return { id: id ?? `evt_${nextEventId}`, type, created: eventCreated, data: { object } } as unknown as Stripe.Event
 }
 
 /**
@@ -70,11 +73,16 @@ function buildSupabase() {
     ['user-1', { subscription_tier: null }],
   ])
 
-  function apply(p: Row, eventId: string): { error?: { message: string } } {
+  function apply(
+    p: Row,
+    eventId: string,
+    eventCreatedAt?: number,
+  ): { error?: { message: string } } {
     const userId = p.user_id as string | undefined
     const stripeId = p.stripe_subscription_id as string
     const status = p.status as string
     const tier = (p.tier as string | undefined) || undefined
+    const eventCreated = eventCreatedAt ?? 1700000000
     if (!userId || !stripeId) return {}
 
     if (processedEventIds.has(eventId)) return {} // exact replay: no-op success
@@ -85,13 +93,19 @@ function buildSupabase() {
       (TERMINAL.has(existing.status as string) &&
         (!existing.stripe_created_at || String(existing.stripe_created_at) < String(p.stripe_created_at)))
     if (!guardPasses) {
-      // No exception is raised here, so (unlike the missing-profile path
-      // below) the dedup insert stays committed - this event id is now
-      // "processed" even though the write was skipped, same as the SQL.
-      return {} // a different, still-live subscription occupies the row
+      return {}
     }
 
-    subscriptions.set(userId, { ...(existing ?? {}), ...p })
+    if (
+      existing &&
+      existing.stripe_subscription_id === stripeId &&
+      existing.stripe_last_event_created_at &&
+      eventCreated <= Number(existing.stripe_last_event_created_at)
+    ) {
+      return {}
+    }
+
+    subscriptions.set(userId, { ...(existing ?? {}), ...p, stripe_last_event_created_at: eventCreated })
 
     const profile = profiles.get(userId)
     if (!profile) {
@@ -104,11 +118,11 @@ function buildSupabase() {
     return {}
   }
 
-  const rpc = vi.fn((name: string, args: { p_subscription: Row; p_event_id: string }) => {
+  const rpc = vi.fn((name: string, args: { p_subscription: Row; p_event_id: string; p_event_created_at: number }) => {
     if (name !== 'apply_stripe_subscription_event') {
       return Promise.resolve({ error: new Error('Unknown RPC') })
     }
-    return Promise.resolve(apply(args.p_subscription, args.p_event_id))
+    return Promise.resolve(apply(args.p_subscription, args.p_event_id, args.p_event_created_at))
   })
 
   return {

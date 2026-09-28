@@ -29,15 +29,23 @@ vi.mock('@supabase/supabase-js', () => ({
   })),
 }))
 
-vi.mock('@/src/lib/stripe', () => ({
-  createCheckoutSession: vi.fn(),
-  getOrCreateCustomer: vi.fn(),
+vi.mock('@/src/lib/supabase', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/src/lib/supabase')>()
+  return {
+    ...actual,
+    createAdminClient: vi.fn(() => ({})),
+  }
+})
+
+vi.mock('@/src/server/subscriptions/checkout-flow', () => ({
+  assertSingleNonTerminalSubscription: vi.fn(),
+  createReservedCheckoutSession: vi.fn(),
 }))
 
-import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
+import { assertSingleNonTerminalSubscription, createReservedCheckoutSession } from '@/src/server/subscriptions/checkout-flow'
 
-const mockCreateCheckoutSession = vi.mocked(createCheckoutSession)
-const mockGetOrCreateCustomer = vi.mocked(getOrCreateCustomer)
+const mockAssertSubscription = vi.mocked(assertSingleNonTerminalSubscription)
+const mockCreateReservedCheckoutSession = vi.mocked(createReservedCheckoutSession)
 
 function mobileRequest(body: Record<string, unknown>, headers: Record<string, string> = {}) {
   return createNextRequest('/api/mobile/subscriptions/create-checkout', {
@@ -57,6 +65,8 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubEnv('SUPABASE_URL', 'https://test-project.supabase.co')
+    vi.stubEnv('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test-anon-key')
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'user@test.com' } },
       error: null,
@@ -69,14 +79,13 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
       data: null,
       error: { code: 'PGRST116', message: 'No rows found' },
     })
-    mockGetOrCreateCustomer.mockResolvedValue({ id: 'cus_1' } as never)
-    mockCreateCheckoutSession.mockResolvedValue({
-      id: 'cs_1',
+    mockAssertSubscription.mockResolvedValue({ ok: true })
+    mockCreateReservedCheckoutSession.mockResolvedValue({
+      ok: true,
+      sessionId: 'cs_1',
       url: 'https://checkout.stripe.com/cs',
-      amount_total: 1900,
-      currency: 'usd',
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
-    } as never)
+      reused: false,
+    })
   })
 
   it('returns 401 without bearer token', async () => {
@@ -120,9 +129,11 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
   })
 
   it('returns 400 when the user already has a non-terminal subscription', async () => {
-    mockSubscriptionSingle.mockResolvedValue({
-      data: { id: 'sub-row-1', status: 'past_due', tier: 'tier1' },
-      error: null,
+    mockAssertSubscription.mockResolvedValue({
+      ok: false,
+      status: 400,
+      error: 'User already has a subscription in progress',
+      currentStatus: 'past_due',
     })
 
     const res = (await POST(mobileRequest({ tier: 'tier2' })))!
@@ -131,25 +142,28 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
     expect(res.status).toBe(400)
     expect(body.error).toBe('User already has a subscription in progress')
     expect(body.currentStatus).toBe('past_due')
-    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
+    expect(mockCreateReservedCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('blocks the upgradeFromTier path too when a non-terminal subscription already exists', async () => {
-    mockSubscriptionSingle.mockResolvedValue({
-      data: { id: 'sub-row-1', status: 'active', tier: 'tier1' },
-      error: null,
+    mockAssertSubscription.mockResolvedValue({
+      ok: false,
+      status: 400,
+      error: 'User already has a subscription in progress',
+      currentStatus: 'active',
     })
 
     const res = (await POST(mobileRequest({ tier: 'tier2', upgradeFromTier: 'tier1' })))!
 
     expect(res.status).toBe(400)
-    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
+    expect(mockCreateReservedCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('fails closed (500) when the subscription lookup itself errors', async () => {
-    mockSubscriptionSingle.mockResolvedValue({
-      data: null,
-      error: { code: 'PGRST500', message: 'connection reset' },
+    mockAssertSubscription.mockResolvedValue({
+      ok: false,
+      status: 500,
+      error: 'Unable to verify subscription status',
     })
 
     const res = (await POST(mobileRequest({ tier: 'tier2' })))!
@@ -157,7 +171,7 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
 
     expect(res.status).toBe(500)
     expect(body.error).toBe('Unable to verify subscription status')
-    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
+    expect(mockCreateReservedCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('returns 400 for invalid request schema', async () => {
@@ -184,12 +198,11 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
       sessionId: 'cs_1',
       url: 'https://checkout.stripe.com/cs',
       tier: 'tier2',
-      price: 19,
+      price: 29,
       currency: 'usd',
     })
-    expect(mockGetOrCreateCustomer).toHaveBeenCalledWith('user@test.com', 'user-1')
-    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
-      expect.objectContaining({ priceId: 'price_runtime_tier2' })
+    expect(mockCreateReservedCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', tier: 'tier2', priceId: 'price_runtime_tier2' })
     )
   })
 
@@ -200,11 +213,11 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
 
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('Price ID not configured for tier: tier2')
-    expect(mockGetOrCreateCustomer).not.toHaveBeenCalled()
+    expect(mockCreateReservedCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('returns 500 when stripe throws stripe-named error', async () => {
-    mockCreateCheckoutSession.mockRejectedValue(new Error('stripe api error'))
+    mockCreateReservedCheckoutSession.mockResolvedValue({ ok: false, status: 500, error: 'Payment processing error' })
 
     const res = (await POST(mobileRequest({ tier: 'tier2' })))!
     const body = await res.json()
@@ -214,7 +227,7 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
   })
 
   it('returns 500 for generic errors', async () => {
-    mockGetOrCreateCustomer.mockRejectedValue(new Error('customer fail'))
+    mockCreateReservedCheckoutSession.mockRejectedValue(new Error('checkout fail'))
 
     const res = (await POST(mobileRequest({ tier: 'tier2' })))!
     expect(res.status).toBe(500)

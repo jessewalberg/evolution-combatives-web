@@ -66,7 +66,11 @@ function toRpcPayload(subscription: Stripe.Subscription): SubscriptionRpcPayload
  * event payload - see the migration's header comment for why) through the
  * single state RPC.
  */
-async function applyCurrentSubscriptionState(subscriptionId: string, eventId: string) {
+async function applyCurrentSubscriptionState(
+    subscriptionId: string,
+    eventId: string,
+    eventCreatedAt: number,
+) {
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const { userId, tier } = subscription.metadata || {};
 
@@ -79,6 +83,7 @@ async function applyCurrentSubscriptionState(subscriptionId: string, eventId: st
     const { error } = await supabase.rpc('apply_stripe_subscription_event', {
         p_subscription: toRpcPayload(subscription),
         p_event_id: eventId,
+        p_event_created_at: eventCreatedAt,
     });
 
     if (error) {
@@ -128,7 +133,7 @@ export async function POST({ request }: { request: Request }) {
             case 'customer.subscription.updated':
             case 'customer.subscription.deleted': {
                 const subscription = event.data.object as Stripe.Subscription;
-                await applyCurrentSubscriptionState(subscription.id, event.id);
+                await applyCurrentSubscriptionState(subscription.id, event.id, event.created);
                 break;
             }
 
@@ -137,7 +142,7 @@ export async function POST({ request }: { request: Request }) {
                 const invoice = event.data.object as Stripe.Invoice;
                 const subscriptionId = getInvoiceSubscriptionId(invoice);
                 if (subscriptionId) {
-                    await applyCurrentSubscriptionState(subscriptionId, event.id);
+                    await applyCurrentSubscriptionState(subscriptionId, event.id, event.created);
                 }
                 break;
             }
