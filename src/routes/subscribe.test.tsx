@@ -6,7 +6,7 @@ const signInWithPassword = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
-  useSearch: () => ({ email: 'mobile@example.com', tier: 'tier1' }),
+  useSearch: () => ({ email: 'mobile@example.com', tier: 'tier1', invalidDeepLink: false }),
 }))
 
 vi.mock('@/src/lib/supabase-browser', () => {

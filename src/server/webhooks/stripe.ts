@@ -22,6 +22,39 @@ interface StripeInvoiceWithSubscription extends Stripe.Invoice {
     subscription: string | Stripe.Subscription | null;
 }
 
+type SubscriptionRpcPayload = {
+    user_id?: string;
+    tier?: string;
+    external_subscription_id: string;
+    status: string;
+    stripe_subscription_id: string;
+    stripe_customer_id?: string;
+    current_period_start?: string;
+    current_period_end?: string;
+    cancel_at_period_end?: boolean;
+    canceled_at?: string | null;
+    updated_at: string;
+};
+
+function subscriptionToRpcPayload(subscription: StripeSubscriptionWithPeriod): SubscriptionRpcPayload {
+    const { userId, tier } = subscription.metadata || {};
+    return {
+        user_id: userId,
+        tier,
+        external_subscription_id: subscription.id,
+        status: subscription.status,
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: subscription.customer as string,
+        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        canceled_at: subscription.canceled_at
+            ? new Date(subscription.canceled_at * 1000).toISOString()
+            : null,
+        updated_at: new Date().toISOString(),
+    };
+}
+
 export async function POST({ request }: { request: Request }) {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
@@ -155,38 +188,13 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
 async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPeriod) {
     const supabase = createAdminClient();
 
-    // Update subscription record
-    const { error } = await supabase
-        .from('subscriptions')
-        .update({
-            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
-            updated_at: new Date().toISOString(),
-        })
-        .eq('stripe_subscription_id', subscription.id);
+    const { error } = await supabase.rpc('apply_stripe_subscription_state', {
+        p_subscription: subscriptionToRpcPayload(subscription),
+    });
 
     if (error) {
         console.error('Error updating subscription in database:', error);
         throw error;
-    }
-
-    // If subscription was cancelled, update user profile
-    if (subscription.status === 'canceled') {
-        const { data: subscriptionData } = await supabase
-            .from('subscriptions')
-            .select('user_id')
-            .eq('stripe_subscription_id', subscription.id)
-            .single();
-
-        if (subscriptionData) {
-            await supabase
-                .from('profiles')
-                .update({ subscription_tier: null })
-                .eq('id', subscriptionData.user_id);
-        }
     }
 
     console.log(`Subscription updated: ${subscription.id}, status: ${subscription.status}`);
@@ -197,34 +205,33 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
  */
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     const supabase = createAdminClient();
+    const withPeriod = subscription as StripeSubscriptionWithPeriod;
+    const { userId, tier } = subscription.metadata || {};
+    const now = new Date().toISOString();
 
-    // Update subscription status to canceled
-    const { error } = await supabase
-        .from('subscriptions')
-        .update({
+    const { error } = await supabase.rpc('apply_stripe_subscription_state', {
+        p_subscription: {
+            user_id: userId,
+            tier,
+            external_subscription_id: subscription.id,
             status: 'canceled',
-            canceled_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        })
-        .eq('stripe_subscription_id', subscription.id);
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: subscription.customer as string,
+            current_period_start: withPeriod.current_period_start
+                ? new Date(withPeriod.current_period_start * 1000).toISOString()
+                : undefined,
+            current_period_end: withPeriod.current_period_end
+                ? new Date(withPeriod.current_period_end * 1000).toISOString()
+                : undefined,
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            canceled_at: now,
+            updated_at: now,
+        },
+    });
 
     if (error) {
         console.error('Error updating canceled subscription:', error);
         throw error;
-    }
-
-    // Remove subscription tier from user profile
-    const { data: subscriptionData } = await supabase
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_subscription_id', subscription.id)
-        .single();
-
-    if (subscriptionData) {
-        await supabase
-            .from('profiles')
-            .update({ subscription_tier: null })
-            .eq('id', subscriptionData.user_id);
     }
 
     console.log(`Subscription canceled: ${subscription.id}`);

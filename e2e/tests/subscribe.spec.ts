@@ -92,11 +92,6 @@ test.describe('Subscription deep-link flow', () => {
     }
   })
 
-  test('subscription tiers work without identity query params', async ({ page }) => {
-    await page.goto('/subscribe')
-    await expect(page.getByRole('button', { name: /subscribe to/i })).toHaveCount(3)
-  })
-
   test('mobile deep link asks for browser sign-in before checkout', async ({ page, context }) => {
     await context.clearCookies()
     await page.goto(`/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`)

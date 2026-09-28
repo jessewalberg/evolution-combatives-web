@@ -18,13 +18,23 @@ import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 
 export const Route = createFileRoute('/subscribe')({
-    validateSearch: (search: Record<string, unknown>) =>
-        search as { email?: string; tier?: string },
+    validateSearch: (search: Record<string, unknown>) => {
+        const email = typeof search.email === 'string' ? search.email : undefined;
+        const tier = typeof search.tier === 'string' ? search.tier : undefined;
+        if (!email || !tier) {
+            return { email: undefined, tier: undefined, invalidDeepLink: true as const };
+        }
+        return { email, tier, invalidDeepLink: false as const };
+    },
     component: SubscribePage,
 });
 
 function SubscribePage() {
-    const search = useSearch({ strict: false }) as { email?: string; tier?: string };
+    const search = useSearch({ strict: false }) as {
+        email?: string;
+        tier?: string;
+        invalidDeepLink?: boolean;
+    };
     const supabase = createBrowserClient();
 
     const [selectedTier, setSelectedTier] = useState<SubscriptionTier | null>(null);
@@ -35,6 +45,7 @@ function SubscribePage() {
     const [password, setPassword] = useState('');
 
     const preselectedTier = (search.tier as SubscriptionTier | undefined) ?? null;
+    const invalidDeepLink = search.invalidDeepLink === true;
 
     useEffect(() => {
         if (preselectedTier && ['tier1', 'tier2', 'tier3'].includes(preselectedTier)) {
@@ -144,6 +155,16 @@ function SubscribePage() {
                 </div>
 
                 {/* Error Display */}
+                {invalidDeepLink && (
+                    <div className="max-w-md mx-auto mb-8">
+                        <Card className="p-4 bg-red-50 border-red-200">
+                            <p className="text-red-600 text-center">
+                                Open this page from the mobile app with your email and training tier to subscribe.
+                            </p>
+                        </Card>
+                    </div>
+                )}
+
                 {error && (
                     <div className="max-w-md mx-auto mb-8">
                         <Card className="p-4 bg-red-50 border-red-200">
@@ -159,7 +180,7 @@ function SubscribePage() {
                     </div>
                 )}
 
-                {authState === 'signed-out' && (
+                {authState === 'signed-out' && !invalidDeepLink && (
                     <Card className="max-w-md mx-auto mb-8 p-6">
                         <h2 className="text-xl font-semibold mb-4">Sign in to subscribe</h2>
                         <form onSubmit={handleSignIn} className="space-y-4">
@@ -176,7 +197,7 @@ function SubscribePage() {
 
                 {/* Subscription Tiers */}
                 <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                    {tiers.map((tier) => {
+                    {!invalidDeepLink && tiers.map((tier) => {
                         const pricing = SUBSCRIPTION_PRICING[tier];
                         const features = SUBSCRIPTION_FEATURES[tier];
                         const displayInfo = TIER_DISPLAY_INFO[tier];
