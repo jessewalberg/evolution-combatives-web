@@ -155,6 +155,30 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
       await db.close()
     }
   })
+
+  it('does not treat a delayed historical payment as a new refund', async () => {
+    const db = await bootstrapDb()
+    try {
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await apply(db, 'sub_old', 1700000000, 'active', 'evt_old_active', 1700000100)
+      await apply(db, 'sub_old', 1700000000, 'canceled', 'evt_old_canceled', 1700000200)
+      await apply(db, 'sub_new', 1700000001, 'active', 'evt_new_active', 1700000300)
+      await apply(db, 'sub_old', 1700000000, 'canceled', 'evt_old_delayed', 1700000150)
+      await apply(db, 'sub_old', 1700000000, 'canceled', 'evt_old_payment', 1700000250, true)
+
+      expect((await db.query<{ stripe_subscription_id: string; needs_refund: boolean }>(
+        'SELECT stripe_subscription_id, needs_refund FROM public.stripe_orphan_subscriptions WHERE user_id = $1',
+        [userId],
+      )).rows).toEqual([{ stripe_subscription_id: 'sub_old', needs_refund: false }])
+
+      await apply(db, 'sub_new', 1700000001, 'canceled', 'evt_new_canceled', 1700000400)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+      )).rows[0].data.action).toBe('create')
+    } finally {
+      await db.close()
+    }
+  })
 })
 
 describe('reserve_stripe_checkout migration (PGlite)', () => {

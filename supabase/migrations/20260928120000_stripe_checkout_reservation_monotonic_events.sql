@@ -336,7 +336,9 @@ BEGIN
             v_stripe_id,
             v_existing.stripe_subscription_id,
             p_event_id,
-            p_payment_succeeded IS TRUE,
+            p_payment_succeeded IS TRUE
+                AND v_existing.stripe_last_event_created_at IS NOT NULL
+                AND v_event_created_at > v_existing.stripe_last_event_created_at,
             p_subscription
         ) ON CONFLICT (stripe_subscription_id) DO UPDATE SET
             needs_refund = stripe_orphan_subscriptions.needs_refund OR EXCLUDED.needs_refund,
