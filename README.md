@@ -160,12 +160,15 @@ domains stay on their current host until the separate cutover.
 
 1. Confirm the production Cloudflare account in the deployment environment's
    `CLOUDFLARE_ACCOUNT_ID` secret and Worker name
-   (`evolution-combatives-admin`) in `wrangler.jsonc`. Fill in all production
-   `vars` there with live values: `VITE_SUPABASE_*`, `SUPABASE_*`, `VITE_APP_URL`,
-   `APP_URL`, `ADMIN_URL`, mobile scheme, PostHog settings, Stream account and
+   (`evolution-combatives-admin`) in `wrangler.jsonc`. Set every placeholder
+   key in the production GitHub Environment variables to its live value:
+   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_URL`,
+   `SUPABASE_ANON_KEY`, `VITE_APP_URL`,
+   `APP_URL`, `ADMIN_URL`, PostHog settings, Stream account and
    customer subdomain, **live** `STRIPE_PUBLISHABLE_KEY`, and all three **live**
-   `STRIPE_*_PRICE_ID` values. Replace every `update` and
-   `REPLACE_AT_DEPLOY` placeholder. The public
+   `STRIPE_*_PRICE_ID` values. The deployment build resolves these values and
+   fails if one is missing. Set matching staging values in the preview GitHub
+   Environment variables. The public
    app and admin URLs should point to `https://evolutioncombatives.com`.
 2. Populate the production Worker secrets from 1Password using
    `pnpm exec wrangler secret put <NAME>` for each name: `SUPABASE_SERVICE_ROLE_KEY`,

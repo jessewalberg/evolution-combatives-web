@@ -56,16 +56,17 @@ describe('stripe helpers', () => {
       tier: 'tier1',
       successUrl: 'https://ok',
       cancelUrl: 'https://cancel',
+      idempotencyKey: 'attempt-1',
     })
 
     expect(fakeStripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: 'subscription',
         customer: 'cus_1',
-        metadata: { userId: 'u1', tier: 'tier1' },
+        metadata: { userId: 'u1', tier: 'tier1', checkoutAttemptId: 'attempt-1' },
         line_items: [{ price: 'price_1', quantity: 1 }],
       }),
-      undefined,
+      { idempotencyKey: 'attempt-1' },
     )
     expect(fakeStripe.checkout.sessions.create.mock.calls[0][0].customer_creation).toBeUndefined()
   })

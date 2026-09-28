@@ -128,6 +128,10 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
         [userId],
       )
       expect(orphans.rows).toEqual([{ stripe_subscription_id: 'sub_duplicate', needs_refund: true }])
+
+      await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_dup_retry', 1700001200)
+      await apply(db, 'sub_old', 1699999999, 'canceled', 'evt_old_terminal', 1700001300)
+      expect((await db.query('SELECT * FROM public.stripe_orphan_subscriptions WHERE user_id = $1', [userId])).rows).toHaveLength(1)
     } finally {
       await db.close()
     }
@@ -135,22 +139,29 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 })
 
 describe('reserve_stripe_checkout migration (PGlite)', () => {
-  it('reuses an open checkout session for the same user and tier', async () => {
+  it('fences checkout attempts and retires completed sessions', async () => {
     const db = await bootstrapDb()
     try {
       const reserve = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'key-a') AS data`,
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`,
         [userId],
       )
       expect(reserve.rows[0].data.action).toBe('create')
+      const firstKey = reserve.rows[0].data.idempotency_key
 
-      await db.query(
-        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, 'cs_live', 'https://checkout.test/cs_live', now() + interval '1 hour')`,
+      expect((await db.query<{ finalized: boolean }>(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2, 'cs_live', 'https://checkout.test/cs_live', now() + interval '1 hour') AS finalized`,
+        [userId, firstKey],
+      )).rows[0].finalized).toBe(true)
+
+      const tierChange = await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`,
         [userId],
       )
+      expect(tierChange.rows[0].data.error).toBe('checkout_in_progress')
 
       const reuse = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'key-b') AS data`,
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`,
         [userId],
       )
       expect(reuse.rows[0].data).toMatchObject({
@@ -158,6 +169,34 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         session_id: 'cs_live',
         url: 'https://checkout.test/cs_live',
       })
+
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.complete_stripe_checkout_reservation($1::uuid, $2, 'cs_live', 'sub_paid') AS completed`,
+        [userId, firstKey],
+      )).rows[0].completed).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await db.query(
+        `INSERT INTO public.subscriptions (user_id, platform, external_subscription_id, tier, status, stripe_subscription_id)
+         VALUES ($1, 'stripe', 'sub_paid', 'tier1', 'canceled', 'sub_paid')`, [userId],
+      )
+      const next = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+      )).rows[0].data
+      expect(next.action).toBe('create')
+      expect(next.idempotency_key).not.toBe(firstKey)
+
+      await db.query('SELECT public.release_stripe_checkout_reservation($1::uuid, $2)', [userId, firstKey])
+      expect((await db.query<{ status: string; idempotency_key: string }>(
+        'SELECT status, idempotency_key FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
+      )).rows[0]).toEqual({ status: 'pending', idempotency_key: next.idempotency_key })
+      expect((await db.query<{ finalized: boolean }>(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2, 'cs_stale', 'https://checkout.test/cs_stale', now() + interval '1 hour') AS finalized`,
+        [userId, firstKey],
+      )).rows[0].finalized).toBe(false)
     } finally {
       await db.close()
     }

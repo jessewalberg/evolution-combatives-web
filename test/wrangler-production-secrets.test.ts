@@ -14,16 +14,6 @@ function loadConfig(): {
 
 const PLACEHOLDER = 'REPLACE_AT_DEPLOY'
 
-const SECRET_PATTERNS: RegExp[] = [
-    /^eyJ/,
-    /^phc_/,
-    /^pk_(test|live)_/,
-    /^price_/,
-    /^https:\/\/[a-z0-9]+\.supabase\.co$/,
-    /^[a-f0-9]{32}$/i,
-    /^customer-[a-z0-9]+\.cloudflarestream\.com$/,
-]
-
 function assertPlaceholderVars(label: string, vars: Record<string, string>) {
     for (const [key, value] of Object.entries(vars)) {
         if (key === 'VITE_MOBILE_APP_SCHEME' || key === 'MOBILE_APP_SCHEME') {
@@ -31,9 +21,6 @@ function assertPlaceholderVars(label: string, vars: Record<string, string>) {
             continue
         }
         expect(value, `${label}.${key}`).toBe(PLACEHOLDER)
-        for (const pattern of SECRET_PATTERNS) {
-            expect(value, `${label}.${key}`).not.toMatch(pattern)
-        }
     }
 }
 

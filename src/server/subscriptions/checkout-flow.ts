@@ -62,10 +62,6 @@ export async function assertSingleNonTerminalSubscription(
     return { ok: true };
 }
 
-export function buildCheckoutIdempotencyKey(userId: string, tier: string): string {
-    return `checkout:${userId}:${tier}`;
-}
-
 type ReserveResult =
     | { action: 'reuse'; sessionId: string; url: string }
     | { action: 'create'; idempotencyKey: string };
@@ -86,12 +82,10 @@ export async function reserveOrReuseCheckoutSession(
     admin: AdminClient,
     userId: string,
     tier: string,
-    idempotencyKey: string = buildCheckoutIdempotencyKey(userId, tier),
 ): Promise<{ ok: true; result: ReserveResult } | { ok: false; status: 400 | 500; error: string }> {
     const { data, error } = await adminRpc(admin, 'reserve_stripe_checkout', {
         p_user_id: userId,
         p_tier: tier,
-        p_idempotency_key: idempotencyKey,
     });
 
     if (error) {
@@ -115,11 +109,15 @@ export async function reserveOrReuseCheckoutSession(
         };
     }
 
+    if (payload.action !== 'create' || !payload.idempotency_key) {
+        return { ok: false, status: 500, error: 'Unable to start checkout' };
+    }
+
     return {
         ok: true,
         result: {
             action: 'create',
-            idempotencyKey: payload.idempotency_key ?? idempotencyKey,
+            idempotencyKey: payload.idempotency_key,
         },
     };
 }
@@ -152,9 +150,8 @@ export async function createReservedCheckoutSession(params: {
         };
     }
 
-    const customer = await getOrCreateCustomer(userEmail, userId);
-
     try {
+        const customer = await getOrCreateCustomer(userEmail, userId);
         const session = await createCheckoutSession({
             priceId,
             customerId: customer.id,
@@ -169,28 +166,38 @@ export async function createReservedCheckoutSession(params: {
             ? new Date(session.expires_at * 1000).toISOString()
             : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-        const { error: finalizeError } = await adminRpc(admin, 'finalize_stripe_checkout_reservation', {
+        const { data: finalized, error: finalizeError } = await adminRpc(admin, 'finalize_stripe_checkout_reservation', {
             p_user_id: userId,
+            p_idempotency_key: reserved.result.idempotencyKey,
             p_checkout_session_id: session.id,
             p_checkout_session_url: session.url ?? '',
             p_expires_at: expiresAt,
         });
 
-        if (finalizeError) {
+        if (finalizeError || finalized !== true) {
             console.error('finalize_stripe_checkout_reservation RPC error:', finalizeError);
-            await adminRpc(admin, 'release_stripe_checkout_reservation', { p_user_id: userId });
+            await adminRpc(admin, 'release_stripe_checkout_reservation', {
+                p_user_id: userId,
+                p_idempotency_key: reserved.result.idempotencyKey,
+            });
             return { ok: false, status: 500, error: 'Unable to start checkout' };
         }
 
         if (!session.url) {
-            await adminRpc(admin, 'release_stripe_checkout_reservation', { p_user_id: userId });
+            await adminRpc(admin, 'release_stripe_checkout_reservation', {
+                p_user_id: userId,
+                p_idempotency_key: reserved.result.idempotencyKey,
+            });
             return { ok: false, status: 500, error: 'Unable to start checkout' };
         }
 
         return { ok: true, sessionId: session.id, url: session.url, reused: false };
     } catch (err) {
         console.error('Stripe checkout session creation failed:', err);
-        await adminRpc(admin, 'release_stripe_checkout_reservation', { p_user_id: userId });
+        await adminRpc(admin, 'release_stripe_checkout_reservation', {
+            p_user_id: userId,
+            p_idempotency_key: reserved.result.idempotencyKey,
+        });
         return { ok: false, status: 500, error: 'Payment processing error' };
     }
 }

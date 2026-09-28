@@ -119,6 +119,9 @@ function buildSupabase() {
   }
 
   const rpc = vi.fn((name: string, args: { p_subscription: Row; p_event_id: string; p_event_created_at: number }) => {
+    if (name === 'complete_stripe_checkout_reservation') {
+      return Promise.resolve({ data: true, error: null })
+    }
     if (name !== 'apply_stripe_subscription_event') {
       return Promise.resolve({ error: new Error('Unknown RPC') })
     }
@@ -184,9 +187,13 @@ describe('POST /api/webhooks/stripe', () => {
     expect(body.error).toBe('Webhook handler failed')
   })
 
-  it('handles checkout.session.completed without fetching Stripe or writing to the database', async () => {
+  it('retires a completed checkout reservation', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('checkout.session.completed', { id: 'cs_1', metadata: { userId: 'user-1', tier: 'tier1' } })
+      makeEvent('checkout.session.completed', {
+        id: 'cs_1',
+        subscription: 'sub_1',
+        metadata: { userId: 'user-1', tier: 'tier1', checkoutAttemptId: 'key-1' },
+      })
     )
 
     const res = await POST(webhookRequest('{}', 'sig'))
@@ -195,7 +202,12 @@ describe('POST /api/webhooks/stripe', () => {
     expect(res.status).toBe(200)
     expect(body).toEqual({ received: true })
     expect(mockRetrieve).not.toHaveBeenCalled()
-    expect(supabase.rpc).not.toHaveBeenCalled()
+    expect(supabase.rpc).toHaveBeenCalledWith('complete_stripe_checkout_reservation', {
+      p_user_id: 'user-1',
+      p_idempotency_key: 'key-1',
+      p_checkout_session_id: 'cs_1',
+      p_stripe_subscription_id: 'sub_1',
+    })
   })
 
   it.each(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'])(
@@ -420,13 +432,13 @@ describe('POST /api/webhooks/stripe', () => {
     expect(mockRetrieve).not.toHaveBeenCalled()
   })
 
-  it('skips checkout.session.completed when metadata missing', async () => {
+  it('requests retry when checkout completion metadata is missing', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('checkout.session.completed', { id: 'cs_2', metadata: {} })
     )
 
     const res = await POST(webhookRequest('{}', 'sig'))
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(500)
   })
 })
 

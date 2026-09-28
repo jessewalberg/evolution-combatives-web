@@ -98,6 +98,7 @@ export const createCheckoutSession = async ({
         metadata: {
             userId,
             tier,
+            ...(idempotencyKey ? { checkoutAttemptId: idempotencyKey } : {}),
         },
         subscription_data: {
             metadata: {

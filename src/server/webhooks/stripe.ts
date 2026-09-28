@@ -165,17 +165,26 @@ export async function POST({ request }: { request: Request }) {
  * Handle successful checkout session completion
  */
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-    const { userId, tier } = session.metadata || {};
+    const { userId, checkoutAttemptId } = session.metadata || {};
+    const subscriptionId = typeof session.subscription === 'string'
+        ? session.subscription
+        : session.subscription?.id;
 
-    if (!userId || !tier) {
+    if (!userId || !checkoutAttemptId || !subscriptionId) {
         console.error('Missing metadata in checkout session:', session.id);
-        return;
+        throw new Error('Checkout session is missing reservation metadata');
     }
 
-    console.log(`Checkout completed for user ${userId}, tier ${tier}, session ${session.id}`);
-
-    // The actual subscription creation will be handled by the subscription.created webhook
-    // This is just for logging and any immediate actions needed
+    const supabase = createAdminClient();
+    const { error } = await supabase.rpc('complete_stripe_checkout_reservation', {
+        p_user_id: userId,
+        p_idempotency_key: checkoutAttemptId,
+        p_checkout_session_id: session.id,
+        p_stripe_subscription_id: subscriptionId,
+    });
+    if (error) {
+        throw error;
+    }
 }
 
 // Health check endpoint
