@@ -80,6 +80,14 @@ async function applyCurrentSubscriptionState(
         throw acquireError ?? new Error('Stripe subscription update in progress');
     }
 
+    async function releaseLease() {
+        const { error } = await supabase.rpc('release_stripe_subscription_lease', {
+            p_stripe_subscription_id: subscriptionId,
+            p_lease_token: leaseToken,
+        });
+        if (error) throw error;
+    }
+
     try {
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const { userId, tier } = subscription.metadata || {};
@@ -102,11 +110,7 @@ async function applyCurrentSubscriptionState(
             throw error;
         }
     } finally {
-        const { error: releaseError } = await supabase.rpc('release_stripe_subscription_lease', {
-            p_stripe_subscription_id: subscriptionId,
-            p_lease_token: leaseToken,
-        });
-        if (releaseError) throw releaseError;
+        await releaseLease();
     }
 }
 

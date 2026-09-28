@@ -32,7 +32,7 @@ jobs:
     environment: production
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      DEPLOY_VARS_JSON: ${{ toJSON(vars) }}
+      DEPLOY_VARS_JSON: ${{ toJSON(secrets) }}
     steps:
       - uses: actions/checkout@v4
 

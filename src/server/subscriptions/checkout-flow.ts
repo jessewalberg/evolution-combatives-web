@@ -59,7 +59,7 @@ export async function assertSingleNonTerminalSubscription(
     try {
         const { count: orphanCount, error: orphanError } = await createAdminClient()
             .from('stripe_orphan_subscriptions')
-            .select('id', { count: 'exact', head: true })
+            .select('id', { count: 'exact' })
             .eq('user_id', userId)
             .eq('needs_refund', true)
             .is('resolved_at', null);

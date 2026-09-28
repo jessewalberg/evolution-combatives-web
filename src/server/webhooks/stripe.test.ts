@@ -405,7 +405,7 @@ describe('POST /api/webhooks/stripe', () => {
 
   it('returns retryable failure on lease contention before retrieving Stripe state', async () => {
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.updated', { id: 'sub_1' }))
-    supabase.rpc.mockResolvedValueOnce({ data: null, error: null })
+    supabase.rpc.mockResolvedValueOnce({ data: false, error: null })
 
     const res = await POST(webhookRequest('{}', 'sig'))
 

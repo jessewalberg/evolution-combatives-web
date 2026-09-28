@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, URL } from 'node:url'
 import { test } from 'node:test'
 
 const source = fileURLToPath(new URL('../wrangler.jsonc', import.meta.url))
@@ -40,6 +40,23 @@ test('prepares the selected deployment environment and fails on missing values',
     }
     assert.deepEqual(prepared.vars, original.vars)
     assert.deepEqual(prepared.env.staging.vars, original.env.staging.vars)
+
+    copyFileSync(source, target)
+    for (const key of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'APP_URL', 'ADMIN_URL']) {
+      delete values[key]
+    }
+    values.VITE_ADMIN_URL = 'value-for-VITE_ADMIN_URL'
+    const aliases = spawnSync(process.execPath, [script], {
+      cwd: directory,
+      env: { ...env, DEPLOY_VARS_JSON: JSON.stringify(values) },
+      encoding: 'utf8',
+    })
+    assert.equal(aliases.status, 0, aliases.stderr)
+    const aliasPrepared = configAt(target).env.preview.vars
+    assert.equal(aliasPrepared.SUPABASE_URL, values.VITE_SUPABASE_URL)
+    assert.equal(aliasPrepared.SUPABASE_ANON_KEY, values.VITE_SUPABASE_ANON_KEY)
+    assert.equal(aliasPrepared.APP_URL, values.VITE_APP_URL)
+    assert.equal(aliasPrepared.ADMIN_URL, values.VITE_ADMIN_URL)
 
     copyFileSync(source, target)
     delete values.VITE_SUPABASE_URL

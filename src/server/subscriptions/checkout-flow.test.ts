@@ -60,6 +60,24 @@ describe('assertSingleNonTerminalSubscription', () => {
     expect(await assertSingleNonTerminalSubscription(supabase, 'user-1')).toEqual({ ok: true })
   })
 
+  it('verifies an empty orphan list when HEAD responses omit the count header', async () => {
+    const supabase = mockSupabase({ data: [], error: null, count: 0 })
+    const select = vi.fn((_columns: string, options: { head?: boolean }) => ({
+      eq: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          is: vi.fn().mockResolvedValue(options.head
+            ? { count: null, error: null }
+            : { count: 0, error: null }),
+        }),
+      }),
+    }))
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn().mockReturnValue({ select }),
+    } as never)
+
+    expect(await assertSingleNonTerminalSubscription(supabase, 'user-1')).toEqual({ ok: true })
+  })
+
   it('fails closed when more than one non-terminal row is returned', async () => {
     const supabase = mockSupabase({
       data: [
