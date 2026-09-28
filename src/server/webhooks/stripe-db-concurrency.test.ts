@@ -69,19 +69,23 @@ it.skipIf(!databaseUrl)('serializes concurrent first subscriptions across Postgr
     user_id: userId, tier: 'tier1', external_subscription_id: id,
     stripe_subscription_id: id, stripe_created_at: new Date(created * 1000).toISOString(), status: 'active',
   })
-  const event = (id: string, created: number, time: number) =>
-    `SELECT public.apply_stripe_subscription_event('${payload(id, created)}'::jsonb, '${randomUUID()}', ${time}, true);`
+  const leaseA = await query(`SELECT public.acquire_stripe_subscription_lease('sub_a')`)
+  const leaseB = await query(`SELECT public.acquire_stripe_subscription_lease('sub_b')`)
+  expect(leaseA).toBeTruthy()
+  expect(leaseB).toBeTruthy()
+  const event = (id: string, created: number, time: number, lease: string) =>
+    `SELECT public.apply_stripe_subscription_event('${payload(id, created)}'::jsonb, '${randomUUID()}', ${time}, true, '${lease}'::uuid);`
 
   const first = openSession()
   const second = openSession()
   try {
-    first.send(`BEGIN; ${event('sub_a', 1700000000, 1700000100)} SELECT 'first_ready';`)
+    first.send(`BEGIN; ${event('sub_a', 1700000000, 1700000100, leaseA)} SELECT 'first_ready';`)
     await first.waitFor('first_ready')
     second.send(`SELECT 'pid:' || pg_backend_pid();`)
     const pidOutput = await second.waitFor('pid:')
     const pid = Number(pidOutput.match(/pid:(\d+)/)?.[1])
     expect(pid).toBeGreaterThan(0)
-    second.send(`${event('sub_b', 1700000001, 1700000101)} SELECT 'second_done';`)
+    second.send(`${event('sub_b', 1700000001, 1700000101, leaseB)} SELECT 'second_done';`)
 
     let waiting = false
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -99,5 +103,7 @@ it.skipIf(!databaseUrl)('serializes concurrent first subscriptions across Postgr
   } finally {
     first.close()
     second.close()
+    await query(`SELECT public.release_stripe_subscription_lease('sub_a', '${leaseA}'::uuid)`)
+    await query(`SELECT public.release_stripe_subscription_lease('sub_b', '${leaseB}'::uuid)`)
   }
 }, 15000)

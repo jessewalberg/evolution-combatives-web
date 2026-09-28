@@ -436,7 +436,7 @@ export interface Database {
                     p_event_id: string;
                     p_event_created_at: number;
                     p_payment_succeeded: boolean;
-                    p_lease_token?: string;
+                    p_lease_token: string;
                 };
                 Returns: boolean;
             };

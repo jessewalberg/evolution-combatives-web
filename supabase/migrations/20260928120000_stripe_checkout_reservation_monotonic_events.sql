@@ -433,7 +433,7 @@ CREATE OR REPLACE FUNCTION public.apply_stripe_subscription_event(
     p_event_id text,
     p_event_created_at bigint,
     p_payment_succeeded boolean,
-    p_lease_token uuid DEFAULT NULL
+    p_lease_token uuid
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -461,7 +461,7 @@ BEGIN
 
     PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || v_user_id::text));
 
-    IF p_lease_token IS NOT NULL AND NOT EXISTS (
+    IF NOT EXISTS (
         SELECT 1 FROM public.stripe_subscription_leases
         WHERE stripe_subscription_id = v_stripe_id
           AND lease_token = p_lease_token AND expires_at > clock_timestamp()

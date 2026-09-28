@@ -98,6 +98,13 @@ function mapReserveError(code: string | undefined): { status: 400 | 500; error: 
     }
 }
 
+function isDefiniteStripeRejection(error: unknown): boolean {
+    if (!error || typeof error !== 'object' || !('type' in error)) return false;
+    return error.type === 'StripeInvalidRequestError'
+        || error.type === 'StripeAuthenticationError'
+        || error.type === 'StripePermissionError';
+}
+
 export async function reserveOrReuseCheckoutSession(
     admin: AdminClient,
     userId: string,
@@ -261,10 +268,14 @@ export async function createReservedCheckoutSession(params: {
         });
     } catch (err) {
         console.error('Stripe checkout session creation failed:', err);
-        await adminRpc(admin, 'mark_stripe_checkout_retryable', {
-            p_user_id: userId,
-            p_reservation_id: attempt.reservationId,
-        });
+        if (isDefiniteStripeRejection(err)) {
+            await releaseReservation();
+        } else {
+            await adminRpc(admin, 'mark_stripe_checkout_retryable', {
+                p_user_id: userId,
+                p_reservation_id: attempt.reservationId,
+            });
+        }
         return { ok: false, status: 500, error: 'Payment processing error' };
     }
 

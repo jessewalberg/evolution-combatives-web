@@ -72,10 +72,18 @@ async function apply(
   eventCreatedAt: number,
   paymentSucceeded = false,
 ) {
-  return db.query<{ applied: boolean }>(
-    'SELECT public.apply_stripe_subscription_event($1::jsonb, $2::text, $3::bigint, $4::boolean) AS applied',
-    [JSON.stringify(subscription(id, created, status)), eventId, eventCreatedAt, paymentSucceeded],
-  )
+  const token = (await db.query<{ token: string | null }>(
+    'SELECT public.acquire_stripe_subscription_lease($1::text) AS token', [id],
+  )).rows[0].token
+  if (!token) throw new Error(`Subscription lease unavailable for ${id}`)
+  try {
+    return await db.query<{ applied: boolean }>(
+      'SELECT public.apply_stripe_subscription_event($1::jsonb, $2::text, $3::bigint, $4::boolean, $5::uuid) AS applied',
+      [JSON.stringify(subscription(id, created, status)), eventId, eventCreatedAt, paymentSucceeded, token],
+    )
+  } finally {
+    await db.query('SELECT public.release_stripe_subscription_lease($1::text, $2::uuid)', [id, token])
+  }
 }
 
 describe('apply_stripe_subscription_event migration (PGlite)', () => {
@@ -255,6 +263,27 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 })
 
 describe('reserve_stripe_checkout migration (PGlite)', () => {
+  it('releases a rejected checkout attempt for corrected price input', async () => {
+    const db = await bootstrapDb()
+    try {
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'price_invalid') AS data`, [userId],
+      )).rows[0].data
+      await db.query(`SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid)`, [userId, first.reservation_id])
+      const corrected = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'price_corrected') AS data`, [userId],
+      )).rows[0].data
+      expect(corrected.action).toBe('create')
+      expect(corrected.reservation_id).not.toBe(first.reservation_id)
+      expect(corrected.idempotency_key).toBe(`checkout:${corrected.reservation_id}`)
+      expect((await db.query<{ retryable: boolean }>(
+        `SELECT public.mark_stripe_checkout_retryable($1::uuid, $2::uuid) AS retryable`, [userId, first.reservation_id],
+      )).rows[0].retryable).toBe(false)
+    } finally {
+      await db.close()
+    }
+  })
+
   it('retries an ambiguous pending checkout with its original attempt and key', async () => {
     const db = await bootstrapDb()
     try {
@@ -304,6 +333,10 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       expect(second).toBeTruthy()
       expect(second).not.toBe(first)
       await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await expect(db.query(
+        `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_no_lease', 1700000100, false, NULL::uuid)`,
+        [JSON.stringify(subscription('sub_1', 1700000000, 'active'))],
+      )).rejects.toThrow(/lease expired/)
       await expect(db.query(
         `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_stale_lease', 1700000100, false, $2::uuid)`,
         [JSON.stringify(subscription('sub_1', 1700000000, 'active')), first],
@@ -671,18 +704,9 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
     const db = await bootstrapDb()
     try {
       await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
-      await db.query(
-        `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_primary', 1700001000, false)`,
-        [JSON.stringify(subscription('sub_primary', 1700000000, 'active'))],
-      )
-      await db.query(
-        `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_orphan', 1700001100, true)`,
-        [JSON.stringify(subscription('sub_orphan', 1700000001, 'active'))],
-      )
-      await db.query(
-        `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_canceled', 1700001200, false)`,
-        [JSON.stringify(subscription('sub_primary', 1700000000, 'canceled'))],
-      )
+      await apply(db, 'sub_primary', 1700000000, 'active', 'evt_primary', 1700001000)
+      await apply(db, 'sub_orphan', 1700000001, 'active', 'evt_orphan', 1700001100, true)
+      await apply(db, 'sub_primary', 1700000000, 'canceled', 'evt_canceled', 1700001200)
 
       const blocked = await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],

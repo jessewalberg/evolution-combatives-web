@@ -211,11 +211,15 @@ describe('createReservedCheckoutSession expiry', () => {
     }))
   })
 
-  it('retries a remotely created session with the same attempt after a timeout', async () => {
+  it.each([
+    ['connection timeout', Object.assign(new Error('connection timed out'), { type: 'StripeConnectionError' })],
+    ['Stripe API failure', Object.assign(new Error('server failed'), { type: 'StripeAPIError' })],
+    ['unknown failure', new Error('unknown failure')],
+  ] as const)('retries a remotely created session after %s', async (_case, createError) => {
     vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
     vi.mocked(createCheckoutSession).mockReset()
     vi.mocked(createCheckoutSession)
-      .mockRejectedValueOnce(new Error('response timed out after remote creation'))
+      .mockRejectedValueOnce(createError)
       .mockResolvedValueOnce({ id: 'cs_remote', url: 'https://checkout.test/remote', expires_at: 1893456000 } as never)
     const rpc = vi.fn((name: string) => Promise.resolve({
       data: name === 'reserve_stripe_checkout'
@@ -243,6 +247,48 @@ describe('createReservedCheckoutSession expiry', () => {
     expect(rpc).toHaveBeenCalledWith('finalize_stripe_checkout_reservation', expect.objectContaining({
       p_reservation_id: 'reservation-1', p_checkout_session_id: 'cs_remote',
     }))
+  })
+
+  it.each([
+    'StripeInvalidRequestError',
+    'StripeAuthenticationError',
+    'StripePermissionError',
+  ])('releases a definite %s rejection so corrected input can checkout', async (type) => {
+    vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
+    vi.mocked(createCheckoutSession).mockReset()
+    vi.mocked(createCheckoutSession)
+      .mockRejectedValueOnce(Object.assign(new Error('rejected before creation'), { type }))
+      .mockResolvedValueOnce({ id: 'cs_corrected', url: 'https://checkout.test/corrected', expires_at: 1893456000 } as never)
+    let released = false
+    const rpc = vi.fn((name: string, args: Record<string, string>) => {
+      if (name === 'release_stripe_checkout_reservation') released = true
+      if (name === 'reserve_stripe_checkout') {
+        return Promise.resolve({
+          data: args.p_request_fingerprint.includes('price_corrected')
+            ? released
+              ? { action: 'create', reservation_id: 'reservation-2', idempotency_key: 'checkout:reservation-2' }
+              : { error: 'checkout_in_progress' }
+            : { action: 'create', reservation_id: 'reservation-1', idempotency_key: 'checkout:reservation-1' },
+          error: null,
+        })
+      }
+      return Promise.resolve({ data: true, error: null })
+    })
+    const admin = { rpc } as never
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toEqual({
+      ok: false, status: 500, error: 'Payment processing error',
+    })
+    expect(rpc).toHaveBeenCalledWith('release_stripe_checkout_reservation', {
+      p_user_id: params.userId, p_reservation_id: 'reservation-1',
+    })
+    expect(rpc).not.toHaveBeenCalledWith('mark_stripe_checkout_retryable', expect.anything())
+    expect(await createReservedCheckoutSession({ admin, ...params, priceId: 'price_corrected' })).toMatchObject({
+      ok: true, sessionId: 'cs_corrected', reused: false,
+    })
+    expect(vi.mocked(createCheckoutSession).mock.calls.map(([call]) => call.idempotencyKey)).toEqual([
+      'checkout:reservation-1', 'checkout:reservation-2',
+    ])
   })
 
   it('consumes a completed session and refuses another payable checkout', async () => {
