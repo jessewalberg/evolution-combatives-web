@@ -92,7 +92,7 @@ describe('createReservedCheckoutSession expiry', () => {
 
   it('returns the stored expiry when reusing a reservation', async () => {
     vi.mocked(createCheckoutSession).mockClear()
-    const admin = { rpc: vi.fn().mockResolvedValue({
+    const rpc = vi.fn().mockResolvedValue({
       data: {
         action: 'reuse',
         reservation_id: 'reservation-1',
@@ -101,7 +101,8 @@ describe('createReservedCheckoutSession expiry', () => {
         expires_at: '2030-01-01T00:00:00+00:00',
       },
       error: null,
-    }) } as never
+    })
+    const admin = { rpc } as never
 
     expect(await createReservedCheckoutSession({ admin, ...params })).toEqual({
       ok: true,
@@ -109,6 +110,72 @@ describe('createReservedCheckoutSession expiry', () => {
       url: 'https://checkout.test/reused',
       expiresAt: '2030-01-01T00:00:00+00:00',
       reused: true,
+    })
+    expect(createCheckoutSession).not.toHaveBeenCalled()
+    expect(rpc).toHaveBeenCalledWith('reserve_stripe_checkout', {
+      p_user_id: params.userId,
+      p_tier: params.tier,
+      p_request_fingerprint: JSON.stringify([params.priceId, params.successUrl, params.cancelUrl]),
+    })
+  })
+
+  it('refuses mobile callbacks and changed price or callbacks for a live web session', async () => {
+    vi.mocked(createCheckoutSession).mockClear()
+    const webFingerprint = JSON.stringify([params.priceId, params.successUrl, params.cancelUrl])
+    const rpc = vi.fn((_name: string, args: { p_request_fingerprint: string }) => Promise.resolve({
+      data: args.p_request_fingerprint === webFingerprint
+        ? {
+            action: 'reuse', reservation_id: 'reservation-1', session_id: 'cs_web',
+            url: 'https://checkout.test/web', expires_at: '2030-01-01T00:00:00+00:00',
+          }
+        : { error: 'checkout_in_progress' },
+      error: null,
+    }))
+    const admin = { rpc } as never
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toMatchObject({
+      ok: true, sessionId: 'cs_web', reused: true,
+    })
+
+    const changedRequests = [
+      { ...params, successUrl: 'evolutioncombatives://subscription/success', cancelUrl: 'evolutioncombatives://subscription/cancel' },
+      { ...params, priceId: 'price_2' },
+      { ...params, successUrl: 'https://example.com/other-success' },
+      { ...params, cancelUrl: 'https://example.com/other-cancel' },
+    ]
+    for (const request of changedRequests) {
+      expect(await createReservedCheckoutSession({ admin, ...request })).toEqual({
+        ok: false, status: 500, error: 'Unable to start checkout',
+      })
+      expect(rpc).toHaveBeenLastCalledWith('reserve_stripe_checkout', {
+        p_user_id: params.userId,
+        p_tier: params.tier,
+        p_request_fingerprint: JSON.stringify([request.priceId, request.successUrl, request.cancelUrl]),
+      })
+    }
+    expect(createCheckoutSession).not.toHaveBeenCalled()
+
+    const mobile = {
+      ...params,
+      successUrl: 'evolutioncombatives://subscription/success',
+      cancelUrl: 'evolutioncombatives://subscription/cancel',
+    }
+    const mobileFingerprint = JSON.stringify([mobile.priceId, mobile.successUrl, mobile.cancelUrl])
+    const mobileRpc = vi.fn((_name: string, args: { p_request_fingerprint: string }) => Promise.resolve({
+      data: args.p_request_fingerprint === mobileFingerprint
+        ? {
+            action: 'reuse', reservation_id: 'reservation-2', session_id: 'cs_mobile',
+            url: 'https://checkout.test/mobile', expires_at: '2030-01-01T00:00:00+00:00',
+          }
+        : { error: 'checkout_in_progress' },
+      error: null,
+    }))
+    const mobileAdmin = { rpc: mobileRpc } as never
+    expect(await createReservedCheckoutSession({ admin: mobileAdmin, ...mobile })).toMatchObject({
+      ok: true, sessionId: 'cs_mobile', reused: true,
+    })
+    expect(await createReservedCheckoutSession({ admin: mobileAdmin, ...params })).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
     })
     expect(createCheckoutSession).not.toHaveBeenCalled()
   })
@@ -129,6 +196,11 @@ describe('createReservedCheckoutSession expiry', () => {
       url: 'https://checkout.test/new',
       expiresAt: '2030-01-01T00:00:00.000Z',
       reused: false,
+    })
+    expect(rpc).toHaveBeenCalledWith('reserve_stripe_checkout', {
+      p_user_id: params.userId,
+      p_tier: params.tier,
+      p_request_fingerprint: JSON.stringify([params.priceId, params.successUrl, params.cancelUrl]),
     })
     expect(rpc).toHaveBeenCalledWith('finalize_stripe_checkout_reservation', expect.objectContaining({
       p_expires_at: '2030-01-01T00:00:00.000Z',

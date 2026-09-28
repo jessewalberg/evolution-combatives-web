@@ -443,6 +443,7 @@ export interface Database {
                 Args: {
                     p_user_id: string;
                     p_tier: string;
+                    p_request_fingerprint: string;
                 };
                 Returns: Record<string, unknown>;
             };

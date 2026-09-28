@@ -101,10 +101,14 @@ export async function reserveOrReuseCheckoutSession(
     admin: AdminClient,
     userId: string,
     tier: string,
+    priceId: string,
+    successUrl: string,
+    cancelUrl: string,
 ): Promise<{ ok: true; result: ReserveResult } | { ok: false; status: 400 | 500; error: string }> {
     const { data, error } = await adminRpc(admin, 'reserve_stripe_checkout', {
         p_user_id: userId,
         p_tier: tier,
+        p_request_fingerprint: JSON.stringify([priceId, successUrl, cancelUrl]),
     });
 
     if (error) {
@@ -156,7 +160,7 @@ export async function createReservedCheckoutSession(params: {
 > {
     const { admin, userId, userEmail, tier, priceId, successUrl, cancelUrl } = params;
 
-    const reserved = await reserveOrReuseCheckoutSession(admin, userId, tier);
+    const reserved = await reserveOrReuseCheckoutSession(admin, userId, tier, priceId, successUrl, cancelUrl);
     if (!reserved.ok) {
         return reserved;
     }

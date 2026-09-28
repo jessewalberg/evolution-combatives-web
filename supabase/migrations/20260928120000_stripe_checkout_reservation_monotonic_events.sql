@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.stripe_checkout_reservations (
     user_id uuid PRIMARY KEY,
     reservation_id uuid NOT NULL UNIQUE,
     tier text NOT NULL,
+    request_fingerprint text NOT NULL,
     checkout_session_id text,
     checkout_session_url text,
     stripe_subscription_id text,
@@ -65,7 +66,8 @@ WHERE platform = 'stripe' AND stripe_created_at IS NULL;
 
 CREATE OR REPLACE FUNCTION public.reserve_stripe_checkout(
     p_user_id uuid,
-    p_tier text
+    p_tier text,
+    p_request_fingerprint text
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -76,7 +78,8 @@ DECLARE
     v_live_count integer;
     v_reservation_id uuid;
 BEGIN
-    IF p_user_id IS NULL OR p_tier IS NULL OR p_tier = '' THEN
+    IF p_user_id IS NULL OR p_tier IS NULL OR p_tier = ''
+       OR p_request_fingerprint IS NULL OR p_request_fingerprint = '' THEN
         RETURN jsonb_build_object('error', 'invalid_request');
     END IF;
 
@@ -112,7 +115,7 @@ BEGIN
        AND v_row.checkout_session_id IS NOT NULL
        AND v_row.expires_at IS NOT NULL
        AND v_row.expires_at > now() THEN
-        IF v_row.tier = p_tier THEN
+        IF v_row.tier = p_tier AND v_row.request_fingerprint = p_request_fingerprint THEN
             RETURN jsonb_build_object(
                 'action', 'reuse',
                 'reservation_id', v_row.reservation_id,
@@ -143,14 +146,15 @@ BEGIN
     v_reservation_id := gen_random_uuid();
 
     INSERT INTO public.stripe_checkout_reservations (
-        user_id, reservation_id, tier, checkout_session_id,
+        user_id, reservation_id, tier, request_fingerprint, checkout_session_id,
         checkout_session_url, expires_at, status, updated_at
     ) VALUES (
-        p_user_id, v_reservation_id, p_tier, NULL, NULL, NULL, 'pending', now()
+        p_user_id, v_reservation_id, p_tier, p_request_fingerprint, NULL, NULL, NULL, 'pending', now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
         reservation_id = EXCLUDED.reservation_id,
         tier = EXCLUDED.tier,
+        request_fingerprint = EXCLUDED.request_fingerprint,
         checkout_session_id = NULL,
         checkout_session_url = NULL,
         stripe_subscription_id = NULL,
@@ -269,8 +273,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.reserve_stripe_checkout(uuid, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.reserve_stripe_checkout(uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION public.reserve_stripe_checkout(uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reserve_stripe_checkout(uuid, text, text) TO service_role;
 
 REVOKE ALL ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid, text, text, timestamptz) TO service_role;

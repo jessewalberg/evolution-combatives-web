@@ -182,7 +182,7 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 
       await apply(db, 'sub_new', 1700000300, 'canceled', 'evt_new_canceled', 1700000400)
       expect((await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )).rows[0].data.action).toBe('create')
     } finally {
       await db.close()
@@ -206,11 +206,11 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 
       await db.query(`UPDATE public.subscriptions SET status = 'canceled' WHERE user_id = $1`, [userId])
       expect((await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )).rows[0].data.error).toBe('unresolved_payment')
       await db.query(`UPDATE public.stripe_orphan_subscriptions SET resolved_at = now() WHERE stripe_subscription_id = 'sub_duplicate'`)
       expect((await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )).rows[0].data.action).toBe('create')
     } finally {
       await db.close()
@@ -219,11 +219,74 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 })
 
 describe('reserve_stripe_checkout migration (PGlite)', () => {
+  it('reuses only an exact price and callback request', async () => {
+    const db = await bootstrapDb()
+    try {
+      const web = JSON.stringify(['price_1', 'https://web.test/success', 'https://web.test/cancel'])
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', $2::text) AS data`, [userId, web],
+      )).rows[0].data
+      expect(first.action).toBe('create')
+      expect((await db.query<{ finalized: boolean }>(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_web', 'https://checkout.test/web', now() + interval '1 hour') AS finalized`,
+        [userId, first.reservation_id],
+      )).rows[0].finalized).toBe(true)
+
+      for (const changed of [
+        JSON.stringify(['price_1', 'evolutioncombatives://subscription/success', 'evolutioncombatives://subscription/cancel']),
+        JSON.stringify(['price_2', 'https://web.test/success', 'https://web.test/cancel']),
+        JSON.stringify(['price_1', 'https://web.test/other-success', 'https://web.test/cancel']),
+        JSON.stringify(['price_1', 'https://web.test/success', 'https://web.test/other-cancel']),
+      ]) {
+        const result = (await db.query<{ data: Record<string, string> }>(
+          `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', $2::text) AS data`, [userId, changed],
+        )).rows[0].data
+        expect(result.error).toBe('checkout_in_progress')
+      }
+
+      const retry = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', $2::text) AS data`, [userId, web],
+      )).rows[0].data
+      expect(retry).toMatchObject({
+        action: 'reuse', reservation_id: first.reservation_id, session_id: 'cs_web', url: 'https://checkout.test/web',
+      })
+      expect((await db.query<{ reservation_id: string; request_fingerprint: string }>(
+        'SELECT reservation_id, request_fingerprint FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
+      )).rows).toEqual([{ reservation_id: first.reservation_id, request_fingerprint: web }])
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('refuses a web request while a mobile session is payable', async () => {
+    const db = await bootstrapDb()
+    try {
+      const mobile = JSON.stringify(['price_1', 'evolutioncombatives://subscription/success', 'evolutioncombatives://subscription/cancel'])
+      const web = JSON.stringify(['price_1', 'https://web.test/success', 'https://web.test/cancel'])
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', $2::text) AS data`, [userId, mobile],
+      )).rows[0].data
+      expect(first.action).toBe('create')
+      expect((await db.query<{ finalized: boolean }>(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_mobile', 'https://checkout.test/mobile', now() + interval '1 hour') AS finalized`,
+        [userId, first.reservation_id],
+      )).rows[0].finalized).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', $2::text) AS data`, [userId, web],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', $2::text) AS data`, [userId, mobile],
+      )).rows[0].data).toMatchObject({ action: 'reuse', reservation_id: first.reservation_id, session_id: 'cs_mobile' })
+    } finally {
+      await db.close()
+    }
+  })
+
   it('fences checkout attempts and retires completed sessions', async () => {
     const db = await bootstrapDb()
     try {
       const reserve = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`,
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-1') AS data`,
         [userId],
       )
       expect(reserve.rows[0].data.action).toBe('create')
@@ -236,7 +299,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )).rows[0].finalized).toBe(true)
 
       const tierChange = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`,
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`,
         [userId],
       )
       expect(tierChange.rows[0].data.error).toBe('checkout_in_progress')
@@ -247,7 +310,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )
 
       const reuse = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`,
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-1') AS data`,
         [userId],
       )
       expect(reuse.rows[0].data).toMatchObject({
@@ -281,7 +344,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )).rows[0].completed).toBe(true)
       expect((await db.query('SELECT * FROM public.stripe_checkout_completions')).rows).toHaveLength(1)
       expect((await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-1') AS data`, [userId],
       )).rows[0].data.error).toBe('checkout_in_progress')
 
       await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
@@ -290,7 +353,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
          VALUES ($1, 'stripe', 'sub_paid', 'tier1', 'canceled', 'sub_paid')`, [userId],
       )
       const next = (await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )).rows[0].data
       expect(next.action).toBe('create')
       expect(next.reservation_id).not.toBe(firstReservationId)
@@ -321,7 +384,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )).rows[0].status).toBe('released')
 
       const third = (await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )).rows[0].data
       expect(third.reservation_id).not.toBe(next.reservation_id)
       expect((await db.query<{ finalized: boolean }>(
@@ -358,7 +421,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )
 
       const blocked = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )
       expect(blocked.rows[0].data.error).toBe('unresolved_payment')
       expect((await db.query('SELECT * FROM public.stripe_checkout_reservations')).rows).toHaveLength(0)
@@ -367,7 +430,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         `UPDATE public.stripe_orphan_subscriptions SET resolved_at = now() WHERE stripe_subscription_id = 'sub_orphan'`,
       )
       const allowed = await db.query<{ data: Record<string, string> }>(
-        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-1') AS data`, [userId],
       )
       expect(allowed.rows[0].data.action).toBe('create')
     } finally {
