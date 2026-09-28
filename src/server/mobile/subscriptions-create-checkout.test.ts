@@ -5,15 +5,27 @@ const POST = (request?: Request) => POSTHandler({ request: request ?? new Reques
 
 const mockGetUser = vi.fn()
 const mockProfileSingle = vi.fn()
+const mockSubscriptionSingle = vi.fn()
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
     auth: { getUser: mockGetUser },
-    from: vi.fn(() => ({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({ single: mockProfileSingle }),
-      }),
-    })),
+    from: vi.fn((table: string) => {
+      if (table === 'subscriptions') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              not: vi.fn().mockReturnValue({ single: mockSubscriptionSingle }),
+            }),
+          }),
+        }
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({ single: mockProfileSingle }),
+        }),
+      }
+    }),
   })),
 }))
 
@@ -52,6 +64,10 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
     mockProfileSingle.mockResolvedValue({
       data: { id: 'user-1', email: 'user@test.com', subscription_tier: 'tier1' },
       error: null,
+    })
+    mockSubscriptionSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST116', message: 'No rows found' },
     })
     mockGetOrCreateCustomer.mockResolvedValue({ id: 'cus_1' } as never)
     mockCreateCheckoutSession.mockResolvedValue({
@@ -101,6 +117,47 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
 
     expect(res.status).toBe(400)
     expect(body.error).toContain('Invalid upgrade')
+  })
+
+  it('returns 400 when the user already has a non-terminal subscription', async () => {
+    mockSubscriptionSingle.mockResolvedValue({
+      data: { id: 'sub-row-1', status: 'past_due', tier: 'tier1' },
+      error: null,
+    })
+
+    const res = (await POST(mobileRequest({ tier: 'tier2' })))!
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('User already has a subscription in progress')
+    expect(body.currentStatus).toBe('past_due')
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
+  })
+
+  it('blocks the upgradeFromTier path too when a non-terminal subscription already exists', async () => {
+    mockSubscriptionSingle.mockResolvedValue({
+      data: { id: 'sub-row-1', status: 'active', tier: 'tier1' },
+      error: null,
+    })
+
+    const res = (await POST(mobileRequest({ tier: 'tier2', upgradeFromTier: 'tier1' })))!
+
+    expect(res.status).toBe(400)
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
+  })
+
+  it('fails closed (500) when the subscription lookup itself errors', async () => {
+    mockSubscriptionSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST500', message: 'connection reset' },
+    })
+
+    const res = (await POST(mobileRequest({ tier: 'tier2' })))!
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Unable to verify subscription status')
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('returns 400 for invalid request schema', async () => {

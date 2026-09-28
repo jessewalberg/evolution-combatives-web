@@ -11,15 +11,38 @@ import { createAdminClient } from '@/src/lib/supabase';
 import { json } from '@/src/lib/http';
 import Stripe from 'stripe';
 
-// Extended interface for Stripe Subscription with period properties
+// Stripe's 2025-03-31 "basil" API version moved current_period_start/end
+// off the Subscription object onto its first subscription item, and
+// deprecated Invoice.subscription in favor of parent.subscription_details.
+// The types below keep the legacy top-level shapes as an optional fallback
+// (older API versions, or Stripe's SDK test fixtures, may still provide
+// them) while the primary read path uses the current shape.
 interface StripeSubscriptionWithPeriod extends Stripe.Subscription {
-    current_period_start: number;
-    current_period_end: number;
+    current_period_start?: number;
+    current_period_end?: number;
 }
 
-// Extended interface for Stripe Invoice with subscription property
 interface StripeInvoiceWithSubscription extends Stripe.Invoice {
-    subscription: string | Stripe.Subscription | null;
+    subscription?: string | Stripe.Subscription | null;
+}
+
+function getSubscriptionPeriod(subscription: StripeSubscriptionWithPeriod): { start?: number; end?: number } {
+    const item = subscription.items?.data?.[0];
+    return {
+        start: item?.current_period_start ?? subscription.current_period_start,
+        end: item?.current_period_end ?? subscription.current_period_end,
+    };
+}
+
+function getInvoiceSubscriptionId(invoice: StripeInvoiceWithSubscription): string | undefined {
+    const parentSubscription = invoice.parent?.subscription_details?.subscription;
+    if (parentSubscription) {
+        return typeof parentSubscription === 'string' ? parentSubscription : parentSubscription.id;
+    }
+    if (invoice.subscription) {
+        return typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id;
+    }
+    return undefined;
 }
 
 type SubscriptionRpcPayload = {
@@ -37,6 +60,7 @@ type SubscriptionRpcPayload = {
 
 function toRpcPayload(subscription: StripeSubscriptionWithPeriod): SubscriptionRpcPayload {
     const { userId, tier } = subscription.metadata || {};
+    const { start, end } = getSubscriptionPeriod(subscription);
     return {
         user_id: userId,
         tier,
@@ -44,8 +68,8 @@ function toRpcPayload(subscription: StripeSubscriptionWithPeriod): SubscriptionR
         status: subscription.status,
         stripe_subscription_id: subscription.id,
         stripe_customer_id: subscription.customer as string,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        current_period_start: start ? new Date(start * 1000).toISOString() : undefined,
+        current_period_end: end ? new Date(end * 1000).toISOString() : undefined,
         cancel_at_period_end: subscription.cancel_at_period_end,
         canceled_at: subscription.canceled_at
             ? new Date(subscription.canceled_at * 1000).toISOString()
@@ -127,9 +151,8 @@ export async function POST({ request }: { request: Request }) {
             case 'invoice.payment_succeeded':
             case 'invoice.payment_failed': {
                 const invoice = event.data.object as StripeInvoiceWithSubscription;
-                if (invoice.subscription) {
-                    const subscriptionId =
-                        typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id;
+                const subscriptionId = getInvoiceSubscriptionId(invoice);
+                if (subscriptionId) {
                     await applyCurrentSubscriptionState(subscriptionId, event.id);
                 }
                 break;

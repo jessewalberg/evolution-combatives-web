@@ -66,12 +66,35 @@ export async function POST({ request }: { request: Request }) {
         // incomplete_expired/unpaid). Allowing checkout while past_due/
         // incomplete/trialing would create two concurrent Stripe
         // subscriptions our single-row-per-user model can't represent.
-        const { data: existingSubscription } = await supabase
+        //
+        // Accepted residual gap: this check and the Stripe session it gates
+        // are not atomic with each other. Two checkout requests for the
+        // same user racing within this window (web+web, web+mobile, or two
+        // mobile calls) can both pass this SELECT before either has a
+        // subscriptions row, and both create a live Stripe subscription.
+        // Closing this fully needs a reservation row (an atomic INSERT ...
+        // ON CONFLICT placeholder claimed before the Stripe call, released
+        // on failure) shared by this endpoint and
+        // src/server/mobile/subscriptions-create-checkout.ts. That is a
+        // deliberate, separately-reviewed change, not a fix folded into
+        // this pass.
+        const { data: existingSubscription, error: existingSubscriptionError } = await supabase
             .from('subscriptions')
             .select('id, status, tier')
             .eq('user_id', userId)
             .not('status', 'in', '(canceled,incomplete_expired,unpaid)')
             .single();
+
+        // PGRST116 = no matching row, the expected/common case. Any other
+        // error means we can't verify the guard, so fail closed rather than
+        // risk creating a second concurrent Stripe subscription.
+        if (existingSubscriptionError && existingSubscriptionError.code !== 'PGRST116') {
+            console.error('Error checking existing subscription:', existingSubscriptionError);
+            return json(
+                { error: 'Unable to verify subscription status' },
+                { status: 500 }
+            );
+        }
 
         if (existingSubscription) {
             return json(

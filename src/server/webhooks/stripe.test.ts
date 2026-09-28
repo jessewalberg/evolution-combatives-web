@@ -28,8 +28,28 @@ function makeEvent(type: string, object: Record<string, unknown>, id?: string) {
   return { id: id ?? `evt_${nextEventId}`, type, data: { object } } as unknown as Stripe.Event
 }
 
-/** A fake "live Stripe" subscription, independent of what any event payload claims. */
+/**
+ * A fake "live Stripe" subscription, independent of what any event payload
+ * claims. Current ("basil", 2025-03-31+) Stripe API shape: current_period_start/end
+ * live on the first subscription item, not on the subscription itself.
+ */
 function liveSubscription(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'sub_1',
+    status: 'active',
+    customer: 'cus_1',
+    metadata: { userId: 'user-1', tier: 'tier1' },
+    items: {
+      data: [{ current_period_start: 1700000000, current_period_end: 1702592000 }],
+    },
+    cancel_at_period_end: false,
+    canceled_at: null,
+    ...overrides,
+  }
+}
+
+/** Pre-"basil" shape: current_period_start/end directly on the subscription. */
+function legacyLiveSubscription(overrides: Record<string, unknown> = {}) {
   return {
     id: 'sub_1',
     status: 'active',
@@ -193,6 +213,32 @@ describe('POST /api/webhooks/stripe', () => {
     }
   )
 
+  it('reads current_period_start/end from the current items-based Stripe shape', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_1' }))
+    mockRetrieve.mockResolvedValue(liveSubscription())
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(supabase.rowForUser('user-1')).toMatchObject({
+      current_period_start: new Date(1700000000 * 1000).toISOString(),
+      current_period_end: new Date(1702592000 * 1000).toISOString(),
+    })
+  })
+
+  it('falls back to the legacy top-level current_period_start/end when items are absent', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_1' }))
+    mockRetrieve.mockResolvedValue(legacyLiveSubscription())
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(supabase.rowForUser('user-1')).toMatchObject({
+      current_period_start: new Date(1700000000 * 1000).toISOString(),
+      current_period_end: new Date(1702592000 * 1000).toISOString(),
+    })
+  })
+
   it('is idempotent when the exact same event is replayed, even though each replay still fetches Stripe', async () => {
     const event = makeEvent('customer.subscription.created', { id: 'sub_1' })
     mockValidateWebhookSignature.mockResolvedValue(event)
@@ -241,6 +287,42 @@ describe('POST /api/webhooks/stripe', () => {
 
     expect(res.status).toBe(200)
     expect(mockRetrieve).toHaveBeenCalledWith('sub_1')
+  })
+
+  it('reads the subscription id from the current parent.subscription_details shape (id string)', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('invoice.payment_succeeded', { parent: { subscription_details: { subscription: 'sub_1' } } })
+    )
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(mockRetrieve).toHaveBeenCalledWith('sub_1')
+  })
+
+  it('reads the subscription id from the current parent.subscription_details shape (expanded object)', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('invoice.payment_succeeded', { parent: { subscription_details: { subscription: { id: 'sub_1' } } } })
+    )
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(mockRetrieve).toHaveBeenCalledWith('sub_1')
+  })
+
+  it('prefers the current parent.subscription_details shape over the legacy subscription field when both are present', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('invoice.payment_succeeded', {
+        subscription: 'sub_legacy',
+        parent: { subscription_details: { subscription: 'sub_current' } },
+      })
+    )
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(mockRetrieve).toHaveBeenCalledWith('sub_current')
   })
 
   it('handles invoice events without a subscription by skipping Stripe and the RPC entirely', async () => {

@@ -33,6 +33,7 @@ function buildSupabase(options: {
   user?: { id: string; email: string } | null
   userError?: boolean
   existingSubscription?: { id: string; status: string; tier: string } | null
+  existingSubscriptionError?: { code: string; message: string } | null
 }) {
   const profilesSingle = vi.fn().mockResolvedValue({
     data: options.user ?? null,
@@ -40,7 +41,7 @@ function buildSupabase(options: {
   })
   const subscriptionsSingle = vi.fn().mockResolvedValue({
     data: options.existingSubscription ?? null,
-    error: null,
+    error: options.existingSubscriptionError ?? null,
   })
 
   return {
@@ -202,6 +203,27 @@ describe('POST /api/subscriptions/create-checkout', () => {
     expect(res.status).toBe(400)
     expect(body.error).toBe('User already has a subscription in progress')
     expect(body.currentStatus).toBe('past_due')
+  })
+
+  it('fails closed (500) when the existing-subscription lookup itself errors', async () => {
+    mockCreateServerClient.mockResolvedValue(
+      buildSupabase({
+        user: { id: validUserId, email: validEmail },
+        existingSubscriptionError: { code: 'PGRST500', message: 'connection reset' },
+      }) as never
+    )
+
+    const res = await POST(
+      createNextRequest('/api/subscriptions/create-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ tier: 'tier1' }),
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Unable to verify subscription status')
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('returns 500 when priceId missing for none tier', async () => {

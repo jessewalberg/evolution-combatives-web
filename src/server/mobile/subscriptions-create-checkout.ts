@@ -76,6 +76,47 @@ export async function POST({ request }: { request: Request }) {
             }
         }
 
+        // Block on *any* non-terminal subscription, matching the web
+        // checkout endpoint (src/server/subscriptions/create-checkout.ts):
+        // the webhook state machine only allows one live subscription per
+        // user. Note this also blocks the upgradeFromTier path above: that
+        // flow validates a tier hierarchy but never calls
+        // stripe.subscriptions.update() on stripeSubscriptionId, it just
+        // starts a brand-new Checkout Session, which would create a second
+        // live Stripe subscription rather than a real in-place upgrade.
+        // Blocking it here is strictly safer than the prior behavior, not
+        // a new regression; a true in-place upgrade needs its own
+        // stripe.subscriptions.update() implementation, out of scope here.
+        //
+        // Accepted residual gap: same TOCTOU as the web endpoint (see its
+        // comment) - this check is not atomic with the Stripe session
+        // creation below.
+        const { data: existingSubscription, error: existingSubscriptionError } = await supabase
+            .from('subscriptions')
+            .select('id, status, tier')
+            .eq('user_id', user.id)
+            .not('status', 'in', '(canceled,incomplete_expired,unpaid)')
+            .single()
+
+        if (existingSubscriptionError && existingSubscriptionError.code !== 'PGRST116') {
+            console.error('❌ [Mobile Subscription API] Error checking existing subscription:', existingSubscriptionError);
+            return json(
+                { success: false, error: 'Unable to verify subscription status' },
+                { status: 500 }
+            )
+        }
+
+        if (existingSubscription) {
+            return json(
+                {
+                    success: false,
+                    error: 'User already has a subscription in progress',
+                    currentStatus: existingSubscription.status
+                },
+                { status: 400 }
+            )
+        }
+
         const priceId = getStripePriceId(tier)
         if (!priceId) {
             return json(
