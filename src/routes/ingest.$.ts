@@ -13,17 +13,19 @@ async function proxyToPostHog(request: Request): Promise<Response> {
         ? 'https://us-assets.i.posthog.com'
         : process.env.POSTHOG_HOST || 'https://us.i.posthog.com'
 
-    const targetUrl = new URL(path + url.search, targetOrigin)
+    const targetUrl = new URL(targetOrigin)
+    targetUrl.pathname = path || '/'
+    targetUrl.search = url.search
 
     const headers = new Headers(request.headers)
-    headers.set('host', targetUrl.hostname)
+    headers.set('host', targetUrl.host)
     headers.delete('cookie')
 
     const response = await fetch(targetUrl.toString(), {
         method: request.method,
         headers,
         body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
-        redirect: 'follow',
+        redirect: 'manual',
     })
 
     return new Response(response.body, {

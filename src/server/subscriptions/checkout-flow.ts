@@ -220,6 +220,7 @@ async function runCheckoutAttempt(
         customerId = (await getOrCreateCustomer(request.userEmail, userId)).id;
     } catch (error) {
         console.error('Stripe customer lookup failed:', error);
+        if (inspectExisting) return { state: 'blocked', error: 'Payment processing error' };
         return { state: await release() ? 'released' : 'blocked', error: 'Payment processing error' };
     }
 

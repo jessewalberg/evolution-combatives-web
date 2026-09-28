@@ -338,6 +338,52 @@ describe('createReservedCheckoutSession expiry', () => {
     ])
   })
 
+  it('retains a prior remote session when recovery customer lookup fails', async () => {
+    vi.mocked(getOrCreateCustomer).mockReset()
+      .mockResolvedValueOnce({ id: 'cus_1' } as never)
+      .mockRejectedValueOnce(new Error('customer lookup unavailable'))
+      .mockResolvedValueOnce({ id: 'cus_1' } as never)
+    vi.mocked(createCheckoutSession).mockReset()
+      .mockRejectedValueOnce(Object.assign(new Error('response lost'), { type: 'StripeConnectionError' }))
+      .mockResolvedValueOnce({ id: 'cs_remote', url: 'https://checkout.test/remote', expires_at: 1893456000 } as never)
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({
+      id: 'cs_remote', status: 'open', url: 'https://checkout.test/remote', expires_at: 1893456000,
+    } as never)
+    const fingerprint = JSON.stringify([params.priceId, params.successUrl, params.cancelUrl, params.userEmail])
+    let reserves = 0
+    const rpc = vi.fn((name: string) => Promise.resolve({
+      data: name === 'reserve_stripe_checkout'
+        ? ++reserves === 1
+          ? { action: 'create', reservation_id: 'reservation-1', idempotency_key: 'checkout:reservation-1' }
+          : { action: 'inspect_pending', reservation_id: 'reservation-1', idempotency_key: 'checkout:reservation-1', tier: params.tier, request_fingerprint: fingerprint }
+        : true,
+      error: null,
+    }))
+    const admin = { rpc } as never
+    const changed = { admin, ...params, priceId: 'price_corrected' }
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toMatchObject({ ok: false, status: 500 })
+    expect(await createReservedCheckoutSession(changed)).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
+    })
+    expect(reserves).toBe(2)
+    expect(createCheckoutSession).toHaveBeenCalledTimes(1)
+    expect(rpc).not.toHaveBeenCalledWith('release_stripe_checkout_reservation', expect.anything())
+
+    expect(await createReservedCheckoutSession(changed)).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
+    })
+    expect(reserves).toBe(3)
+    expect(vi.mocked(createCheckoutSession).mock.calls.map(([call]) => [call.priceId, call.idempotencyKey])).toEqual([
+      ['price_1', 'checkout:reservation-1'],
+      ['price_1', 'checkout:reservation-1'],
+    ])
+    expect(rpc).toHaveBeenCalledWith('finalize_stripe_checkout_reservation', expect.objectContaining({
+      p_reservation_id: 'reservation-1', p_checkout_session_id: 'cs_remote',
+    }))
+    expect(rpc).not.toHaveBeenCalledWith('release_stripe_checkout_reservation', expect.anything())
+  })
+
   it('finalizes an old remotely created session before considering changed input', async () => {
     vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
     vi.mocked(createCheckoutSession).mockReset()
