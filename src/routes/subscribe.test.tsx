@@ -32,7 +32,7 @@ describe('mobile subscription deep link', () => {
     checkoutButtons.forEach(button => expect(button).toBeDisabled())
 
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => checkoutButtons.forEach(button => expect(button).toBeEnabled()))
     expect(signInWithPassword).toHaveBeenCalledWith({

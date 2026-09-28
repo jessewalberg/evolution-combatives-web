@@ -36,6 +36,25 @@ type SubscriptionRpcPayload = {
     updated_at: string;
 };
 
+/**
+ * Apply one Stripe subscription event through the single state-machine RPC
+ * (public.apply_stripe_subscription_event). Keyed by (user_id, platform) for
+ * creation, or by stripe_subscription_id for update/delete - see the
+ * migration for the full ordering/replay/resubscribe invariants.
+ */
+async function applySubscriptionEvent(payload: SubscriptionRpcPayload, isCreation: boolean) {
+    const supabase = createAdminClient();
+    const { error } = await supabase.rpc('apply_stripe_subscription_event', {
+        p_subscription: payload,
+        p_is_creation: isCreation,
+    });
+
+    if (error) {
+        console.error('Error applying Stripe subscription event:', error);
+        throw error;
+    }
+}
+
 function subscriptionToRpcPayload(subscription: StripeSubscriptionWithPeriod): SubscriptionRpcPayload {
     const { userId, tier } = subscription.metadata || {};
     return {
@@ -154,30 +173,7 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         return;
     }
 
-    const supabase = createAdminClient();
-
-    const subscriptionRow = {
-        user_id: userId,
-        external_subscription_id: subscription.id,
-        tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
-        status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-        stripe_subscription_id: subscription.id,
-        stripe_customer_id: subscription.customer as string,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        cancel_at_period_end: subscription.cancel_at_period_end,
-        canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
-        updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.rpc('record_stripe_subscription_created', {
-        p_subscription: subscriptionRow,
-    });
-
-    if (error) {
-        console.error('Error creating subscription in database:', error);
-        throw error;
-    }
+    await applySubscriptionEvent(subscriptionToRpcPayload(subscription), true);
 
     console.log(`Subscription creation recorded for user ${userId}, tier ${tier}`);
 }
@@ -186,16 +182,7 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
  * Handle subscription updates
  */
 async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPeriod) {
-    const supabase = createAdminClient();
-
-    const { error } = await supabase.rpc('apply_stripe_subscription_state', {
-        p_subscription: subscriptionToRpcPayload(subscription),
-    });
-
-    if (error) {
-        console.error('Error updating subscription in database:', error);
-        throw error;
-    }
+    await applySubscriptionEvent(subscriptionToRpcPayload(subscription), false);
 
     console.log(`Subscription updated: ${subscription.id}, status: ${subscription.status}`);
 }
@@ -204,13 +191,12 @@ async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPer
  * Handle subscription deletion/cancellation
  */
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-    const supabase = createAdminClient();
     const withPeriod = subscription as StripeSubscriptionWithPeriod;
     const { userId, tier } = subscription.metadata || {};
     const now = new Date().toISOString();
 
-    const { error } = await supabase.rpc('apply_stripe_subscription_state', {
-        p_subscription: {
+    await applySubscriptionEvent(
+        {
             user_id: userId,
             tier,
             external_subscription_id: subscription.id,
@@ -227,24 +213,22 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
             canceled_at: now,
             updated_at: now,
         },
-    });
-
-    if (error) {
-        console.error('Error updating canceled subscription:', error);
-        throw error;
-    }
+        false
+    );
 
     console.log(`Subscription canceled: ${subscription.id}`);
 }
 
 /**
- * Handle successful payment
+ * Handle successful payment. Only reactivates a row still tied to this
+ * Stripe subscription id - see apply_stripe_subscription_event's ordering
+ * guard for why matching by stripe_subscription_id (not just "any row for
+ * this user") keeps a superseded/resubscribed row from being touched.
  */
 async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription) {
     if (invoice.subscription) {
         const supabase = createAdminClient();
 
-        // Update subscription status to active (in case it was past_due)
         await supabase
             .from('subscriptions')
             .update({ status: 'active', updated_at: new Date().toISOString() })
@@ -261,7 +245,6 @@ async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription) {
     if (invoice.subscription) {
         const supabase = createAdminClient();
 
-        // Update subscription status to past_due
         await supabase
             .from('subscriptions')
             .update({ status: 'past_due', updated_at: new Date().toISOString() })

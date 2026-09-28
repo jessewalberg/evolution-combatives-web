@@ -17,11 +17,13 @@ import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '
 
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 
+const DEEP_LINK_TIERS = new Set(['tier1', 'tier2', 'tier3']);
+
 export const Route = createFileRoute('/subscribe')({
     validateSearch: (search: Record<string, unknown>) => {
         const email = typeof search.email === 'string' ? search.email : undefined;
         const tier = typeof search.tier === 'string' ? search.tier : undefined;
-        if (!email || !tier) {
+        if (!email || !tier || !DEEP_LINK_TIERS.has(tier)) {
             return { email: undefined, tier: undefined, invalidDeepLink: true as const };
         }
         return { email, tier, invalidDeepLink: false as const };
