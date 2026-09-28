@@ -269,7 +269,9 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       const first = (await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'price_invalid') AS data`, [userId],
       )).rows[0].data
-      await db.query(`SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid)`, [userId, first.reservation_id])
+      expect((await db.query<{ released: boolean }>(
+        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid) AS released`, [userId, first.reservation_id],
+      )).rows[0].released).toBe(true)
       const corrected = (await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'price_corrected') AS data`, [userId],
       )).rows[0].data
@@ -291,6 +293,12 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
       )).rows[0].data
       expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-b') AS data`, [userId],
+      )).rows[0].data).toMatchObject({
+        action: 'inspect_pending', reservation_id: first.reservation_id,
+        idempotency_key: first.idempotency_key, tier: 'tier1', request_fingerprint: 'request-a',
+      })
+      expect((await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
       )).rows[0].data.error).toBe('checkout_in_progress')
       expect((await db.query<{ retryable: boolean }>(
@@ -299,15 +307,41 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )).rows[0].retryable).toBe(true)
       expect((await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-b') AS data`, [userId],
-      )).rows[0].data.error).toBe('checkout_in_progress')
+      )).rows[0].data).toMatchObject({
+        action: 'inspect_pending', reservation_id: first.reservation_id,
+        idempotency_key: first.idempotency_key,
+      })
       const retry = (await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
       )).rows[0].data
       expect(retry).toMatchObject(first)
+      expect((await db.query<{ retryable: boolean }>(
+        `SELECT public.mark_stripe_checkout_retryable($1::uuid, $2::uuid) AS retryable`,
+        [userId, first.reservation_id],
+      )).rows[0].retryable).toBe(true)
+      expect((await db.query<{ finalized: boolean }>(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_recovered', 'https://checkout.test/recovered', now() + interval '1 hour') AS finalized`,
+        [userId, first.reservation_id],
+      )).rows[0].finalized).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-b') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      expect((await db.query<{ retired: boolean }>(
+        `SELECT public.retire_stripe_checkout_session($1::uuid, $2::uuid, 'cs_recovered') AS retired`,
+        [userId, first.reservation_id],
+      )).rows[0].retired).toBe(true)
+      expect((await db.query<{ released: boolean }>(
+        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid) AS released`, [userId, first.reservation_id],
+      )).rows[0].released).toBe(true)
+      const next = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
+      )).rows[0].data
+      expect(next.action).toBe('create')
+      expect(next.reservation_id).not.toBe(first.reservation_id)
       await db.query(`UPDATE public.stripe_checkout_reservations SET updated_at = now() - interval '11 minutes' WHERE user_id = $1`, [userId])
       expect((await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
-      )).rows[0].data).toMatchObject(first)
+      )).rows[0].data).toMatchObject(next)
     } finally {
       await db.close()
     }

@@ -153,8 +153,16 @@ BEGIN
     END IF;
 
     IF FOUND AND v_row.status IN ('pending', 'retryable') THEN
-        IF v_row.tier <> p_tier OR v_row.request_fingerprint <> p_request_fingerprint
-           OR (v_row.status = 'pending' AND v_row.updated_at > now() - interval '10 minutes') THEN
+        IF v_row.tier <> p_tier OR v_row.request_fingerprint <> p_request_fingerprint THEN
+            RETURN jsonb_build_object(
+                'action', 'inspect_pending',
+                'reservation_id', v_row.reservation_id,
+                'idempotency_key', 'checkout:' || v_row.reservation_id::text,
+                'tier', v_row.tier,
+                'request_fingerprint', v_row.request_fingerprint
+            );
+        END IF;
+        IF v_row.status = 'pending' AND v_row.updated_at > now() - interval '10 minutes' THEN
             RETURN jsonb_build_object('error', 'checkout_in_progress');
         END IF;
 
@@ -278,7 +286,7 @@ BEGIN
         updated_at = now()
     WHERE user_id = p_user_id
       AND reservation_id = p_reservation_id
-      AND status = 'pending';
+      AND status IN ('pending', 'retryable');
     IF NOT FOUND THEN
         RETURN false;
     END IF;
@@ -351,7 +359,7 @@ CREATE OR REPLACE FUNCTION public.release_stripe_checkout_reservation(
     p_user_id uuid,
     p_reservation_id uuid
 )
-RETURNS void
+RETURNS boolean
 LANGUAGE plpgsql
 SET search_path = public
 AS $$
@@ -366,7 +374,15 @@ BEGIN
         updated_at = now()
     WHERE user_id = p_user_id
       AND reservation_id = p_reservation_id
-      AND status = 'pending' AND checkout_session_id IS NULL;
+      AND status IN ('pending', 'retryable') AND checkout_session_id IS NULL;
+    IF FOUND THEN
+        RETURN true;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM public.stripe_checkout_reservations
+        WHERE user_id = p_user_id AND reservation_id = p_reservation_id
+          AND status = 'released'
+    );
 END;
 $$;
 

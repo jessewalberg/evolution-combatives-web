@@ -483,7 +483,7 @@ export interface Database {
                     p_user_id: string;
                     p_reservation_id: string;
                 };
-                Returns: void;
+                Returns: boolean;
             };
             retire_stripe_checkout_session: {
                 Args: {
