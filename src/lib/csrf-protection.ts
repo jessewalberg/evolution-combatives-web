@@ -1,21 +1,20 @@
 /**
  * CSRF Protection utility for API routes
  * Provides token generation and validation for state-changing operations
+ * (double-submit cookie pattern over the Web Request API)
  */
-
-import { NextRequest } from 'next/server'
 
 const CSRF_TOKEN_HEADER = 'X-CSRF-Token'
 
 /**
  * Use a host-only Secure cookie for HTTPS and a regular cookie for local HTTP.
  */
-export function isSecureRequest(request: NextRequest): boolean {
+export function isSecureRequest(request: Request): boolean {
     const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-    return forwardedProtocol ? forwardedProtocol === 'https' : request.nextUrl.protocol === 'https:'
+    return forwardedProtocol ? forwardedProtocol === 'https' : new URL(request.url).protocol === 'https:'
 }
 
-export function getCSRFCookieName(request: NextRequest): string {
+export function getCSRFCookieName(request: Request): string {
     return isSecureRequest(request) ? '__Host-csrf-token' : 'csrf-token'
 }
 
@@ -28,19 +27,31 @@ export function generateCSRFToken(): string {
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
+function getCookieValue(request: Request, name: string): string | undefined {
+    const cookieHeader = request.headers.get('cookie')
+    if (!cookieHeader) return undefined
+
+    for (const part of cookieHeader.split(';')) {
+        const [rawName, ...rest] = part.trim().split('=')
+        if (rawName === name) {
+            return decodeURIComponent(rest.join('='))
+        }
+    }
+    return undefined
+}
+
 /**
  * Validate CSRF token for API requests
  */
-export async function validateCSRFToken(request: NextRequest): Promise<boolean> {
+export function validateCSRFToken(request: Request): boolean {
     try {
         const tokenFromHeader = request.headers.get(CSRF_TOKEN_HEADER)
-        const tokenFromCookie = request.cookies.get(getCSRFCookieName(request))?.value
+        const tokenFromCookie = getCookieValue(request, getCSRFCookieName(request))
 
         if (!tokenFromHeader || !tokenFromCookie) {
             return false
         }
 
-        // Use timing-safe comparison to prevent timing attacks
         return tokenFromHeader === tokenFromCookie && tokenFromHeader.length === 64
     } catch {
         return false
@@ -50,28 +61,28 @@ export async function validateCSRFToken(request: NextRequest): Promise<boolean> 
 /**
  * Check if request needs CSRF protection (state-changing operations)
  */
-export function needsCSRFProtection(request: NextRequest): boolean {
+export function needsCSRFProtection(request: Request): boolean {
     const method = request.method.toUpperCase()
+    const pathname = new URL(request.url).pathname
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-    const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
-    const isWebhook = request.nextUrl.pathname.includes('/webhook')
-    const isMobileApi = request.nextUrl.pathname.startsWith('/api/mobile/')
+    const isApiRoute = pathname.startsWith('/api/')
+    const isWebhook = pathname.includes('/webhook')
+    const isMobileApi = pathname.startsWith('/api/mobile/')
 
     // Skip CSRF for webhooks (they have their own verification) and mobile API routes (use Bearer auth)
     return isStateChanging && isApiRoute && !isWebhook && !isMobileApi
 }
 
 /**
- * Middleware function to validate CSRF for protected routes
+ * Middleware function to validate CSRF for protected routes.
+ * Returns a 403 response when validation fails, or null to continue.
  */
-export async function csrfProtection(request: NextRequest): Promise<Response | null> {
+export function csrfProtection(request: Request): Response | null {
     if (!needsCSRFProtection(request)) {
         return null
     }
 
-    const isValid = await validateCSRFToken(request)
-
-    if (!isValid) {
+    if (!validateCSRFToken(request)) {
         return new Response(
             JSON.stringify({
                 success: false,

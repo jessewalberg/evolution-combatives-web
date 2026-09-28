@@ -7,6 +7,7 @@ import {
   expireStripeCheckoutSession,
 } from '../helpers/api'
 import { fetchCsrfHeaders } from '../helpers/csrf'
+import { signInUserSession } from '../helpers/user-session'
 
 /**
  * Subscription deep-link -> Stripe Checkout (test mode).
@@ -24,14 +25,17 @@ import { fetchCsrfHeaders } from '../helpers/csrf'
  * depends on Stripe CLI / dashboard webhook delivery to this environment.
  */
 test.describe('Subscription deep-link flow', () => {
+  test.use({ storageState: { cookies: [], origins: [] } })
+
   let userId: string | undefined
   let email: string | undefined
+  let password: string | undefined
   let checkoutSessionId: string | undefined
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ context, baseURL }) => {
     const supabase = createServiceRoleClient()
     email = uniqueEmail('subscribe')
-    const password = `E2eSub1!${uniqueSuffix().slice(0, 6)}`
+    password = `E2eSub1!${uniqueSuffix().slice(0, 6)}`
 
     const { data, error } = await supabase.auth.admin.createUser({
       email,
@@ -48,6 +52,8 @@ test.describe('Subscription deep-link flow', () => {
       full_name: 'E2E Subscribe User',
       admin_role: null,
     })
+
+    await signInUserSession(context, baseURL!, email, password)
   })
 
   test.afterEach(async () => {
@@ -86,65 +92,50 @@ test.describe('Subscription deep-link flow', () => {
     }
   })
 
-  test('missing query params shows Invalid Request', async ({ page }) => {
-    // Unauthenticated public page
-    await page.goto('/subscribe')
-    await expect(page.getByText(/invalid request/i)).toBeVisible()
+  test('mobile deep link asks for browser sign-in before checkout', async ({ page, context }) => {
+    await context.clearCookies()
+    await page.goto(`/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`)
+    await expect(page.getByRole('heading', { name: 'Sign in to subscribe' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /subscribe to/i }).first()).toBeDisabled()
+    await page.getByLabel('Password').fill(password!)
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page.getByRole('button', { name: /subscribe to/i }).first()).toBeEnabled()
   })
 
   test('deep-link renders tiers and create-checkout returns Stripe URL', async ({
     page,
-    request,
   }) => {
     await page.goto(
       `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
     )
     await expect(page.getByText(/invalid request/i)).toHaveCount(0)
 
-    const headers = await fetchCsrfHeaders(request)
-    const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const response = await request.post('/api/subscriptions/create-checkout', {
+    const headers = await fetchCsrfHeaders(page.request)
+    const base = process.env.VITE_APP_URL || 'http://localhost:3000'
+    const response = await page.request.post('/api/subscriptions/create-checkout', {
       headers,
       data: {
         tier: 'tier1',
-        userId,
-        userEmail: email,
         successUrl: `${base}/subscription-success?tier=tier1`,
         cancelUrl: `${base}/subscription-cancel`,
       },
     })
 
-    // create-checkout is CSRF-protected; with token we should reach Stripe or a domain error
-    expect(response.status()).not.toBe(403)
     const body = await response.json()
+    expect(response.ok(), `create-checkout failed: ${JSON.stringify(body)}`).toBe(true)
+    // Capture before asserts so afterEach can expire even if an expect throws.
+    checkoutSessionId = body.sessionId as string
+    expect(body.url).toMatch(/stripe\.com|checkout/i)
+    expect(body.sessionId).toBeTruthy()
 
-    if (response.ok()) {
-      // Capture before asserts so afterEach can expire even if an expect throws.
-      checkoutSessionId = body.sessionId as string
-      expect(body.url).toMatch(/stripe\.com|checkout/i)
-      expect(body.sessionId).toBeTruthy()
-
-      // Navigate success page (webhook may or may not have fired yet)
-      await page.goto(`/subscription-success?tier=tier1&session_id=${body.sessionId}`)
-      await expect(page.getByText(/subscription activated/i)).toBeVisible({
-        timeout: 15_000,
-      })
-    } else {
-      // Fixture always creates a fresh valid user + matching email + no active
-      // subscription. The only legitimate non-2xx outcomes are env/config gaps
-      // from create-checkout/route.ts. Any other message means the fixture or
-      // request itself is broken and must fail the test.
-      const errorMessage = String(body.error || '')
-      expect(
-        errorMessage,
-        `create-checkout failed with unexpected error: ${JSON.stringify(body)}`
-      ).toMatch(
-        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
-      )
-    }
+    // Navigate success page (webhook may or may not have fired yet)
+    await page.goto(`/subscription-success?tier=tier1&session_id=${body.sessionId}`)
+    await expect(page.getByText(/subscription activated/i)).toBeVisible({
+      timeout: 15_000,
+    })
   })
 
-  test('Subscribe button posts with CSRF and reaches Stripe or allowed error', async ({
+  test('Subscribe button posts with CSRF and reaches Stripe', async ({
     page,
   }) => {
     await page.goto(
@@ -166,39 +157,22 @@ test.describe('Subscription deep-link flow', () => {
 
     const checkoutResponse = await checkoutResponsePromise
 
-    // UI path must send CSRF; a missing token would 403 before Stripe/domain logic
-    expect(checkoutResponse.status()).not.toBe(403)
-
     const csrfErrorBanner = page.getByText(/csrf token validation failed/i)
     await expect(csrfErrorBanner).toHaveCount(0)
 
-    // Don't read checkoutResponse.json() here: app/subscribe/page.tsx's own success
+    // Don't read checkoutResponse.json() here: src/routes/subscribe.tsx's own success
     // handler reads this same response body and immediately does
     // `window.location.href = data.url`, which can evict the buffered body before
     // this test's CDP read completes ("Response body is not available for a
     // response that was navigated away from" - flaky in CI). Assert success via
     // UI-visible signals instead.
-    if (checkoutResponse.ok()) {
-      await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
-      const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
-      expect(
-        sessionId,
-        `could not extract Stripe session id from redirect URL: ${page.url()}`
-      ).toBeTruthy()
-      checkoutSessionId = sessionId
-    } else {
-      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API
-      // test), read from the page's own error banner rather than the response body.
-      const allowedErrors =
-        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
-      const actualErrorText = await page
-        .locator('p.text-red-600')
-        .textContent()
-        .catch(() => null)
-      await expect(
-        page.getByText(allowedErrors),
-        `UI create-checkout failed with unexpected error: ${JSON.stringify(actualErrorText)}`
-      ).toBeVisible({ timeout: 10_000 })
-    }
+    expect(checkoutResponse.ok(), `UI create-checkout returned ${checkoutResponse.status()}`).toBe(true)
+    await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
+    const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
+    expect(
+      sessionId,
+      `could not extract Stripe session id from redirect URL: ${page.url()}`
+    ).toBeTruthy()
+    checkoutSessionId = sessionId
   })
 })

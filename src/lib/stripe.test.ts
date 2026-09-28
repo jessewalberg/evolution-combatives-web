@@ -15,7 +15,7 @@ const fakeStripe = {
     update: vi.fn(),
   },
   webhooks: {
-    constructEvent: vi.fn(),
+    constructEventAsync: vi.fn(),
   },
 }
 
@@ -34,13 +34,13 @@ describe('stripe helpers', () => {
   it('validateWebhookSignature returns event or wraps errors', async () => {
     const { validateWebhookSignature } = await import('@/src/lib/stripe')
     const event = { id: 'evt_1', type: 'checkout.session.completed' }
-    fakeStripe.webhooks.constructEvent.mockReturnValue(event)
-    expect(validateWebhookSignature('{}', 'sig', 'secret')).toEqual(event)
+    fakeStripe.webhooks.constructEventAsync.mockResolvedValue(event)
+    await expect(validateWebhookSignature('{}', 'sig', 'secret')).resolves.toEqual(event)
 
-    fakeStripe.webhooks.constructEvent.mockImplementation(() => {
+    fakeStripe.webhooks.constructEventAsync.mockImplementation(() => {
       throw new Error('bad sig')
     })
-    expect(() => validateWebhookSignature('{}', 'sig', 'secret')).toThrow(
+    await expect(validateWebhookSignature('{}', 'sig', 'secret')).rejects.toThrow(
       /Webhook signature verification failed: bad sig/
     )
   })
@@ -56,6 +56,7 @@ describe('stripe helpers', () => {
       tier: 'tier1',
       successUrl: 'https://ok',
       cancelUrl: 'https://cancel',
+      idempotencyKey: 'attempt-1',
     })
 
     expect(fakeStripe.checkout.sessions.create).toHaveBeenCalledWith(
@@ -64,7 +65,8 @@ describe('stripe helpers', () => {
         customer: 'cus_1',
         metadata: { userId: 'u1', tier: 'tier1' },
         line_items: [{ price: 'price_1', quantity: 1 }],
-      })
+      }),
+      { idempotencyKey: 'attempt-1' },
     )
     expect(fakeStripe.checkout.sessions.create.mock.calls[0][0].customer_creation).toBeUndefined()
   })
@@ -82,18 +84,20 @@ describe('stripe helpers', () => {
     })
 
     expect(fakeStripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({ customer_creation: 'always' })
+      expect.objectContaining({ customer_creation: 'always' }),
+      undefined,
     )
   })
 
   it('getOrCreateCustomer returns existing or creates new', async () => {
     const { getOrCreateCustomer } = await import('@/src/lib/stripe')
     fakeStripe.customers.list.mockResolvedValue({
-      data: [{ id: 'cus_existing', email: 'a@b.com' }],
+      data: [{ id: 'cus_existing', email: 'a@b.com', metadata: { userId: 'u1' } }],
     })
     expect(await getOrCreateCustomer('a@b.com', 'u1')).toEqual({
       id: 'cus_existing',
       email: 'a@b.com',
+      metadata: { userId: 'u1' },
     })
 
     fakeStripe.customers.list.mockResolvedValue({ data: [] })
@@ -102,9 +106,27 @@ describe('stripe helpers', () => {
       id: 'cus_new',
       email: 'a@b.com',
     })
+  })
+
+  it('getOrCreateCustomer never reuses a Stripe customer owned by a different user id (email reassignment)', async () => {
+    const { getOrCreateCustomer } = await import('@/src/lib/stripe')
+    // The email now belongs to 'u2', but Stripe still has a customer record
+    // for the previous owner ('u1') under that same email.
+    fakeStripe.customers.list.mockResolvedValue({
+      data: [{ id: 'cus_old_owner', email: 'reused@b.com', metadata: { userId: 'u1' } }],
+    })
+    fakeStripe.customers.create.mockResolvedValue({
+      id: 'cus_u2',
+      email: 'reused@b.com',
+      metadata: { userId: 'u2' },
+    })
+
+    const result = await getOrCreateCustomer('reused@b.com', 'u2')
+
+    expect(result.id).toBe('cus_u2')
     expect(fakeStripe.customers.create).toHaveBeenCalledWith({
-      email: 'a@b.com',
-      metadata: { userId: 'u1' },
+      email: 'reused@b.com',
+      metadata: { userId: 'u2' },
     })
   })
 

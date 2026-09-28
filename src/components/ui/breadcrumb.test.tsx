@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Breadcrumb, BreadcrumbProvider, useBreadcrumbContext } from './breadcrumb'
 
-vi.mock('next/link', () => ({
+vi.mock('@/src/components/compat/link', () => ({
   default: ({
     children,
     href,

@@ -8,30 +8,56 @@
 
 import Stripe from 'stripe';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error('STRIPE_SECRET_KEY environment variable is required');
+let stripeInstance: Stripe | null = null;
+
+/**
+ * Lazily construct the server-side Stripe client. On Cloudflare Workers,
+ * env vars are only guaranteed present at request time, so the client must
+ * not be built at module scope.
+ */
+export function getStripe(): Stripe {
+    if (!stripeInstance) {
+        const secretKey = process.env.STRIPE_SECRET_KEY;
+        if (!secretKey) {
+            throw new Error('STRIPE_SECRET_KEY environment variable is required');
+        }
+        // Workers has no Node http agent; use the SDK's fetch client (guarded
+        // because unit tests mock the module without the static factory).
+        const httpClient =
+            typeof Stripe.createFetchHttpClient === 'function' ? Stripe.createFetchHttpClient() : undefined;
+        stripeInstance = new Stripe(secretKey, {
+            // Uses the API version pinned by the installed SDK
+            typescript: true,
+            ...(httpClient ? { httpClient } : {}),
+        });
+    }
+    return stripeInstance;
 }
 
 /**
- * Server-side Stripe client instance
- * Used for creating checkout sessions, handling webhooks, and managing subscriptions
+ * Server-side Stripe client instance (lazy proxy over getStripe so legacy
+ * `import { stripe }` call sites keep working).
  */
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2025-07-30.basil', // Use latest stable API version
-    typescript: true,
+export const stripe: Stripe = new Proxy({} as Stripe, {
+    get(_target, prop) {
+        const instance = getStripe();
+        const value = instance[prop as keyof Stripe];
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(instance) : value;
+    },
 });
 
 /**
  * Stripe webhook signature validation
- * Ensures webhooks are coming from Stripe
+ * Ensures webhooks are coming from Stripe. Async because Workers only
+ * supports the WebCrypto-based constructEventAsync.
  */
-export const validateWebhookSignature = (
-    payload: string | Buffer,
+export const validateWebhookSignature = async (
+    payload: string,
     signature: string,
     secret: string
-): Stripe.Event => {
+): Promise<Stripe.Event> => {
     try {
-        return stripe.webhooks.constructEvent(payload, signature, secret);
+        return await getStripe().webhooks.constructEventAsync(payload, signature, secret);
     } catch (err) {
         const error = err as Error;
         throw new Error(`Webhook signature verification failed: ${error.message}`);
@@ -48,6 +74,7 @@ export const createCheckoutSession = async ({
     tier,
     successUrl,
     cancelUrl,
+    idempotencyKey,
 }: {
     priceId: string;
     customerId?: string;
@@ -55,6 +82,7 @@ export const createCheckoutSession = async ({
     tier: string;
     successUrl: string;
     cancelUrl: string;
+    idempotencyKey?: string;
 }): Promise<Stripe.Checkout.Session> => {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
         mode: 'subscription',
@@ -86,21 +114,27 @@ export const createCheckoutSession = async ({
         sessionParams.customer_creation = 'always';
     }
 
-    return await stripe.checkout.sessions.create(sessionParams);
+    const requestOptions = idempotencyKey ? { idempotencyKey } : undefined;
+    return await stripe.checkout.sessions.create(sessionParams, requestOptions);
 };
 
 /**
- * Retrieve a customer by email or create a new one
+ * Retrieve a customer by email or create a new one. Only reuses a customer
+ * whose own metadata.userId matches the authenticated user - an email can
+ * be reassigned to a different account after the original owner deletes
+ * theirs, and blindly reusing the first email match would attach a new
+ * user's subscription to a stranger's existing Stripe customer (and its
+ * saved payment methods).
  */
 export const getOrCreateCustomer = async (email: string, userId: string): Promise<Stripe.Customer> => {
-    // First, try to find existing customer by email
     const existingCustomers = await stripe.customers.list({
         email,
-        limit: 1,
+        limit: 10,
     });
 
-    if (existingCustomers.data.length > 0) {
-        return existingCustomers.data[0];
+    const owned = existingCustomers.data.find((customer) => customer.metadata?.userId === userId);
+    if (owned) {
+        return owned;
     }
 
     // Create new customer

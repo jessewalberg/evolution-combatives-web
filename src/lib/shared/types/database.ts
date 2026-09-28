@@ -91,6 +91,41 @@ export interface Database {
                     updated_at?: string;
                 };
             };
+            stripe_orphan_subscriptions: {
+                Row: {
+                    id: string;
+                    user_id: string;
+                    stripe_subscription_id: string;
+                    existing_stripe_subscription_id: string;
+                    event_id: string;
+                    needs_refund: boolean;
+                    payload: Record<string, unknown>;
+                    created_at: string;
+                    resolved_at: string | null;
+                };
+                Insert: {
+                    id?: string;
+                    user_id: string;
+                    stripe_subscription_id: string;
+                    existing_stripe_subscription_id: string;
+                    event_id: string;
+                    needs_refund?: boolean;
+                    payload: Record<string, unknown>;
+                    created_at?: string;
+                    resolved_at?: string | null;
+                };
+                Update: {
+                    id?: string;
+                    user_id?: string;
+                    stripe_subscription_id?: string;
+                    existing_stripe_subscription_id?: string;
+                    event_id?: string;
+                    needs_refund?: boolean;
+                    payload?: Record<string, unknown>;
+                    created_at?: string;
+                    resolved_at?: string | null;
+                };
+            };
             disciplines: {
                 Row: {
                     id: string;
@@ -395,7 +430,69 @@ export interface Database {
             [_ in never]: never;
         };
         Functions: {
-            [_ in never]: never;
+            apply_stripe_subscription_event: {
+                Args: {
+                    p_subscription: Record<string, unknown>;
+                    p_event_id: string;
+                    p_event_created_at: number;
+                    p_payment_succeeded: boolean;
+                    p_lease_token: string;
+                };
+                Returns: boolean;
+            };
+            reserve_stripe_checkout: {
+                Args: {
+                    p_user_id: string;
+                    p_tier: string;
+                    p_request_fingerprint: string;
+                };
+                Returns: Record<string, unknown>;
+            };
+            mark_stripe_checkout_retryable: {
+                Args: { p_user_id: string; p_reservation_id: string };
+                Returns: boolean;
+            };
+            acquire_stripe_subscription_lease: {
+                Args: { p_stripe_subscription_id: string };
+                Returns: string | null;
+            };
+            release_stripe_subscription_lease: {
+                Args: { p_stripe_subscription_id: string; p_lease_token: string };
+                Returns: boolean;
+            };
+            finalize_stripe_checkout_reservation: {
+                Args: {
+                    p_user_id: string;
+                    p_reservation_id: string;
+                    p_checkout_session_id: string;
+                    p_checkout_session_url: string;
+                    p_expires_at: string;
+                };
+                Returns: boolean;
+            };
+            consume_stripe_checkout: {
+                Args: {
+                    p_user_id: string;
+                    p_checkout_session_id: string;
+                    p_stripe_subscription_id: string | null;
+                };
+                Returns: boolean;
+            };
+            release_stripe_checkout_reservation: {
+                Args: {
+                    p_user_id: string;
+                    p_reservation_id: string;
+                };
+                Returns: boolean;
+            };
+            retire_stripe_checkout_session: {
+                Args: {
+                    p_user_id: string;
+                    p_reservation_id: string;
+                    p_checkout_session_id: string;
+                };
+                Returns: boolean;
+            };
         };
         Enums: {
             subscription_tier: 'tier1' | 'tier2' | 'tier3';

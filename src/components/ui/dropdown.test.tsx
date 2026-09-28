@@ -14,7 +14,7 @@ import {
   SettingsDropdown,
 } from './dropdown'
 
-vi.mock('next/image', async () => {
+vi.mock('@/src/components/compat/image', async () => {
   const { createNextImageMock } = await import('@/test/mocks/next-image')
   return createNextImageMock()
 })

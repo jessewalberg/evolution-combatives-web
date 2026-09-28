@@ -6,17 +6,17 @@ import path from 'path'
  * Load gitignored local E2E secrets. CI injects the same names via GitHub Actions secrets.
  * Never commit .env.test.local - covered by .gitignore ".env.*.local".
  */
-dotenv.config({ path: path.resolve(__dirname, '.env.test.local') })
+dotenv.config({ path: path.resolve(import.meta.dirname, '.env.test.local') })
 
-const baseURL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const baseURL = process.env.VITE_APP_URL || 'http://localhost:3000'
 const isCI = !!process.env.CI
 
 /**
  * Local override: set E2E_WEB_SERVER_COMMAND="pnpm dev" for faster iteration.
- * Default (and CI) uses a production build for reliability.
+ * Default (and CI) uses a production build served by workerd via vite preview.
  */
 const webServerCommand =
-  process.env.E2E_WEB_SERVER_COMMAND || 'pnpm build && pnpm start'
+  process.env.E2E_WEB_SERVER_COMMAND || 'pnpm exec vite build && pnpm exec vite preview --port 3000'
 
 /**
  * Snapshot paths omit {platform} so committed Linux baselines are the single
