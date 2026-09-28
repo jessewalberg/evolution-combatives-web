@@ -26,11 +26,11 @@
 -- IDENTITY: customer.subscription.created/updated/deleted all carry
 -- subscription.metadata.userId, so all three go through the same
 -- INSERT ... ON CONFLICT (user_id, platform) DO UPDATE upsert (the real
--- UNIQUE constraint). This is what lets an updated/deleted event that
--- arrives *before* its own created event still establish the row (it
--- carries full state) - previously such events were dropped as a no-op,
--- which meant a created event redelivered afterward could stomp a
--- cancellation the created event never knew about.
+-- UNIQUE constraint). When the user has *no* existing row, this lets an
+-- updated/deleted event that arrives before its own created event still
+-- establish it (it carries full state) - previously such events were
+-- dropped as a no-op, which meant a created event redelivered afterward
+-- could stomp a cancellation the created event never knew about.
 --
 -- The DO UPDATE branch only fires (beyond the ordering guard) when either
 -- p_is_creation is true, or the existing row's stripe_subscription_id still
@@ -49,6 +49,22 @@
 -- Every branch that would change subscription_tier requires a matching
 -- profiles row and raises inside the same transaction otherwise, so a
 -- missing profile rolls back the entire write (subscription row included).
+--
+-- ACCEPTED RESIDUAL GAP: if a user has an existing non-terminal row (e.g.
+-- past_due) for subscription A and starts a *second*, concurrent Stripe
+-- subscription B via a separate checkout, a B-updated/B-deleted event that
+-- is delivered before B's own created event has no row to match (A still
+-- occupies the (user_id, platform) slot with a different id) and is
+-- dropped as a no-op; a subsequently-delivered older B-created event then
+-- establishes the row without that update's effect. This requires both an
+-- unusual business state (two live subscriptions for one user - our own
+-- checkout only blocks a *second* checkout while the existing one is
+-- `active`, not `past_due`/`incomplete`/`trialing`) and severe out-of-order
+-- webhook delivery (an update/delete for a subscription arriving before its
+-- own creation event, which Stripe does not do under normal retry timing).
+-- Closing this fully would need a per-subscription-id event log independent
+-- of the single-row-per-user model; treated as an accepted, documented
+-- limitation rather than added complexity for an edge case this narrow.
 CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
     event_id text PRIMARY KEY,
     processed_at timestamptz NOT NULL DEFAULT now()

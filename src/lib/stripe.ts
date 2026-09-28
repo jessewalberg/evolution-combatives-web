@@ -116,17 +116,22 @@ export const createCheckoutSession = async ({
 };
 
 /**
- * Retrieve a customer by email or create a new one
+ * Retrieve a customer by email or create a new one. Only reuses a customer
+ * whose own metadata.userId matches the authenticated user - an email can
+ * be reassigned to a different account after the original owner deletes
+ * theirs, and blindly reusing the first email match would attach a new
+ * user's subscription to a stranger's existing Stripe customer (and its
+ * saved payment methods).
  */
 export const getOrCreateCustomer = async (email: string, userId: string): Promise<Stripe.Customer> => {
-    // First, try to find existing customer by email
     const existingCustomers = await stripe.customers.list({
         email,
-        limit: 1,
+        limit: 10,
     });
 
-    if (existingCustomers.data.length > 0) {
-        return existingCustomers.data[0];
+    const owned = existingCustomers.data.find((customer) => customer.metadata?.userId === userId);
+    if (owned) {
+        return owned;
     }
 
     // Create new customer

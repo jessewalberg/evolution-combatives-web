@@ -89,11 +89,12 @@ describe('stripe helpers', () => {
   it('getOrCreateCustomer returns existing or creates new', async () => {
     const { getOrCreateCustomer } = await import('@/src/lib/stripe')
     fakeStripe.customers.list.mockResolvedValue({
-      data: [{ id: 'cus_existing', email: 'a@b.com' }],
+      data: [{ id: 'cus_existing', email: 'a@b.com', metadata: { userId: 'u1' } }],
     })
     expect(await getOrCreateCustomer('a@b.com', 'u1')).toEqual({
       id: 'cus_existing',
       email: 'a@b.com',
+      metadata: { userId: 'u1' },
     })
 
     fakeStripe.customers.list.mockResolvedValue({ data: [] })
@@ -102,9 +103,27 @@ describe('stripe helpers', () => {
       id: 'cus_new',
       email: 'a@b.com',
     })
+  })
+
+  it('getOrCreateCustomer never reuses a Stripe customer owned by a different user id (email reassignment)', async () => {
+    const { getOrCreateCustomer } = await import('@/src/lib/stripe')
+    // The email now belongs to 'u2', but Stripe still has a customer record
+    // for the previous owner ('u1') under that same email.
+    fakeStripe.customers.list.mockResolvedValue({
+      data: [{ id: 'cus_old_owner', email: 'reused@b.com', metadata: { userId: 'u1' } }],
+    })
+    fakeStripe.customers.create.mockResolvedValue({
+      id: 'cus_u2',
+      email: 'reused@b.com',
+      metadata: { userId: 'u2' },
+    })
+
+    const result = await getOrCreateCustomer('reused@b.com', 'u2')
+
+    expect(result.id).toBe('cus_u2')
     expect(fakeStripe.customers.create).toHaveBeenCalledWith({
-      email: 'a@b.com',
-      metadata: { userId: 'u1' },
+      email: 'reused@b.com',
+      metadata: { userId: 'u2' },
     })
   })
 
