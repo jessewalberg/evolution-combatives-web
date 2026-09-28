@@ -23,10 +23,15 @@ export const Route = createFileRoute('/subscribe')({
     validateSearch: (search: Record<string, unknown>) => {
         const email = typeof search.email === 'string' ? search.email : undefined;
         const tier = typeof search.tier === 'string' ? search.tier : undefined;
+        // userId is optional (older mobile app builds may not send it yet);
+        // when present it's the account-mismatch guard's primary signal,
+        // since an email can be reassigned to a different account over
+        // time while a Supabase user id cannot.
+        const userId = typeof search.userId === 'string' ? search.userId : undefined;
         if (!email || !tier || !DEEP_LINK_TIERS.has(tier)) {
-            return { email: undefined, tier: undefined, invalidDeepLink: true as const };
+            return { email: undefined, tier: undefined, userId: undefined, invalidDeepLink: true as const };
         }
-        return { email, tier, invalidDeepLink: false as const };
+        return { email, tier, userId, invalidDeepLink: false as const };
     },
     component: SubscribePage,
 });
@@ -35,6 +40,7 @@ function SubscribePage() {
     const search = useSearch({ strict: false }) as {
         email?: string;
         tier?: string;
+        userId?: string;
         invalidDeepLink?: boolean;
     };
     const supabase = createBrowserClient();
@@ -44,23 +50,28 @@ function SubscribePage() {
     const [error, setError] = useState<string | null>(null);
     const [authState, setAuthState] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
     const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+    const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
     const [email, setEmail] = useState(typeof search.email === 'string' ? search.email : '');
     const [password, setPassword] = useState('');
 
     const preselectedTier = (search.tier as SubscriptionTier | undefined) ?? null;
     const invalidDeepLink = search.invalidDeepLink === true;
     const deepLinkEmail = search.email;
+    const deepLinkUserId = search.userId;
     // The mobile app deep-links with the account it's signed into; if the
     // browser already has a *different* account's session, silently
     // checking out through that session would charge the wrong account.
     // Session identity still governs checkout server-side (never the
-    // deep-link's email) - this only decides whether to prompt for the
-    // right account before allowing checkout.
+    // deep-link's identity) - this only decides whether to prompt for the
+    // right account before allowing checkout. Prefer comparing the stable
+    // Supabase user id (an email can be reassigned to a different account
+    // after the original owner deletes theirs); fall back to email only
+    // when the deep link doesn't carry a userId.
     const accountMismatch =
         authState === 'signed-in' &&
-        !!signedInEmail &&
-        !!deepLinkEmail &&
-        signedInEmail.toLowerCase() !== deepLinkEmail.toLowerCase();
+        (deepLinkUserId
+            ? !!signedInUserId && signedInUserId !== deepLinkUserId
+            : !!signedInEmail && !!deepLinkEmail && signedInEmail.toLowerCase() !== deepLinkEmail.toLowerCase());
 
     useEffect(() => {
         if (preselectedTier && ['tier1', 'tier2', 'tier3'].includes(preselectedTier)) {
@@ -74,6 +85,7 @@ function SubscribePage() {
             if (!active) return;
             setAuthState(data.user ? 'signed-in' : 'signed-out');
             setSignedInEmail(data.user?.email ?? null);
+            setSignedInUserId(data.user?.id ?? null);
         }).catch(() => {
             if (active) setAuthState('signed-out');
         });
@@ -85,7 +97,7 @@ function SubscribePage() {
         setLoading(true);
         setError(null);
         try {
-            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
             if (signInError) {
                 setError(signInError.message);
                 return;
@@ -93,6 +105,7 @@ function SubscribePage() {
             setPassword('');
             setAuthState('signed-in');
             setSignedInEmail(email);
+            setSignedInUserId(signInData.user?.id ?? null);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Sign in failed');
         } finally {
@@ -107,6 +120,7 @@ function SubscribePage() {
         } finally {
             setAuthState('signed-out');
             setSignedInEmail(null);
+            setSignedInUserId(null);
             setEmail(typeof search.email === 'string' ? search.email : '');
             setLoading(false);
         }

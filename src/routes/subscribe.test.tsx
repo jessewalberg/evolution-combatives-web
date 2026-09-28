@@ -2,15 +2,18 @@ import type { ComponentType } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { signInWithPassword, signOut, currentUser } = vi.hoisted(() => ({
+const { signInWithPassword, signOut, currentUser, deepLinkSearch } = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   signOut: vi.fn(),
-  currentUser: { value: null as { email: string } | null },
+  currentUser: { value: null as { email: string; id?: string } | null },
+  deepLinkSearch: {
+    value: { email: 'mobile@example.com', tier: 'tier1', userId: undefined as string | undefined, invalidDeepLink: false },
+  },
 }))
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
-  useSearch: () => ({ email: 'mobile@example.com', tier: 'tier1', invalidDeepLink: false }),
+  useSearch: () => deepLinkSearch.value,
 }))
 
 vi.mock('@/src/lib/supabase-browser', () => {
@@ -30,6 +33,7 @@ describe('mobile subscription deep link', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     currentUser.value = null
+    deepLinkSearch.value = { email: 'mobile@example.com', tier: 'tier1', userId: undefined, invalidDeepLink: false }
     signOut.mockResolvedValue({ error: null })
   })
 
@@ -52,7 +56,7 @@ describe('mobile subscription deep link', () => {
     })
   })
 
-  it('blocks checkout and prompts sign-out when the browser session is a different account than the deep link', async () => {
+  it('blocks checkout and prompts sign-out when the browser session is a different account by email (no userId on link)', async () => {
     currentUser.value = { email: 'other-account@example.com' }
     const SubscribePage = Route.options.component as ComponentType
     render(<SubscribePage />)
@@ -68,5 +72,42 @@ describe('mobile subscription deep link', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
     await waitFor(() => expect(signOut).toHaveBeenCalled())
+  })
+
+  it('blocks checkout by user id even when the deep link email happens to match a different account', async () => {
+    // Guards against email reassignment: the deep link's original owner
+    // deleted their account and a new, unrelated user now has that email.
+    deepLinkSearch.value = {
+      email: 'mobile@example.com',
+      tier: 'tier1',
+      userId: 'original-owner-uuid',
+      invalidDeepLink: false,
+    }
+    currentUser.value = { email: 'mobile@example.com', id: 'new-owner-uuid' }
+    const SubscribePage = Route.options.component as ComponentType
+    render(<SubscribePage />)
+
+    await waitFor(() => {
+      const checkoutButtons = screen.getAllByRole('button', { name: /subscribe to/i })
+      checkoutButtons.forEach(button => expect(button).toBeDisabled())
+    })
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  })
+
+  it('allows checkout when the signed-in user id matches the deep link, even if displayed emails differ in case', async () => {
+    deepLinkSearch.value = {
+      email: 'Mobile@Example.com',
+      tier: 'tier1',
+      userId: 'same-uuid',
+      invalidDeepLink: false,
+    }
+    currentUser.value = { email: 'mobile@example.com', id: 'same-uuid' }
+    const SubscribePage = Route.options.component as ComponentType
+    render(<SubscribePage />)
+
+    await waitFor(() => {
+      const checkoutButtons = screen.getAllByRole('button', { name: /subscribe to/i })
+      checkoutButtons.forEach(button => expect(button).toBeEnabled())
+    })
   })
 })

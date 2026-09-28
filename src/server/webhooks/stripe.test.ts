@@ -107,8 +107,12 @@ function buildSupabase() {
 
       const profile = profiles.get(writtenUserId)
       if (!profile) {
+        // Real transaction rollback undoes *everything* the call did,
+        // including the dedup INSERT - so a retry of the same event id
+        // after the profile is fixed must be reprocessed, not skipped.
         if (existing) subscriptions.set(userId, existing)
         else subscriptions.delete(userId)
+        processedEventIds.delete(eventId)
         return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
       }
       profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
@@ -154,6 +158,9 @@ function buildSupabase() {
     },
     deleteProfile(userId: string) {
       profiles.delete(userId)
+    },
+    restoreProfile(userId: string) {
+      profiles.set(userId, { subscription_tier: null })
     },
   }
 }
@@ -412,9 +419,8 @@ describe('POST /api/webhooks/stripe', () => {
 
   it('returns 500 and persists no subscription row when the profile is missing (atomic rollback)', async () => {
     supabase.deleteProfile('user-1')
-    mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.created', subscriptionEvent())
-    )
+    const created = makeEvent('customer.subscription.created', subscriptionEvent())
+    mockValidateWebhookSignature.mockResolvedValue(created)
 
     const res = await POST(webhookRequest('{}', 'sig'))
     const body = await res.json()
@@ -422,6 +428,18 @@ describe('POST /api/webhooks/stripe', () => {
     expect(res.status).toBe(500)
     expect(body.error).toBe('Webhook handler failed')
     expect(supabase.hasAnyRow()).toBe(false)
+
+    // The rollback undoes the whole transaction, including the event-id
+    // dedup insert, so Stripe's retry of the *same* event id must be
+    // reprocessed - not swallowed as an already-handled replay - once the
+    // profile is fixed.
+    supabase.restoreProfile('user-1')
+    mockValidateWebhookSignature.mockResolvedValue(created)
+    const retry = await POST(webhookRequest('{}', 'sig'))
+
+    expect(retry.status).toBe(200)
+    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1' })
+    expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
   it('handles customer.subscription.updated by updating status and period fields', async () => {

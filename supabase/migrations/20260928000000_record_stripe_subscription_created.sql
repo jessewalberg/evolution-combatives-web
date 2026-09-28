@@ -59,8 +59,16 @@ REVOKE ALL ON TABLE public.stripe_webhook_events FROM PUBLIC, anon, authenticate
 GRANT ALL ON TABLE public.stripe_webhook_events TO service_role;
 
 ALTER TABLE public.subscriptions
-    ADD COLUMN IF NOT EXISTS stripe_event_created_at timestamptz,
-    ADD COLUMN IF NOT EXISTS stripe_event_id text;
+    ADD COLUMN IF NOT EXISTS stripe_event_created_at timestamptz;
+
+-- R1 bootstrap: a pre-existing row (written before this migration) has no
+-- recorded event time, and a NULL always passes the ordering guard. Stamp
+-- every existing row with the deploy time so a genuinely stale event
+-- redelivered after deploy (necessarily created before deploy) correctly
+-- fails the >= guard instead of unconditionally overwriting legacy state.
+UPDATE public.subscriptions
+SET stripe_event_created_at = now()
+WHERE stripe_event_created_at IS NULL;
 
 CREATE OR REPLACE FUNCTION public.apply_stripe_subscription_event(
     p_subscription jsonb,
@@ -99,7 +107,7 @@ BEGIN
             user_id, platform, external_subscription_id, tier, status,
             stripe_subscription_id, stripe_customer_id, current_period_start,
             current_period_end, cancel_at_period_end, canceled_at, updated_at,
-            stripe_event_created_at, stripe_event_id
+            stripe_event_created_at
         ) VALUES (
             v_user_id,
             'stripe',
@@ -113,8 +121,7 @@ BEGIN
             COALESCE((p_subscription->>'cancel_at_period_end')::boolean, false),
             (p_subscription->>'canceled_at')::timestamptz,
             COALESCE((p_subscription->>'updated_at')::timestamptz, now()),
-            p_event_created_at,
-            p_event_id
+            p_event_created_at
         )
         ON CONFLICT (user_id, platform) DO UPDATE SET
             external_subscription_id = EXCLUDED.external_subscription_id,
@@ -129,8 +136,7 @@ BEGIN
             cancel_at_period_end = EXCLUDED.cancel_at_period_end,
             canceled_at = EXCLUDED.canceled_at,
             updated_at = EXCLUDED.updated_at,
-            stripe_event_created_at = EXCLUDED.stripe_event_created_at,
-            stripe_event_id = EXCLUDED.stripe_event_id
+            stripe_event_created_at = EXCLUDED.stripe_event_created_at
         WHERE (subscriptions.stripe_event_created_at IS NULL
                OR EXCLUDED.stripe_event_created_at >= subscriptions.stripe_event_created_at)
           AND (p_is_creation OR subscriptions.stripe_subscription_id = EXCLUDED.stripe_subscription_id)
@@ -158,8 +164,7 @@ BEGIN
     SET
         status = v_status,
         updated_at = COALESCE((p_subscription->>'updated_at')::timestamptz, now()),
-        stripe_event_created_at = p_event_created_at,
-        stripe_event_id = p_event_id
+        stripe_event_created_at = p_event_created_at
     WHERE stripe_subscription_id = v_stripe_id
       AND (stripe_event_created_at IS NULL OR p_event_created_at >= stripe_event_created_at)
       AND status NOT IN ('canceled', 'incomplete_expired', 'unpaid')
