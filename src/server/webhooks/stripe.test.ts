@@ -36,27 +36,13 @@ function makeEvent(type: string, object: Record<string, unknown>, id?: string) {
 function liveSubscription(overrides: Record<string, unknown> = {}) {
   return {
     id: 'sub_1',
+    created: 1700000000,
     status: 'active',
     customer: 'cus_1',
     metadata: { userId: 'user-1', tier: 'tier1' },
     items: {
       data: [{ current_period_start: 1700000000, current_period_end: 1702592000 }],
     },
-    cancel_at_period_end: false,
-    canceled_at: null,
-    ...overrides,
-  }
-}
-
-/** Pre-"basil" shape: current_period_start/end directly on the subscription. */
-function legacyLiveSubscription(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'sub_1',
-    status: 'active',
-    customer: 'cus_1',
-    metadata: { userId: 'user-1', tier: 'tier1' },
-    current_period_start: 1700000000,
-    current_period_end: 1702592000,
     cancel_at_period_end: false,
     canceled_at: null,
     ...overrides,
@@ -95,7 +81,9 @@ function buildSupabase() {
     processedEventIds.add(eventId)
 
     const existing = subscriptions.get(userId)
-    const guardPasses = !existing || existing.stripe_subscription_id === stripeId || TERMINAL.has(existing.status as string)
+    const guardPasses = !existing || existing.stripe_subscription_id === stripeId ||
+      (TERMINAL.has(existing.status as string) &&
+        (!existing.stripe_created_at || String(existing.stripe_created_at) < String(p.stripe_created_at)))
     if (!guardPasses) {
       // No exception is raised here, so (unlike the missing-profile path
       // below) the dedup insert stays committed - this event id is now
@@ -226,19 +214,6 @@ describe('POST /api/webhooks/stripe', () => {
     })
   })
 
-  it('falls back to the legacy top-level current_period_start/end when items are absent', async () => {
-    mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_1' }))
-    mockRetrieve.mockResolvedValue(legacyLiveSubscription())
-
-    const res = await POST(webhookRequest('{}', 'sig'))
-
-    expect(res.status).toBe(200)
-    expect(supabase.rowForUser('user-1')).toMatchObject({
-      current_period_start: new Date(1700000000 * 1000).toISOString(),
-      current_period_end: new Date(1702592000 * 1000).toISOString(),
-    })
-  })
-
   it('is idempotent when the exact same event is replayed, even though each replay still fetches Stripe', async () => {
     const event = makeEvent('customer.subscription.created', { id: 'sub_1' })
     mockValidateWebhookSignature.mockResolvedValue(event)
@@ -265,13 +240,13 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('invoice.payment_succeeded and invoice.payment_failed are handled identically: both fetch and write live state', async () => {
-    mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_succeeded', { subscription: 'sub_1' }))
+    mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_succeeded', { parent: { subscription_details: { subscription: 'sub_1' } } }))
     mockRetrieve.mockResolvedValue(liveSubscription({ status: 'active' }))
     const succeeded = await POST(webhookRequest('{}', 'sig'))
     expect(succeeded.status).toBe(200)
     expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
 
-    mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_failed', { subscription: 'sub_1' }))
+    mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_failed', { parent: { subscription_details: { subscription: 'sub_1' } } }))
     mockRetrieve.mockResolvedValue(liveSubscription({ status: 'past_due' }))
     const failed = await POST(webhookRequest('{}', 'sig'))
     expect(failed.status).toBe(200)
@@ -280,7 +255,7 @@ describe('POST /api/webhooks/stripe', () => {
 
   it('handles invoice events with an expanded subscription object, not just an id string', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('invoice.payment_succeeded', { subscription: { id: 'sub_1' } })
+      makeEvent('invoice.payment_succeeded', { parent: { subscription_details: { subscription: { id: 'sub_1' } } } })
     )
 
     const res = await POST(webhookRequest('{}', 'sig'))
@@ -311,22 +286,8 @@ describe('POST /api/webhooks/stripe', () => {
     expect(mockRetrieve).toHaveBeenCalledWith('sub_1')
   })
 
-  it('prefers the current parent.subscription_details shape over the legacy subscription field when both are present', async () => {
-    mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('invoice.payment_succeeded', {
-        subscription: 'sub_legacy',
-        parent: { subscription_details: { subscription: 'sub_current' } },
-      })
-    )
-
-    const res = await POST(webhookRequest('{}', 'sig'))
-
-    expect(res.status).toBe(200)
-    expect(mockRetrieve).toHaveBeenCalledWith('sub_current')
-  })
-
   it('handles invoice events without a subscription by skipping Stripe and the RPC entirely', async () => {
-    mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_succeeded', { subscription: null }))
+    mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_succeeded', { parent: null }))
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
@@ -336,22 +297,43 @@ describe('POST /api/webhooks/stripe', () => {
 
   it('resubscribe: a newer subscription id replaces a canceled row for the same user', async () => {
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_old' }))
-    mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_old' }))
+    mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_old', created: 1700000000 }))
     await POST(webhookRequest('{}', 'sig'))
 
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.deleted', { id: 'sub_old' }))
-    mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_old', status: 'canceled' }))
+    mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_old', created: 1700000000, status: 'canceled' }))
     await POST(webhookRequest('{}', 'sig'))
     expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
 
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_new' }))
-    mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_new', status: 'active' }))
+    mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_new', created: 1700000001, status: 'active' }))
     const resubscribe = await POST(webhookRequest('{}', 'sig'))
 
     expect(resubscribe.status).toBe(200)
     expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new', status: 'active' })
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
+
+  it.each(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.payment_failed'])(
+    'does not replace a newer canceled subscription with a delayed older %s event',
+    async (type) => {
+      for (const [id, created] of [['sub_old', 1700000000], ['sub_new', 1700000001]] as const) {
+        mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.deleted', { id }))
+        mockRetrieve.mockResolvedValue(liveSubscription({ id, created, status: 'canceled' }))
+        expect((await POST(webhookRequest('{}', 'sig'))).status).toBe(200)
+      }
+
+      const object = type.startsWith('invoice.')
+        ? { parent: { subscription_details: { subscription: 'sub_old' } } }
+        : { id: 'sub_old' }
+      mockValidateWebhookSignature.mockResolvedValue(makeEvent(type, object))
+      mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_old', created: 1700000000, status: 'canceled' }))
+
+      expect((await POST(webhookRequest('{}', 'sig'))).status).toBe(200)
+      expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new', status: 'canceled' })
+      expect(supabase.getProfileTier('user-1')).toBeNull()
+    }
+  )
 
   it('defense in depth: an event for a different subscription id is dropped while the existing row is still non-terminal', async () => {
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_a' }))

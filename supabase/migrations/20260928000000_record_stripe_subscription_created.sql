@@ -1,41 +1,10 @@
 -- Single state-machine entry point for every Stripe subscription webhook
 -- event (created/updated/deleted/invoice.payment_*).
 --
--- DESIGN: Stripe's own guidance is that webhook delivery order is not
--- guaranteed, and recommends not trusting an event's payload as a
--- point-in-time snapshot to reconcile against local state - instead,
--- refetch the object's *current* state from the API when handling any
--- event for it. src/server/webhooks/stripe.ts follows this: every handler
--- calls stripe.subscriptions.retrieve() for the referenced subscription id
--- and passes that live object here, not the event payload. That is what
--- eliminates the entire class of timestamp/ordering bugs earlier versions
--- of this migration tried (and failed) to solve with an event-time
--- ordering guard: there is no "staleness" to compare, because every call
--- writes the subscription's actual current truth. Two events for the same
--- id processed in any order converge on the identical value once both
--- fetch (whichever the fetch was, both processed after the true current
--- one exists); a replay writes the same current truth again (harmless).
---
 -- REPLAY SHORT-CIRCUIT: stripe_webhook_events(event_id) is still a dedup
 -- table, kept purely as an efficiency guard (skip a redundant Stripe API
 -- fetch + write on an exact event replay) - not for correctness, since a
 -- replay's fetch-fresh write would be a harmless no-op anyway.
---
--- IDENTITY: every event type here (created/updated/deleted/invoice.*) now
--- carries the *subscription's own current metadata.userId and tier* (they
--- all go through the same "fetch the subscription, read its metadata"
--- path in stripe.ts), so they all use the identical upsert keyed by
--- (user_id, platform) - the real UNIQUE constraint. The DO UPDATE branch
--- only fires when either the existing row already belongs to this same
--- Stripe subscription id, or the existing row is in a terminal status
--- (canceled/incomplete_expired/unpaid). This is what lets a resubscribe
--- (a new Stripe subscription id) take over the row once the old one has
--- genuinely ended, while stopping a write for a *different*, still-live
--- subscription from ever clobbering it - our own checkout
--- (create-checkout.ts) blocks starting a second checkout while any
--- non-terminal subscription exists, so in practice this guard is never
--- exercised by two live subscriptions racing for the same row; it remains
--- as defense in depth against an out-of-band Stripe-side subscription.
 --
 -- Every write that changes subscription_tier requires a matching profiles
 -- row and raises inside the same transaction otherwise, so a missing
@@ -68,6 +37,7 @@ GRANT ALL ON TABLE public.stripe_webhook_events TO service_role;
 -- anymore, so there is nothing to store per row.
 ALTER TABLE public.subscriptions DROP COLUMN IF EXISTS stripe_event_created_at;
 ALTER TABLE public.subscriptions DROP COLUMN IF EXISTS stripe_event_id;
+ALTER TABLE public.subscriptions ADD COLUMN IF NOT EXISTS stripe_created_at timestamptz;
 
 CREATE OR REPLACE FUNCTION public.apply_stripe_subscription_event(
     p_subscription jsonb,
@@ -80,13 +50,15 @@ AS $$
 DECLARE
     v_user_id uuid := NULLIF(p_subscription->>'user_id', '')::uuid;
     v_stripe_id text := p_subscription->>'stripe_subscription_id';
+    v_stripe_created_at timestamptz := (p_subscription->>'stripe_created_at')::timestamptz;
     v_tier text := NULLIF(p_subscription->>'tier', '');
     v_status text := p_subscription->>'status';
     v_written_user_id uuid;
     v_is_terminal boolean := v_status IN ('canceled', 'incomplete_expired', 'unpaid');
     v_dedup_id text;
 BEGIN
-    IF v_user_id IS NULL OR v_stripe_id IS NULL OR v_stripe_id = '' OR p_event_id IS NULL THEN
+    IF v_user_id IS NULL OR v_stripe_id IS NULL OR v_stripe_id = ''
+       OR v_stripe_created_at IS NULL OR p_event_id IS NULL THEN
         RETURN false;
     END IF;
 
@@ -101,7 +73,7 @@ BEGIN
 
     INSERT INTO public.subscriptions (
         user_id, platform, external_subscription_id, tier, status,
-        stripe_subscription_id, stripe_customer_id, current_period_start,
+        stripe_subscription_id, stripe_created_at, stripe_customer_id, current_period_start,
         current_period_end, cancel_at_period_end, canceled_at, updated_at
     ) VALUES (
         v_user_id,
@@ -110,6 +82,7 @@ BEGIN
         COALESCE(v_tier, 'none'),
         v_status,
         v_stripe_id,
+        v_stripe_created_at,
         p_subscription->>'stripe_customer_id',
         (p_subscription->>'current_period_start')::timestamptz,
         (p_subscription->>'current_period_end')::timestamptz,
@@ -122,6 +95,7 @@ BEGIN
         tier = EXCLUDED.tier,
         status = EXCLUDED.status,
         stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+        stripe_created_at = EXCLUDED.stripe_created_at,
         stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, subscriptions.stripe_customer_id),
         current_period_start = COALESCE(EXCLUDED.current_period_start, subscriptions.current_period_start),
         current_period_end = COALESCE(EXCLUDED.current_period_end, subscriptions.current_period_end),
@@ -129,7 +103,9 @@ BEGIN
         canceled_at = EXCLUDED.canceled_at,
         updated_at = EXCLUDED.updated_at
     WHERE subscriptions.stripe_subscription_id = EXCLUDED.stripe_subscription_id
-       OR subscriptions.status IN ('canceled', 'incomplete_expired', 'unpaid')
+       OR (subscriptions.status IN ('canceled', 'incomplete_expired', 'unpaid')
+           AND (subscriptions.stripe_created_at IS NULL
+                OR subscriptions.stripe_created_at < EXCLUDED.stripe_created_at))
     RETURNING user_id INTO v_written_user_id;
 
     IF v_written_user_id IS NULL THEN
