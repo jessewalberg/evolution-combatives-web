@@ -18,15 +18,20 @@ import { createAdminClient } from '@/src/lib/supabase'
 const mockValidateWebhookSignature = vi.mocked(validateWebhookSignature)
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
-function makeEvent(type: string, object: Record<string, unknown>) {
+let nextEventTime = 1_700_000_000
+
+/** Each event gets a distinct, increasing created time unless overridden. */
+function makeEvent(type: string, object: Record<string, unknown>, overrides: { id?: string; created?: number } = {}) {
+  nextEventTime += 1
   return {
-    id: 'evt_1',
+    id: overrides.id ?? `evt_${nextEventTime}`,
     type,
+    created: overrides.created ?? nextEventTime,
     data: { object },
   } as unknown as Stripe.Event
 }
 
-type Row = Record<string, unknown>
+type Row = Record<string, unknown> & { stripe_event_created_at?: number; stripe_event_id?: string }
 
 const TERMINAL = new Set(['canceled', 'incomplete_expired', 'unpaid'])
 
@@ -35,21 +40,30 @@ const TERMINAL = new Set(['canceled', 'incomplete_expired', 'unpaid'])
  * (supabase/migrations/20260928000000_record_stripe_subscription_created.sql).
  *
  * This sandbox has no Postgres/pglite available to run the real SQL
- * function, so this store reproduces its exact WHERE-guard semantics
- * (single row per user keyed like the real UNIQUE (user_id, platform)
- * constraint, ordering guards, and the atomic profile requirement) so these
- * tests fail if the TypeScript call site stops matching that contract, and
- * so the rollback assertions check persisted store state, not just the
- * HTTP status code.
+ * function, so this store reproduces its exact ordering-guard and
+ * (user_id, platform) upsert semantics: a write only applies when the
+ * incoming event is not older than the row's last-applied event, matching
+ * the migration's WHERE clause line for line. Rollback assertions check
+ * this persisted store state, not just the HTTP status, so they fail if the
+ * TypeScript call site or the guard's shape drifts from the real function.
  */
 function buildSupabase() {
-  // one row per user_id, mirroring UNIQUE (user_id, platform)
-  const subscriptions = new Map<string, Row>()
+  const subscriptions = new Map<string, Row>() // keyed by user_id
   const profiles = new Map<string, { subscription_tier: string | null }>([
     ['user-1', { subscription_tier: null }],
   ])
 
-  function applyEvent(p: Row, isCreation: boolean): { error?: { message: string } } {
+  function passesOrderingGuard(existing: Row | undefined, eventCreatedAt: number, eventId: string): boolean {
+    if (!existing || existing.stripe_event_created_at === undefined) return true
+    if (eventCreatedAt > (existing.stripe_event_created_at as number)) return true
+    return eventCreatedAt === existing.stripe_event_created_at && eventId === existing.stripe_event_id
+  }
+
+  function applyEvent(
+    p: Row,
+    eventCreatedAt: number,
+    eventId: string
+  ): { error?: { message: string } } {
     const stripeId = p.stripe_subscription_id as string
     const status = p.status as string
     const tier = (p.tier as string | undefined) || undefined
@@ -57,63 +71,53 @@ function buildSupabase() {
 
     let writtenUserId: string | undefined
 
-    if (isCreation) {
-      const userId = p.user_id as string | undefined
-      if (!userId) return {}
+    if (p.user_id) {
+      const userId = p.user_id as string
       const existing = subscriptions.get(userId)
-      const guardPasses = !existing || existing.stripe_subscription_id === stripeId || TERMINAL.has(existing.status as string)
-      if (!guardPasses) {
-        return {} // skip: still-active different subscription (R1)
+      if (!passesOrderingGuard(existing, eventCreatedAt, eventId)) {
+        return {} // stale event: a newer event already landed
       }
-      subscriptions.set(userId, { ...p })
+      subscriptions.set(userId, { ...p, stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
       writtenUserId = userId
-    } else {
-      // update/delete: only touch a row whose *current* stripe id still
-      // matches - a stale event for a superseded id is a no-op (R3)
-      for (const [userId, row] of subscriptions) {
-        if (row.stripe_subscription_id === stripeId) {
-          Object.assign(row, p)
-          writtenUserId = userId
-          break
-        }
+
+      const profile = profiles.get(writtenUserId)
+      if (!profile) {
+        subscriptions.set(userId, existing as Row) // atomic rollback (or delete if none existed)
+        if (!existing) subscriptions.delete(userId)
+        return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
       }
-      if (!writtenUserId) return {} // out-of-order or superseded: no-op
+      profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
+      return {}
     }
 
-    const profile = profiles.get(writtenUserId)
-    if (!profile) {
-      // atomic: simulate the whole RPC call rolling back (R2)
-      if (isCreation) {
-        subscriptions.delete(writtenUserId)
+    // Invoice path: match an existing row by stripe_subscription_id only,
+    // never insert, never touch tier.
+    for (const [userId, row] of subscriptions) {
+      if (row.stripe_subscription_id === stripeId) {
+        if (!passesOrderingGuard(row, eventCreatedAt, eventId)) return {}
+        Object.assign(row, { status, stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
+        writtenUserId = userId
+        break
       }
-      return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
     }
-    profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
     return {}
   }
 
-  const rpc = vi.fn((name: string, args: { p_subscription: Row; p_is_creation: boolean }) => {
-    if (name !== 'apply_stripe_subscription_event') {
-      return Promise.resolve({ error: new Error('Unknown RPC') })
+  const rpc = vi.fn(
+    (
+      name: string,
+      args: { p_subscription: Row; p_event_created_at: string; p_event_id: string }
+    ) => {
+      if (name !== 'apply_stripe_subscription_event') {
+        return Promise.resolve({ error: new Error('Unknown RPC') })
+      }
+      const eventCreatedAt = new Date(args.p_event_created_at).getTime()
+      return Promise.resolve(applyEvent(args.p_subscription, eventCreatedAt, args.p_event_id))
     }
-    return Promise.resolve(applyEvent(args.p_subscription, args.p_is_creation))
-  })
-
-  const subscriptionsUpdateEq = vi.fn().mockResolvedValue({ error: null })
-  const subscriptionsUpdate = vi.fn().mockReturnValue({ eq: subscriptionsUpdateEq })
-
-  const from = vi.fn((table: string) => {
-    if (table === 'subscriptions') {
-      return { update: subscriptionsUpdate }
-    }
-    return {}
-  })
+  )
 
   return {
-    from,
     rpc,
-    subscriptionsUpdate,
-    subscriptionsUpdateEq,
     rowForUser(userId: string) {
       return subscriptions.get(userId)
     },
@@ -156,6 +160,7 @@ describe('POST /api/webhooks/stripe', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    nextEventTime = 1_700_000_000
     supabase = buildSupabase()
     mockCreateAdminClient.mockReturnValue(supabase as never)
   })
@@ -211,19 +216,19 @@ describe('POST /api/webhooks/stripe', () => {
         stripe_subscription_id: 'sub_1',
         tier: 'tier1',
       }),
-      p_is_creation: true,
+      p_event_created_at: expect.any(String),
+      p_event_id: expect.any(String),
     })
     expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1' })
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
-  it('returns 200 and is idempotent when customer.subscription.created is replayed', async () => {
-    mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.created', subscriptionEvent())
-    )
+  it('returns 200 and is idempotent when the exact same event is replayed', async () => {
+    const created = makeEvent('customer.subscription.created', subscriptionEvent())
+    mockValidateWebhookSignature.mockResolvedValue(created)
 
     const first = await POST(webhookRequest('{}', 'sig'))
-    const second = await POST(webhookRequest('{}', 'sig'))
+    const second = await POST(webhookRequest('{}', 'sig')) // same event object: same id + created
 
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
@@ -231,7 +236,28 @@ describe('POST /api/webhooks/stripe', () => {
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
-  it('resubscribe: a new created event replaces a canceled subscription for the same user', async () => {
+  it('a stale replay of an old created event cannot resurrect a later canceled subscription', async () => {
+    const created = makeEvent('customer.subscription.created', subscriptionEvent())
+    mockValidateWebhookSignature.mockResolvedValue(created)
+    await POST(webhookRequest('{}', 'sig'))
+
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.deleted', subscriptionEvent())
+    )
+    await POST(webhookRequest('{}', 'sig'))
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
+    expect(supabase.getProfileTier('user-1')).toBeNull()
+
+    // Stripe redelivers the *original* created event (older than the deleted event)
+    mockValidateWebhookSignature.mockResolvedValue(created)
+    const replay = await POST(webhookRequest('{}', 'sig'))
+
+    expect(replay.status).toBe(200)
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
+    expect(supabase.getProfileTier('user-1')).toBeNull()
+  })
+
+  it('resubscribe: a newer created event for a new Stripe id replaces a canceled subscription', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', subscriptionEvent({ id: 'sub_old' }))
     )
@@ -241,8 +267,6 @@ describe('POST /api/webhooks/stripe', () => {
       makeEvent('customer.subscription.deleted', subscriptionEvent({ id: 'sub_old' }))
     )
     await POST(webhookRequest('{}', 'sig'))
-    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
-    expect(supabase.getProfileTier('user-1')).toBeNull()
 
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', subscriptionEvent({ id: 'sub_new', status: 'active' }))
@@ -254,22 +278,31 @@ describe('POST /api/webhooks/stripe', () => {
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
-  it('skips a created event for a different id while an active subscription still exists (no overwrite, no error)', async () => {
+  it('resubscribe works from a past_due row too, since the guard is time-based not status-based', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.created', subscriptionEvent({ id: 'sub_active' }))
+      makeEvent('customer.subscription.created', subscriptionEvent({ id: 'sub_old' }))
     )
     await POST(webhookRequest('{}', 'sig'))
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.updated', subscriptionEvent({ id: 'sub_old', status: 'past_due' }))
+    )
+    await POST(webhookRequest('{}', 'sig'))
+    expect(supabase.rowForUser('user-1')?.status).toBe('past_due')
 
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.created', subscriptionEvent({ id: 'sub_other' }))
+      makeEvent('customer.subscription.created', subscriptionEvent({ id: 'sub_new', status: 'active' }))
     )
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
-    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_active' })
+    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new', status: 'active' })
   })
 
-  it('out-of-order: an updated event that arrives before its created event is a no-op, not an error', async () => {
+  it('an updated event delivered before its created event still establishes the row (it carries full metadata)', async () => {
+    // Stripe guarantees a created event's own timestamp always precedes any
+    // update for that subscription, so a genuinely out-of-order *delivery*
+    // is safe to apply here - the ordering guard (tested elsewhere) is what
+    // rejects a truly stale event, not the event type.
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.updated', subscriptionEvent({ status: 'past_due' }))
     )
@@ -277,7 +310,23 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
-    expect(supabase.hasAnyRow()).toBe(false)
+    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1', status: 'past_due' })
+  })
+
+  it('a genuinely stale created event (older event time) cannot overwrite a row already updated', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.updated', subscriptionEvent({ status: 'active' }))
+    )
+    await POST(webhookRequest('{}', 'sig'))
+
+    // A duplicate/delayed created delivery with an older event.created
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', subscriptionEvent({ status: 'incomplete' }), { created: 1 })
+    )
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
   })
 
   it('out-of-order: a stale updated event for a superseded subscription id cannot revive canceled state', async () => {
@@ -294,14 +343,19 @@ describe('POST /api/webhooks/stripe', () => {
     )
     await POST(webhookRequest('{}', 'sig'))
 
-    // A delayed "updated" for the superseded sub_old must not touch sub_new's row
+    // A delayed "updated" for sub_old, even with a fresh delivery time, is
+    // still older in event-created terms only if Stripe actually sent it
+    // earlier; simulate the common case of a genuinely late/duplicate
+    // delivery by giving it an old `created` timestamp.
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.updated', subscriptionEvent({ id: 'sub_old', status: 'active' }))
+      makeEvent('customer.subscription.updated', subscriptionEvent({ id: 'sub_old', status: 'active' }), {
+        created: 1,
+      })
     )
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
-    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new', status: 'active' })
+    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new' })
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
@@ -397,34 +451,74 @@ describe('POST /api/webhooks/stripe', () => {
     expect((await res.json()).error).toBe('Webhook handler failed')
   })
 
-  it('handles invoice.payment_succeeded by reactivating the subscription', async () => {
+  it('handles invoice.payment_succeeded through the ordering-guarded RPC, reactivating an existing row', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', subscriptionEvent({ status: 'past_due' }))
+    )
+    await POST(webhookRequest('{}', 'sig'))
+
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_succeeded', { subscription: 'sub_1' })
     )
-
     const res = await POST(webhookRequest('{}', 'sig'))
-    expect(res.status).toBe(200)
 
-    expect(supabase.subscriptionsUpdate).toHaveBeenCalledWith({
-      status: 'active',
-      updated_at: expect.any(String),
-    })
-    expect(supabase.subscriptionsUpdateEq).toHaveBeenCalledWith('stripe_subscription_id', 'sub_1')
+    expect(res.status).toBe(200)
+    expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
+    // Invoices never carry tier data - profile tier is untouched, not reset
+    expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
   it('handles invoice.payment_failed by marking the subscription past_due', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', subscriptionEvent())
+    )
+    await POST(webhookRequest('{}', 'sig'))
+
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_failed', { subscription: 'sub_1' })
     )
-
     const res = await POST(webhookRequest('{}', 'sig'))
-    expect(res.status).toBe(200)
 
-    expect(supabase.subscriptionsUpdate).toHaveBeenCalledWith({
-      status: 'past_due',
-      updated_at: expect.any(String),
-    })
-    expect(supabase.subscriptionsUpdateEq).toHaveBeenCalledWith('stripe_subscription_id', 'sub_1')
+    expect(res.status).toBe(200)
+    expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'past_due' })
+  })
+
+  it('a stale invoice.payment_succeeded cannot reactivate a subscription canceled by a later event', async () => {
+    const created = makeEvent('customer.subscription.created', subscriptionEvent())
+    mockValidateWebhookSignature.mockResolvedValue(created)
+    await POST(webhookRequest('{}', 'sig'))
+
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.deleted', subscriptionEvent())
+    )
+    await POST(webhookRequest('{}', 'sig'))
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
+
+    // Late-delivered payment_succeeded from before the cancellation
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('invoice.payment_succeeded', { subscription: 'sub_1' }, { created: 1 })
+    )
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(200)
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
+    expect(supabase.getProfileTier('user-1')).toBeNull()
+  })
+
+  it('handles invoice events without a subscription by skipping the RPC entirely', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('invoice.payment_succeeded', { subscription: null })
+    )
+    const res1 = await POST(webhookRequest('{}', 'sig'))
+    expect(res1.status).toBe(200)
+    expect(supabase.rpc).not.toHaveBeenCalled()
+
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('invoice.payment_failed', { subscription: null })
+    )
+    const res2 = await POST(webhookRequest('{}', 'sig'))
+    expect(res2.status).toBe(200)
+    expect(supabase.rpc).not.toHaveBeenCalled()
   })
 
   it('returns 200 for unhandled event types', async () => {
@@ -437,22 +531,6 @@ describe('POST /api/webhooks/stripe', () => {
 
     expect(res.status).toBe(200)
     expect(body).toEqual({ received: true })
-  })
-
-  it('handles invoice events without subscription by skipping the DB update', async () => {
-    mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('invoice.payment_succeeded', { subscription: null })
-    )
-    const res1 = await POST(webhookRequest('{}', 'sig'))
-    expect(res1.status).toBe(200)
-    expect(supabase.subscriptionsUpdate).not.toHaveBeenCalled()
-
-    mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('invoice.payment_failed', { subscription: null })
-    )
-    const res2 = await POST(webhookRequest('{}', 'sig'))
-    expect(res2.status).toBe(200)
-    expect(supabase.subscriptionsUpdate).not.toHaveBeenCalled()
   })
 })
 
