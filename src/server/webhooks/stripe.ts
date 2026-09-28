@@ -1,7 +1,7 @@
 /**
  * Evolution Combatives - Stripe Webhook Handler
  * Processes Stripe webhook events for subscription management
- * 
+ *
  * @description Secure webhook endpoint for handling Stripe subscription events
  * @author Evolution Combatives
  */

@@ -164,7 +164,8 @@ domains stay on their current host until the separate cutover.
    `vars` there with live values: `VITE_SUPABASE_*`, `SUPABASE_*`, `VITE_APP_URL`,
    `APP_URL`, `ADMIN_URL`, mobile scheme, PostHog settings, Stream account and
    customer subdomain, **live** `STRIPE_PUBLISHABLE_KEY`, and all three **live**
-   `STRIPE_*_PRICE_ID` values. Replace every `update` placeholder. The public
+   `STRIPE_*_PRICE_ID` values. Replace every `update` and
+   `REPLACE_AT_DEPLOY` placeholder. The public
    app and admin URLs should point to `https://evolutioncombatives.com`.
 2. Populate the production Worker secrets from 1Password using
    `pnpm exec wrangler secret put <NAME>` for each name: `SUPABASE_SERVICE_ROLE_KEY`,
@@ -229,6 +230,10 @@ The admin dashboard integrates with the Evolution Combatives mobile app through:
 - **API Endpoints**: RESTful APIs for mobile app consumption
 - **Real-time Sync**: Instant content updates across platforms
 
+The mobile app opens `/subscribe` with `userId`, `email`, and `tier` query
+parameters. The browser asks users to sign in when needed and checks that the
+signed-in account matches the mobile account before starting checkout.
+
 ## 🧪 Development
 
 ### Available Scripts
@@ -259,7 +264,12 @@ pnpm typecheck    # Run TypeScript type checking
 - `GET /api/content/videos/[id]` - Get a video
 
 ### Subscription API
-- `POST /api/subscriptions/create-checkout` - Create Stripe checkout
+- `POST /api/subscriptions/create-checkout` - Create checkout for an authenticated browser session with a CSRF token
+- `POST /api/mobile/subscriptions/create-checkout` - Create checkout with mobile bearer authentication
+
+Both checkout endpoints check for a non-terminal subscription and reject
+checkout when one is found. The web endpoint also rejects checkout if it
+cannot verify the existing subscription state.
 
 ### Video Processing API
 - `POST /api/video/signed-url` - Get signed upload URL
