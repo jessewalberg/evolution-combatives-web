@@ -274,8 +274,10 @@ pnpm typecheck    # Run TypeScript type checking
 - `POST /api/mobile/subscriptions/create-checkout` - Create checkout with mobile bearer authentication
 
 Both checkout endpoints check for a non-terminal subscription and reject
-checkout when one is found. The web endpoint also rejects checkout if it
-cannot verify the existing subscription state.
+checkout when one is found. Both reject checkout if the subscription list or
+count cannot be verified, or if a conflicting payment still needs review.
+An identical retry reuses an unexpired Stripe Checkout session; a different
+tier, price, or callback URL cannot start another session while it remains open.
 
 ### Video Processing API
 - `POST /api/video/signed-url` - Get signed upload URL
