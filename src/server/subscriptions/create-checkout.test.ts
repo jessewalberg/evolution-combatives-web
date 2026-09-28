@@ -56,7 +56,7 @@ function buildSupabase(options: {
         return {
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({ single: subscriptionsSingle }),
+              not: vi.fn().mockReturnValue({ single: subscriptionsSingle }),
             }),
           }),
         }
@@ -179,8 +179,29 @@ describe('POST /api/subscriptions/create-checkout', () => {
     const body = await res.json()
 
     expect(res.status).toBe(400)
-    expect(body.error).toBe('User already has an active subscription')
+    expect(body.error).toBe('User already has a subscription in progress')
     expect(body.currentTier).toBe('tier1')
+  })
+
+  it('blocks checkout while an existing subscription is past_due, not just active', async () => {
+    mockCreateServerClient.mockResolvedValue(
+      buildSupabase({
+        user: { id: validUserId, email: validEmail },
+        existingSubscription: { id: 'sub1', status: 'past_due', tier: 'tier2' },
+      }) as never
+    )
+
+    const res = await POST(
+      createNextRequest('/api/subscriptions/create-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ tier: 'tier1' }),
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('User already has a subscription in progress')
+    expect(body.currentStatus).toBe('past_due')
   })
 
   it('returns 500 when priceId missing for none tier', async () => {

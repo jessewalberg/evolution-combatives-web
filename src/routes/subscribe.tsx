@@ -23,12 +23,12 @@ export const Route = createFileRoute('/subscribe')({
     validateSearch: (search: Record<string, unknown>) => {
         const email = typeof search.email === 'string' ? search.email : undefined;
         const tier = typeof search.tier === 'string' ? search.tier : undefined;
-        // userId is optional (older mobile app builds may not send it yet);
-        // when present it's the account-mismatch guard's primary signal,
-        // since an email can be reassigned to a different account over
-        // time while a Supabase user id cannot.
+        // userId is required (not just email): an email can be reassigned
+        // to a different account after the original owner deletes theirs,
+        // so an email-only account-mismatch check could pass for the wrong
+        // account. The stable Supabase user id cannot be reassigned.
         const userId = typeof search.userId === 'string' ? search.userId : undefined;
-        if (!email || !tier || !DEEP_LINK_TIERS.has(tier)) {
+        if (!email || !tier || !userId || !DEEP_LINK_TIERS.has(tier)) {
             return { email: undefined, tier: undefined, userId: undefined, invalidDeepLink: true as const };
         }
         return { email, tier, userId, invalidDeepLink: false as const };
@@ -63,15 +63,13 @@ function SubscribePage() {
     // checking out through that session would charge the wrong account.
     // Session identity still governs checkout server-side (never the
     // deep-link's identity) - this only decides whether to prompt for the
-    // right account before allowing checkout. Prefer comparing the stable
-    // Supabase user id (an email can be reassigned to a different account
-    // after the original owner deletes theirs); fall back to email only
-    // when the deep link doesn't carry a userId.
+    // right account before allowing checkout. Always compares the stable
+    // Supabase user id (never email alone): an email can be reassigned to
+    // a different account after the original owner deletes theirs, and
+    // validateSearch requires userId before this page renders anything but
+    // the invalid-deep-link state.
     const accountMismatch =
-        authState === 'signed-in' &&
-        (deepLinkUserId
-            ? !!signedInUserId && signedInUserId !== deepLinkUserId
-            : !!signedInEmail && !!deepLinkEmail && signedInEmail.toLowerCase() !== deepLinkEmail.toLowerCase());
+        authState === 'signed-in' && !!signedInUserId && !!deepLinkUserId && signedInUserId !== deepLinkUserId;
 
     useEffect(() => {
         if (preselectedTier && ['tier1', 'tier2', 'tier3'].includes(preselectedTier)) {
@@ -158,7 +156,7 @@ function SubscribePage() {
                 body: JSON.stringify({
                     tier,
                     successUrl: `${import.meta.env.VITE_APP_URL || window.location.origin}/subscription-success?tier=${tier}`,
-                    cancelUrl: `${import.meta.env.VITE_APP_URL || window.location.origin}/subscription-cancel`,
+                    cancelUrl: window.location.href,
                 }),
             });
 

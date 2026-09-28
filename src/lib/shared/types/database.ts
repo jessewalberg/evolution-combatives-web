@@ -398,9 +398,7 @@ export interface Database {
             apply_stripe_subscription_event: {
                 Args: {
                     p_subscription: Record<string, unknown>;
-                    p_event_created_at: string;
                     p_event_id: string;
-                    p_is_creation: boolean;
                 };
                 Returns: boolean;
             };

@@ -59,18 +59,26 @@ export async function POST({ request }: { request: Request }) {
             );
         }
 
+        // Block on *any* non-terminal subscription, not just 'active': the
+        // webhook state machine (apply_stripe_subscription_event) only
+        // allows one live subscription per user, and only lets a new one
+        // take over once the old one is genuinely terminal (canceled/
+        // incomplete_expired/unpaid). Allowing checkout while past_due/
+        // incomplete/trialing would create two concurrent Stripe
+        // subscriptions our single-row-per-user model can't represent.
         const { data: existingSubscription } = await supabase
             .from('subscriptions')
             .select('id, status, tier')
             .eq('user_id', userId)
-            .eq('status', 'active')
+            .not('status', 'in', '(canceled,incomplete_expired,unpaid)')
             .single();
 
         if (existingSubscription) {
             return json(
                 {
-                    error: 'User already has an active subscription',
+                    error: 'User already has a subscription in progress',
                     currentTier: existingSubscription.tier,
+                    currentStatus: existingSubscription.status,
                 },
                 { status: 400 }
             );
