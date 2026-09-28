@@ -43,11 +43,24 @@ function SubscribePage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [authState, setAuthState] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
+    const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
     const [email, setEmail] = useState(typeof search.email === 'string' ? search.email : '');
     const [password, setPassword] = useState('');
 
     const preselectedTier = (search.tier as SubscriptionTier | undefined) ?? null;
     const invalidDeepLink = search.invalidDeepLink === true;
+    const deepLinkEmail = search.email;
+    // The mobile app deep-links with the account it's signed into; if the
+    // browser already has a *different* account's session, silently
+    // checking out through that session would charge the wrong account.
+    // Session identity still governs checkout server-side (never the
+    // deep-link's email) - this only decides whether to prompt for the
+    // right account before allowing checkout.
+    const accountMismatch =
+        authState === 'signed-in' &&
+        !!signedInEmail &&
+        !!deepLinkEmail &&
+        signedInEmail.toLowerCase() !== deepLinkEmail.toLowerCase();
 
     useEffect(() => {
         if (preselectedTier && ['tier1', 'tier2', 'tier3'].includes(preselectedTier)) {
@@ -58,7 +71,9 @@ function SubscribePage() {
     useEffect(() => {
         let active = true;
         supabase.auth.getUser().then(({ data }) => {
-            if (active) setAuthState(data.user ? 'signed-in' : 'signed-out');
+            if (!active) return;
+            setAuthState(data.user ? 'signed-in' : 'signed-out');
+            setSignedInEmail(data.user?.email ?? null);
         }).catch(() => {
             if (active) setAuthState('signed-out');
         });
@@ -77,6 +92,7 @@ function SubscribePage() {
             }
             setPassword('');
             setAuthState('signed-in');
+            setSignedInEmail(email);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Sign in failed');
         } finally {
@@ -84,8 +100,20 @@ function SubscribePage() {
         }
     };
 
+    const handleSignOut = async () => {
+        setLoading(true);
+        try {
+            await supabase.auth.signOut();
+        } finally {
+            setAuthState('signed-out');
+            setSignedInEmail(null);
+            setEmail(typeof search.email === 'string' ? search.email : '');
+            setLoading(false);
+        }
+    };
+
     const handleSubscribe = async (tier: SubscriptionTier) => {
-        if (authState !== 'signed-in') return;
+        if (authState !== 'signed-in' || accountMismatch) return;
 
         setLoading(true);
         setError(null);
@@ -182,6 +210,20 @@ function SubscribePage() {
                     </div>
                 )}
 
+                {accountMismatch && !invalidDeepLink && (
+                    <div className="max-w-md mx-auto mb-8">
+                        <Card className="p-4 bg-amber-50 border-amber-200">
+                            <p className="text-amber-800 text-center mb-3">
+                                You're signed in as <strong>{signedInEmail}</strong>, but this link is for{' '}
+                                <strong>{deepLinkEmail}</strong>. Sign out and sign in as {deepLinkEmail} to subscribe.
+                            </p>
+                            <Button onClick={handleSignOut} disabled={loading} variant="outline" className="w-full">
+                                Sign out
+                            </Button>
+                        </Card>
+                    </div>
+                )}
+
                 {authState === 'signed-out' && !invalidDeepLink && (
                     <Card className="max-w-md mx-auto mb-8 p-6">
                         <h2 className="text-xl font-semibold mb-4">Sign in to subscribe</h2>
@@ -259,7 +301,7 @@ function SubscribePage() {
                                 {/* Subscribe Button */}
                                 <Button
                                     onClick={() => handleSubscribe(tier)}
-                                    disabled={loading || authState !== 'signed-in'}
+                                    disabled={loading || authState !== 'signed-in' || accountMismatch}
                                     className={`w-full py-3 text-lg font-semibold transition-colors ${isPopular
                                         ? 'bg-blue-600 hover:bg-blue-700 text-white'
                                         : 'bg-gray-800 hover:bg-gray-900 text-white'

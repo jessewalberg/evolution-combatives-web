@@ -39,21 +39,32 @@ const TERMINAL = new Set(['canceled', 'incomplete_expired', 'unpaid'])
  * Faithful in-memory emulation of public.apply_stripe_subscription_event
  * (supabase/migrations/20260928000000_record_stripe_subscription_created.sql).
  *
- * This sandbox has no Postgres/pglite available to run the real SQL
- * function, so this store reproduces its exact ordering-guard and
- * (user_id, platform) upsert semantics: a write only applies when the
- * incoming event is not older than the row's last-applied event, matching
- * the migration's WHERE clause line for line. Rollback assertions check
- * this persisted store state, not just the HTTP status, so they fail if the
- * TypeScript call site or the guard's shape drifts from the real function.
+ * This sandbox has no Postgres/pglite to run the real SQL function, so this
+ * store reproduces its exact contract line for line:
+ *   1. A dedicated event-id dedup set catches an exact replay *before* any
+ *      state comparison - an already-processed event id is always a no-op,
+ *      regardless of what the ordering guard would otherwise decide.
+ *   2. Created/updated/deleted (all carry metadata.userId) go through one
+ *      upsert keyed by user_id: an absent row always inserts; an existing
+ *      row is only overwritten when the incoming event is not older
+ *      (event_created_at >=) AND (it's a creation event OR the existing
+ *      row's stripe_subscription_id still matches the incoming one).
+ *   3. Invoice events (no user_id) only update an existing row matching
+ *      stripe_subscription_id, guarded the same way, and additionally can
+ *      never move a row out of a terminal status; they never insert and
+ *      never touch tier.
+ *   4. A missing profiles row rolls back the whole write atomically.
+ * Rollback/replay/ordering assertions check this persisted store state, not
+ * just the HTTP status, so they fail if the TypeScript call site or the
+ * guard's shape drifts from the real function.
  */
 function buildSupabase() {
+  const processedEventIds = new Set<string>()
   const subscriptions = new Map<string, Row>() // keyed by user_id
   const profiles = new Map<string, { subscription_tier: string | null }>([
     ['user-1', { subscription_tier: null }],
   ])
 
-  /** existing.stripe_event_created_at IS NULL OR incoming >= existing (tie-tolerant, second precision) */
   function passesOrderingGuard(existing: Row | undefined, eventCreatedAt: number): boolean {
     if (!existing || existing.stripe_event_created_at === undefined) return true
     return eventCreatedAt >= (existing.stripe_event_created_at as number)
@@ -71,51 +82,49 @@ function buildSupabase() {
     const hasUserId = Boolean(p.user_id)
     if (!stripeId) return {}
 
+    if (processedEventIds.has(eventId)) return {} // exact replay: no-op success
+    processedEventIds.add(eventId)
+
     let writtenUserId: string | undefined
 
-    if (isCreation) {
-      if (!p.user_id) return {}
+    if (hasUserId) {
       const userId = p.user_id as string
       const existing = subscriptions.get(userId)
-      if (!passesOrderingGuard(existing, eventCreatedAt)) return {} // stale created event
-      subscriptions.set(userId, { ...p, stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
+      const guardPasses =
+        !existing || (passesOrderingGuard(existing, eventCreatedAt) && (isCreation || existing.stripe_subscription_id === stripeId))
+      if (!guardPasses) return {} // stale, or non-creation event for a superseded subscription id
+
+      subscriptions.set(userId, {
+        ...(existing ?? {}),
+        ...p,
+        stripe_customer_id: (p.stripe_customer_id as string | undefined) ?? existing?.stripe_customer_id,
+        current_period_start: (p.current_period_start as string | undefined) ?? existing?.current_period_start,
+        current_period_end: (p.current_period_end as string | undefined) ?? existing?.current_period_end,
+        stripe_event_created_at: eventCreatedAt,
+        stripe_event_id: eventId,
+      })
       writtenUserId = userId
-    } else {
-      // updated/deleted/invoice: only touch a row whose *current* Stripe id
-      // still matches - a stale event for a superseded id matches no row.
-      for (const [userId, row] of subscriptions) {
-        if (row.stripe_subscription_id !== stripeId) continue
-        if (!passesOrderingGuard(row, eventCreatedAt)) return {}
-        // Invoice events (no user_id) can never revive a terminal row.
-        if (!hasUserId && TERMINAL.has(row.status as string)) return {}
-        if (hasUserId) {
-          Object.assign(row, {
-            tier: tier ?? row.tier,
-            status,
-            cancel_at_period_end: p.cancel_at_period_end ?? row.cancel_at_period_end,
-            canceled_at: p.canceled_at ?? row.canceled_at,
-            current_period_start: p.current_period_start ?? row.current_period_start,
-            current_period_end: p.current_period_end ?? row.current_period_end,
-          })
-        } else {
-          Object.assign(row, { status })
-        }
-        Object.assign(row, { stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
-        writtenUserId = userId
-        break
+
+      const profile = profiles.get(writtenUserId)
+      if (!profile) {
+        if (existing) subscriptions.set(userId, existing)
+        else subscriptions.delete(userId)
+        return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
       }
-      if (!writtenUserId) return {}
+      profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
+      return {}
     }
 
-    if (!hasUserId) return {} // invoice: never touches profile tier
-
-    const profile = profiles.get(writtenUserId!)
-    if (!profile) {
-      // atomic rollback of the subscription write on missing profile
-      if (isCreation) subscriptions.delete(writtenUserId!)
-      return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
+    // Invoice path: match an existing row by stripe_subscription_id only,
+    // never insert, never touch tier, never revive a terminal row.
+    for (const [userId, row] of subscriptions) {
+      if (row.stripe_subscription_id !== stripeId) continue
+      if (!passesOrderingGuard(row, eventCreatedAt)) return {}
+      if (TERMINAL.has(row.status as string)) return {}
+      Object.assign(row, { status, stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
+      writtenUserId = userId
+      break
     }
-    profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
     return {}
   }
 
@@ -253,6 +262,28 @@ describe('POST /api/webhooks/stripe', () => {
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
   })
 
+  it('a same-second replay cannot clobber a distinct same-second event that already superseded it', async () => {
+    // created and deleted share a second (Stripe timestamps are second-precision)
+    const created = makeEvent('customer.subscription.created', subscriptionEvent(), { created: 500 })
+    mockValidateWebhookSignature.mockResolvedValue(created)
+    await POST(webhookRequest('{}', 'sig'))
+
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.deleted', subscriptionEvent(), { created: 500 })
+    )
+    await POST(webhookRequest('{}', 'sig'))
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
+
+    // Stripe redelivers the *original* created event (exact same id) after
+    // the deletion has already been applied at the same second.
+    mockValidateWebhookSignature.mockResolvedValue(created)
+    const replay = await POST(webhookRequest('{}', 'sig'))
+
+    expect(replay.status).toBe(200)
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
+    expect(supabase.getProfileTier('user-1')).toBeNull()
+  })
+
   it('a stale replay of an old created event cannot resurrect a later canceled subscription', async () => {
     const created = makeEvent('customer.subscription.created', subscriptionEvent())
     mockValidateWebhookSignature.mockResolvedValue(created)
@@ -265,7 +296,6 @@ describe('POST /api/webhooks/stripe', () => {
     expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
     expect(supabase.getProfileTier('user-1')).toBeNull()
 
-    // Stripe redelivers the *original* created event (older than the deleted event)
     mockValidateWebhookSignature.mockResolvedValue(created)
     const replay = await POST(webhookRequest('{}', 'sig'))
 
@@ -315,19 +345,25 @@ describe('POST /api/webhooks/stripe', () => {
     expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new', status: 'active' })
   })
 
-  it('an updated event that arrives before its created event is a no-op, not an error (only created can establish a row)', async () => {
-    // updated/deleted only ever mutate a row matching the *current*
-    // stripe_subscription_id - they never insert. This is what stops a
-    // stale event for a superseded subscription id from hijacking a
-    // different, newer subscription's row (see the resubscribe tests).
+  it('an updated/deleted event that arrives before its created event still establishes the row (it carries full metadata)', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.updated', subscriptionEvent({ status: 'past_due' }))
+      makeEvent('customer.subscription.deleted', subscriptionEvent())
     )
 
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
-    expect(supabase.hasAnyRow()).toBe(false)
+    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1', status: 'canceled' })
+    expect(supabase.getProfileTier('user-1')).toBeNull()
+
+    // The genuinely earlier created event, redelivered afterward, cannot
+    // overwrite the later cancellation.
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', subscriptionEvent(), { created: 1 })
+    )
+    const stale = await POST(webhookRequest('{}', 'sig'))
+    expect(stale.status).toBe(200)
+    expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
   })
 
   it('a genuinely stale created event (older event time) cannot overwrite a row already updated', async () => {
@@ -341,7 +377,6 @@ describe('POST /api/webhooks/stripe', () => {
     await POST(webhookRequest('{}', 'sig'))
     expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
 
-    // A duplicate/delayed created delivery with an older event.created
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', subscriptionEvent({ status: 'incomplete' }), { created: 1 })
     )
@@ -365,14 +400,8 @@ describe('POST /api/webhooks/stripe', () => {
     )
     await POST(webhookRequest('{}', 'sig'))
 
-    // A delayed "updated" for sub_old, even with a fresh delivery time, is
-    // still older in event-created terms only if Stripe actually sent it
-    // earlier; simulate the common case of a genuinely late/duplicate
-    // delivery by giving it an old `created` timestamp.
     mockValidateWebhookSignature.mockResolvedValue(
-      makeEvent('customer.subscription.updated', subscriptionEvent({ id: 'sub_old', status: 'active' }), {
-        created: 1,
-      })
+      makeEvent('customer.subscription.updated', subscriptionEvent({ id: 'sub_old', status: 'active' }))
     )
     const res = await POST(webhookRequest('{}', 'sig'))
 
@@ -516,7 +545,6 @@ describe('POST /api/webhooks/stripe', () => {
     await POST(webhookRequest('{}', 'sig'))
     expect(supabase.rowForUser('user-1')?.status).toBe('canceled')
 
-    // Late-delivered payment_succeeded from before the cancellation
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('invoice.payment_succeeded', { subscription: 'sub_1' }, { created: 1 })
     )

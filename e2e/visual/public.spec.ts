@@ -35,7 +35,7 @@ test.describe('@visual public pages', () => {
   test('subscribe @visual', async ({ page }, testInfo) => {
     const vp = viewportLabel(testInfo.project.name)
     await page.goto(
-      `/subscribe?userId=${FIXTURE_IDS.regularUser}&email=officer@test.evolutioncombatives.com`
+      `/subscribe?userId=${FIXTURE_IDS.regularUser}&email=officer@test.evolutioncombatives.com&tier=tier1`
     )
     await page.getByRole('heading', { name: 'Choose Your Training Level', exact: true }).waitFor({
       state: 'visible',
