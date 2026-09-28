@@ -48,7 +48,12 @@ export async function signInUserSession(
       path: typeof cookie.options.path === 'string' ? cookie.options.path : '/',
       httpOnly: Boolean(cookie.options.httpOnly),
       secure: baseURL.startsWith('https'),
-      sameSite: (cookie.options.sameSite as 'Lax' | 'Strict' | 'None') ?? 'Lax',
+      sameSite:
+        cookie.options.sameSite === 'strict'
+          ? 'Strict'
+          : cookie.options.sameSite === 'none'
+            ? 'None'
+            : 'Lax',
     }))
   )
 }
