@@ -400,6 +400,7 @@ export interface Database {
                     p_subscription: Record<string, unknown>;
                     p_event_id: string;
                     p_event_created_at: number;
+                    p_payment_succeeded: boolean;
                 };
                 Returns: boolean;
             };
@@ -413,7 +414,7 @@ export interface Database {
             finalize_stripe_checkout_reservation: {
                 Args: {
                     p_user_id: string;
-                    p_idempotency_key: string;
+                    p_reservation_id: string;
                     p_checkout_session_id: string;
                     p_checkout_session_url: string;
                     p_expires_at: string;
@@ -423,7 +424,6 @@ export interface Database {
             complete_stripe_checkout_reservation: {
                 Args: {
                     p_user_id: string;
-                    p_idempotency_key: string;
                     p_checkout_session_id: string;
                     p_stripe_subscription_id: string;
                 };
@@ -432,7 +432,7 @@ export interface Database {
             release_stripe_checkout_reservation: {
                 Args: {
                     p_user_id: string;
-                    p_idempotency_key: string;
+                    p_reservation_id: string;
                 };
                 Returns: void;
             };

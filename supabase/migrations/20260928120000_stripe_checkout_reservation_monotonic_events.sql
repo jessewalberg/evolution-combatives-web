@@ -3,10 +3,10 @@
 
 CREATE TABLE IF NOT EXISTS public.stripe_checkout_reservations (
     user_id uuid PRIMARY KEY,
+    reservation_id uuid NOT NULL UNIQUE,
     tier text NOT NULL,
     checkout_session_id text,
     checkout_session_url text,
-    idempotency_key text NOT NULL,
     stripe_subscription_id text,
     expires_at timestamptz,
     status text NOT NULL DEFAULT 'pending',
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.stripe_orphan_subscriptions (
     stripe_subscription_id text NOT NULL,
     existing_stripe_subscription_id text NOT NULL,
     event_id text NOT NULL,
-    needs_refund boolean NOT NULL DEFAULT true,
+    needs_refund boolean NOT NULL DEFAULT false,
     payload jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -52,7 +52,7 @@ AS $$
 DECLARE
     v_row public.stripe_checkout_reservations%ROWTYPE;
     v_live_count integer;
-    v_idempotency_key text;
+    v_reservation_id uuid;
 BEGIN
     IF p_user_id IS NULL OR p_tier IS NULL OR p_tier = '' THEN
         RETURN jsonb_build_object('error', 'invalid_request');
@@ -84,6 +84,7 @@ BEGIN
         IF v_row.tier = p_tier THEN
             RETURN jsonb_build_object(
                 'action', 'reuse',
+                'reservation_id', v_row.reservation_id,
                 'session_id', v_row.checkout_session_id,
                 'url', v_row.checkout_session_url
             );
@@ -107,19 +108,19 @@ BEGIN
         RETURN jsonb_build_object('error', 'checkout_in_progress');
     END IF;
 
-    v_idempotency_key := 'checkout:' || p_user_id::text || ':' || gen_random_uuid()::text;
+    v_reservation_id := gen_random_uuid();
 
     INSERT INTO public.stripe_checkout_reservations (
-        user_id, tier, checkout_session_id, checkout_session_url,
-        idempotency_key, expires_at, status, updated_at
+        user_id, reservation_id, tier, checkout_session_id,
+        checkout_session_url, expires_at, status, updated_at
     ) VALUES (
-        p_user_id, p_tier, NULL, NULL, v_idempotency_key, NULL, 'pending', now()
+        p_user_id, v_reservation_id, p_tier, NULL, NULL, NULL, 'pending', now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
+        reservation_id = EXCLUDED.reservation_id,
         tier = EXCLUDED.tier,
         checkout_session_id = NULL,
         checkout_session_url = NULL,
-        idempotency_key = EXCLUDED.idempotency_key,
         stripe_subscription_id = NULL,
         expires_at = NULL,
         status = 'pending',
@@ -127,14 +128,15 @@ BEGIN
 
     RETURN jsonb_build_object(
         'action', 'create',
-        'idempotency_key', v_idempotency_key
+        'reservation_id', v_reservation_id,
+        'idempotency_key', 'checkout:' || v_reservation_id::text
     );
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.finalize_stripe_checkout_reservation(
     p_user_id uuid,
-    p_idempotency_key text,
+    p_reservation_id uuid,
     p_checkout_session_id text,
     p_checkout_session_url text,
     p_expires_at timestamptz
@@ -151,7 +153,7 @@ BEGIN
         status = 'ready',
         updated_at = now()
     WHERE user_id = p_user_id
-      AND idempotency_key = p_idempotency_key
+      AND reservation_id = p_reservation_id
       AND status = 'pending';
     RETURN FOUND;
 END;
@@ -159,7 +161,6 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.complete_stripe_checkout_reservation(
     p_user_id uuid,
-    p_idempotency_key text,
     p_checkout_session_id text,
     p_stripe_subscription_id text
 )
@@ -175,15 +176,24 @@ BEGIN
         stripe_subscription_id = p_stripe_subscription_id,
         updated_at = now()
     WHERE user_id = p_user_id
-      AND idempotency_key = p_idempotency_key
-      AND status IN ('pending', 'ready');
-    RETURN FOUND;
+      AND checkout_session_id = p_checkout_session_id
+      AND status = 'ready';
+    IF FOUND THEN
+        RETURN true;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM public.stripe_checkout_reservations
+        WHERE user_id = p_user_id
+          AND checkout_session_id = p_checkout_session_id
+          AND stripe_subscription_id = p_stripe_subscription_id
+          AND status = 'completed'
+    );
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.release_stripe_checkout_reservation(
     p_user_id uuid,
-    p_idempotency_key text
+    p_reservation_id uuid
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -197,7 +207,7 @@ BEGIN
         expires_at = NULL,
         updated_at = now()
     WHERE user_id = p_user_id
-      AND idempotency_key = p_idempotency_key
+      AND reservation_id = p_reservation_id
       AND status IN ('pending', 'ready');
 END;
 $$;
@@ -205,21 +215,22 @@ $$;
 REVOKE ALL ON FUNCTION public.reserve_stripe_checkout(uuid, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reserve_stripe_checkout(uuid, text) TO service_role;
 
-REVOKE ALL ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, text, text, text, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid, text, text, timestamptz) TO service_role;
 
-REVOKE ALL ON FUNCTION public.complete_stripe_checkout_reservation(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.complete_stripe_checkout_reservation(uuid, text, text, text) TO service_role;
+REVOKE ALL ON FUNCTION public.complete_stripe_checkout_reservation(uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.complete_stripe_checkout_reservation(uuid, text, text) TO service_role;
 
-REVOKE ALL ON FUNCTION public.release_stripe_checkout_reservation(uuid, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.release_stripe_checkout_reservation(uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION public.release_stripe_checkout_reservation(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_stripe_checkout_reservation(uuid, uuid) TO service_role;
 
 DROP FUNCTION IF EXISTS public.apply_stripe_subscription_event(jsonb, text);
 
 CREATE OR REPLACE FUNCTION public.apply_stripe_subscription_event(
     p_subscription jsonb,
     p_event_id text,
-    p_event_created_at bigint
+    p_event_created_at bigint,
+    p_payment_succeeded boolean
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -262,23 +273,24 @@ BEGIN
     IF FOUND
        AND v_existing.stripe_subscription_id IS DISTINCT FROM v_stripe_id
        AND v_existing.status NOT IN ('canceled', 'incomplete_expired', 'unpaid') THEN
-        IF NOT v_is_terminal THEN
-            INSERT INTO public.stripe_orphan_subscriptions (
-                user_id,
-                stripe_subscription_id,
-                existing_stripe_subscription_id,
-                event_id,
-                needs_refund,
-                payload
-            ) VALUES (
-                v_user_id,
-                v_stripe_id,
-                v_existing.stripe_subscription_id,
-                p_event_id,
-                true,
-                p_subscription
-            ) ON CONFLICT (stripe_subscription_id) DO NOTHING;
-        END IF;
+        INSERT INTO public.stripe_orphan_subscriptions (
+            user_id,
+            stripe_subscription_id,
+            existing_stripe_subscription_id,
+            event_id,
+            needs_refund,
+            payload
+        ) VALUES (
+            v_user_id,
+            v_stripe_id,
+            v_existing.stripe_subscription_id,
+            p_event_id,
+            p_payment_succeeded IS TRUE,
+            p_subscription
+        ) ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+            needs_refund = stripe_orphan_subscriptions.needs_refund OR EXCLUDED.needs_refund,
+            event_id = CASE WHEN EXCLUDED.needs_refund THEN EXCLUDED.event_id ELSE stripe_orphan_subscriptions.event_id END,
+            payload = CASE WHEN EXCLUDED.needs_refund THEN EXCLUDED.payload ELSE stripe_orphan_subscriptions.payload END;
         RETURN true;
     END IF;
 
@@ -348,6 +360,6 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint) FROM anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint) TO service_role;
+REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean) TO service_role;

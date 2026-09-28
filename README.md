@@ -170,6 +170,9 @@ domains stay on their current host until the separate cutover.
    fails if one is missing. Set matching staging values in the preview GitHub
    Environment variables. The public
    app and admin URLs should point to `https://evolutioncombatives.com`.
+   For manual `deploy:production` and `deploy:staging` commands, set
+   `DEPLOY_VARS_JSON` to a JSON object with the selected environment's public
+   variable values and set `CLOUDFLARE_ACCOUNT_ID` before running the command.
 2. Populate the production Worker secrets from 1Password using
    `pnpm exec wrangler secret put <NAME>` for each name: `SUPABASE_SERVICE_ROLE_KEY`,
    **live** `STRIPE_SECRET_KEY`, **live** `STRIPE_WEBHOOK_SECRET`,

@@ -63,7 +63,7 @@ describe('stripe helpers', () => {
       expect.objectContaining({
         mode: 'subscription',
         customer: 'cus_1',
-        metadata: { userId: 'u1', tier: 'tier1', checkoutAttemptId: 'attempt-1' },
+        metadata: { userId: 'u1', tier: 'tier1' },
         line_items: [{ price: 'price_1', quantity: 1 }],
       }),
       { idempotencyKey: 'attempt-1' },

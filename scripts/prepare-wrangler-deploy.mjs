@@ -22,4 +22,8 @@ for (const [key, value] of Object.entries(selected)) {
   selected[key] = replacement
 }
 
+if (Object.values(selected).some((value) => typeof value === 'string' && value.includes('REPLACE_AT_DEPLOY'))) {
+  throw new Error('Unresolved deploy placeholder')
+}
+
 writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`)

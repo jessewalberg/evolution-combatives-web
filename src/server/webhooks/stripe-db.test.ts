@@ -63,10 +63,11 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
     status: string,
     eventId: string,
     eventCreatedAt: number,
+    paymentSucceeded = false,
   ) {
     return db.query<{ applied: boolean }>(
-      'SELECT public.apply_stripe_subscription_event($1::jsonb, $2::text, $3::bigint) AS applied',
-      [JSON.stringify(subscription(id, created, status)), eventId, eventCreatedAt],
+      'SELECT public.apply_stripe_subscription_event($1::jsonb, $2::text, $3::bigint, $4::boolean) AS applied',
+      [JSON.stringify(subscription(id, created, status)), eventId, eventCreatedAt, paymentSucceeded],
     )
   }
 
@@ -112,12 +113,12 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
     }
   })
 
-  it('records orphan paid subscriptions for refund instead of clobbering the live row', async () => {
+  it('upgrades one orphan row to refundable only after payment succeeds', async () => {
     const db = await bootstrapDb()
     try {
       await db.query('INSERT INTO public.profiles (id, subscription_tier) VALUES ($1, NULL)', [userId])
       await apply(db, 'sub_live', 1700000000, 'active', 'evt_live', 1700001000)
-      expect((await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_dup', 1700001100)).rows[0].applied).toBe(true)
+      expect((await apply(db, 'sub_duplicate', 1700000001, 'trialing', 'evt_dup', 1700001100)).rows[0].applied).toBe(true)
 
       expect((await db.query<{ stripe_subscription_id: string }>(
         'SELECT stripe_subscription_id FROM public.subscriptions WHERE user_id = $1', [userId],
@@ -127,11 +128,29 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
         'SELECT stripe_subscription_id, needs_refund FROM public.stripe_orphan_subscriptions WHERE user_id = $1',
         [userId],
       )
-      expect(orphans.rows).toEqual([{ stripe_subscription_id: 'sub_duplicate', needs_refund: true }])
+      expect(orphans.rows).toEqual([{ stripe_subscription_id: 'sub_duplicate', needs_refund: false }])
 
-      await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_dup_retry', 1700001200)
+      await apply(db, 'sub_duplicate', 1700000001, 'incomplete', 'evt_dup_retry', 1700001200)
+      expect((await db.query<{ needs_refund: boolean }>(
+        'SELECT needs_refund FROM public.stripe_orphan_subscriptions WHERE stripe_subscription_id = $1', ['sub_duplicate'],
+      )).rows[0].needs_refund).toBe(false)
+      await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_paid', 1700001250, true)
+      await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_updated', 1700001275)
       await apply(db, 'sub_old', 1699999999, 'canceled', 'evt_old_terminal', 1700001300)
-      expect((await db.query('SELECT * FROM public.stripe_orphan_subscriptions WHERE user_id = $1', [userId])).rows).toHaveLength(1)
+      expect((await db.query<{ stripe_subscription_id: string; needs_refund: boolean; event_id: string }>(
+        'SELECT stripe_subscription_id, needs_refund, event_id FROM public.stripe_orphan_subscriptions WHERE user_id = $1 ORDER BY stripe_subscription_id',
+        [userId],
+      )).rows).toEqual([
+        { stripe_subscription_id: 'sub_duplicate', needs_refund: true, event_id: 'evt_paid' },
+        { stripe_subscription_id: 'sub_old', needs_refund: false, event_id: 'evt_old_terminal' },
+      ])
+
+      await apply(db, 'sub_live', 1700000000, 'canceled', 'evt_live_canceled', 1700001400)
+      await apply(db, 'sub_fresh', 1700000002, 'active', 'evt_fresh', 1700001500)
+      expect((await db.query('SELECT * FROM public.stripe_orphan_subscriptions WHERE user_id = $1', [userId])).rows).toHaveLength(2)
+      expect((await db.query<{ stripe_subscription_id: string }>(
+        'SELECT stripe_subscription_id FROM public.subscriptions WHERE user_id = $1', [userId],
+      )).rows[0].stripe_subscription_id).toBe('sub_fresh')
     } finally {
       await db.close()
     }
@@ -147,11 +166,12 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         [userId],
       )
       expect(reserve.rows[0].data.action).toBe('create')
-      const firstKey = reserve.rows[0].data.idempotency_key
+      const firstReservationId = reserve.rows[0].data.reservation_id
+      expect(reserve.rows[0].data.idempotency_key).toBe(`checkout:${firstReservationId}`)
 
       expect((await db.query<{ finalized: boolean }>(
         `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2, 'cs_live', 'https://checkout.test/cs_live', now() + interval '1 hour') AS finalized`,
-        [userId, firstKey],
+        [userId, firstReservationId],
       )).rows[0].finalized).toBe(true)
 
       const tierChange = await db.query<{ data: Record<string, string> }>(
@@ -166,13 +186,18 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )
       expect(reuse.rows[0].data).toMatchObject({
         action: 'reuse',
+        reservation_id: firstReservationId,
         session_id: 'cs_live',
         url: 'https://checkout.test/cs_live',
       })
 
       expect((await db.query<{ completed: boolean }>(
-        `SELECT public.complete_stripe_checkout_reservation($1::uuid, $2, 'cs_live', 'sub_paid') AS completed`,
-        [userId, firstKey],
+        `SELECT public.complete_stripe_checkout_reservation($1::uuid, 'cs_live', 'sub_paid') AS completed`,
+        [userId],
+      )).rows[0].completed).toBe(true)
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.complete_stripe_checkout_reservation($1::uuid, 'cs_live', 'sub_paid') AS completed`,
+        [userId],
       )).rows[0].completed).toBe(true)
       expect((await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1') AS data`, [userId],
@@ -187,16 +212,21 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
       )).rows[0].data
       expect(next.action).toBe('create')
-      expect(next.idempotency_key).not.toBe(firstKey)
+      expect(next.reservation_id).not.toBe(firstReservationId)
+      expect(next.idempotency_key).toBe(`checkout:${next.reservation_id}`)
 
-      await db.query('SELECT public.release_stripe_checkout_reservation($1::uuid, $2)', [userId, firstKey])
-      expect((await db.query<{ status: string; idempotency_key: string }>(
-        'SELECT status, idempotency_key FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
-      )).rows[0]).toEqual({ status: 'pending', idempotency_key: next.idempotency_key })
+      await db.query('SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid)', [userId, firstReservationId])
+      expect((await db.query<{ status: string; reservation_id: string }>(
+        'SELECT status, reservation_id FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
+      )).rows[0]).toEqual({ status: 'pending', reservation_id: next.reservation_id })
       expect((await db.query<{ finalized: boolean }>(
         `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2, 'cs_stale', 'https://checkout.test/cs_stale', now() + interval '1 hour') AS finalized`,
-        [userId, firstKey],
+        [userId, firstReservationId],
       )).rows[0].finalized).toBe(false)
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.complete_stripe_checkout_reservation($1::uuid, 'cs_live', 'sub_paid') AS completed`,
+        [userId],
+      )).rows[0].completed).toBe(false)
     } finally {
       await db.close()
     }

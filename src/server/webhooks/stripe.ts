@@ -70,6 +70,7 @@ async function applyCurrentSubscriptionState(
     subscriptionId: string,
     eventId: string,
     eventCreatedAt: number,
+    paymentSucceeded: boolean,
 ) {
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const { userId, tier } = subscription.metadata || {};
@@ -84,6 +85,7 @@ async function applyCurrentSubscriptionState(
         p_subscription: toRpcPayload(subscription),
         p_event_id: eventId,
         p_event_created_at: eventCreatedAt,
+        p_payment_succeeded: paymentSucceeded,
     });
 
     if (error) {
@@ -133,7 +135,7 @@ export async function POST({ request }: { request: Request }) {
             case 'customer.subscription.updated':
             case 'customer.subscription.deleted': {
                 const subscription = event.data.object as Stripe.Subscription;
-                await applyCurrentSubscriptionState(subscription.id, event.id, event.created);
+                await applyCurrentSubscriptionState(subscription.id, event.id, event.created, false);
                 break;
             }
 
@@ -142,7 +144,7 @@ export async function POST({ request }: { request: Request }) {
                 const invoice = event.data.object as Stripe.Invoice;
                 const subscriptionId = getInvoiceSubscriptionId(invoice);
                 if (subscriptionId) {
-                    await applyCurrentSubscriptionState(subscriptionId, event.id, event.created);
+                    await applyCurrentSubscriptionState(subscriptionId, event.id, event.created, event.type === 'invoice.payment_succeeded');
                 }
                 break;
             }
@@ -165,25 +167,27 @@ export async function POST({ request }: { request: Request }) {
  * Handle successful checkout session completion
  */
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-    const { userId, checkoutAttemptId } = session.metadata || {};
+    const { userId } = session.metadata || {};
     const subscriptionId = typeof session.subscription === 'string'
         ? session.subscription
         : session.subscription?.id;
 
-    if (!userId || !checkoutAttemptId || !subscriptionId) {
+    if (!userId || !subscriptionId) {
         console.error('Missing metadata in checkout session:', session.id);
         throw new Error('Checkout session is missing reservation metadata');
     }
 
     const supabase = createAdminClient();
-    const { error } = await supabase.rpc('complete_stripe_checkout_reservation', {
+    const { data, error } = await supabase.rpc('complete_stripe_checkout_reservation', {
         p_user_id: userId,
-        p_idempotency_key: checkoutAttemptId,
         p_checkout_session_id: session.id,
         p_stripe_subscription_id: subscriptionId,
     });
     if (error) {
         throw error;
+    }
+    if (!data) {
+        throw new Error('Checkout session reservation is not ready');
     }
 }
 

@@ -192,7 +192,7 @@ describe('POST /api/webhooks/stripe', () => {
       makeEvent('checkout.session.completed', {
         id: 'cs_1',
         subscription: 'sub_1',
-        metadata: { userId: 'user-1', tier: 'tier1', checkoutAttemptId: 'key-1' },
+        metadata: { userId: 'user-1', tier: 'tier1' },
       })
     )
 
@@ -204,7 +204,6 @@ describe('POST /api/webhooks/stripe', () => {
     expect(mockRetrieve).not.toHaveBeenCalled()
     expect(supabase.rpc).toHaveBeenCalledWith('complete_stripe_checkout_reservation', {
       p_user_id: 'user-1',
-      p_idempotency_key: 'key-1',
       p_checkout_session_id: 'cs_1',
       p_stripe_subscription_id: 'sub_1',
     })
@@ -222,6 +221,8 @@ describe('POST /api/webhooks/stripe', () => {
 
       expect(res.status).toBe(200)
       expect(mockRetrieve).toHaveBeenCalledWith('sub_1')
+      expect(supabase.rpc).toHaveBeenLastCalledWith('apply_stripe_subscription_event',
+        expect.objectContaining({ p_payment_succeeded: false }))
       expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
       expect(supabase.getProfileTier('user-1')).toBe('tier1')
     }
@@ -270,12 +271,16 @@ describe('POST /api/webhooks/stripe', () => {
     mockRetrieve.mockResolvedValue(liveSubscription({ status: 'active' }))
     const succeeded = await POST(webhookRequest('{}', 'sig'))
     expect(succeeded.status).toBe(200)
+    expect(supabase.rpc).toHaveBeenLastCalledWith('apply_stripe_subscription_event',
+      expect.objectContaining({ p_payment_succeeded: true }))
     expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
 
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('invoice.payment_failed', { parent: { subscription_details: { subscription: 'sub_1' } } }))
     mockRetrieve.mockResolvedValue(liveSubscription({ status: 'past_due' }))
     const failed = await POST(webhookRequest('{}', 'sig'))
     expect(failed.status).toBe(200)
+    expect(supabase.rpc).toHaveBeenLastCalledWith('apply_stripe_subscription_event',
+      expect.objectContaining({ p_payment_succeeded: false }))
     expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'past_due' })
   })
 
