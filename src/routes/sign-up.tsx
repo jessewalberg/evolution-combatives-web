@@ -153,7 +153,7 @@ function SignUpPage() {
         } catch (error) {
             // Log error for debugging in development only
             if (process.env.NODE_ENV === 'development') {
-                 
+
                 console.error('Sign up error:', error)
             }
             setError('root', {

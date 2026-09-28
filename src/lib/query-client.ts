@@ -1,7 +1,7 @@
 /**
  * Evolution Combatives - TanStack Query Configuration
  * Comprehensive query client setup for Next.js admin dashboard
- * 
+ *
  * @description Query client configuration with type-safe keys and optimized caching
  * @author Evolution Combatives
  */
@@ -207,7 +207,7 @@ export const staleTimeConfig = {
 // Error handling for queries
 function handleQueryError(error: unknown, queryKey: QueryKey) {
     if (process.env.NODE_ENV === 'development') {
-         
+
         console.error('Query error:', { error, queryKey })
     }
 
@@ -473,7 +473,7 @@ export const devUtils = {
     logQueries: (queryClient: QueryClient) => {
         if (process.env.NODE_ENV === 'development') {
             const queryCache = queryClient.getQueryCache()
-             
+
             console.table(
                 queryCache.getAll().map(query => ({
                     queryKey: JSON.stringify(query.queryKey),
@@ -499,4 +499,4 @@ export const devUtils = {
 }
 
 // Export default query client
-export default getQueryClient() 
+export default getQueryClient()

@@ -1,7 +1,7 @@
 /**
  * Evolution Combatives - Shared Database Service
  * Common database operations for both React Native and Next.js platforms
- * 
+ *
  * @description Centralized database service using Supabase client
  * @author Evolution Combatives
  */
@@ -111,12 +111,12 @@ export class DatabaseService {
                 if (error) throw error
 
                 // Transform the data to match our interface
-                const transformedData = (data as Array<Record<string, any>> | null)?.map(video => ({
+                const transformedData = (data as Array<Record<string, unknown> & { tags?: Array<{ tag: { id: string; name: string } }> | null }> | null)?.map(video => ({
                     ...video,
                     tags: video.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
                 })) || []
 
-                return transformedData as VideoWithRelations[]
+                return transformedData as unknown as VideoWithRelations[]
             }, 3, 1000, 'getVideos')
 
             return { data: result, error: null }
@@ -163,7 +163,7 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform the data
-            const row = data as Record<string, any> | null
+            const row = data as (Record<string, unknown> & { tags?: Array<{ tag: { id: string; name: string } }> | null }) | null
             const transformedData = (row ? {
                 ...row,
                 tags: row.tags?.map((t: { tag: { id: string; name: string } }) => t.tag).filter(Boolean) || []
@@ -213,7 +213,7 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform subscription data
-            const row = data as Record<string, any> | null
+            const row = data as (Record<string, unknown> & { subscription?: unknown[] | null }) | null
             const transformedData = (row ? {
                 ...row,
                 subscription: row.subscription?.[0] || null
@@ -361,7 +361,7 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform data to include video count
-            const transformedData = (data as Array<Record<string, any>> | null)?.map(category => ({
+            const transformedData = (data as Array<Record<string, unknown> & { videos?: Array<{ count: number }> | null }> | null)?.map(category => ({
                 ...category,
                 video_count: category.videos?.[0]?.count || 0
             })) as CategoryWithCount[] || []
@@ -407,7 +407,7 @@ export class DatabaseService {
             if (error) throw error
 
             // Transform data to include stats
-            const transformedData = (data as Array<Record<string, any>> | null)?.map(instructor => ({
+            const transformedData = (data as Array<Record<string, unknown> & { videos?: Array<{ count: number }> | null; video_views?: Array<{ views: number }> | null }> | null)?.map(instructor => ({
                 ...instructor,
                 video_count: instructor.videos?.[0]?.count || 0,
                 total_views: instructor.video_views?.reduce((sum: number, v: { views: number }) => sum + (v.views || 0), 0) || 0
@@ -527,7 +527,7 @@ export class DatabaseService {
             const totalPages = Math.ceil((count || 0) / pageSize)
 
             const result: PaginatedResponse<UserProfileWithSubscription> = {
-                data: ((data as Array<Record<string, any>> | null)?.map(user => ({
+                data: ((data as Array<Record<string, unknown> & { subscription?: unknown[] | null }> | null)?.map(user => ({
                     ...user,
                     subscription: user.subscription?.[0] || null
                 })) || []) as UserProfileWithSubscription[],
@@ -658,4 +658,4 @@ export class DatabaseService {
             return { data, error }
         })
     }
-} 
+}
