@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS public.stripe_checkout_sessions (
     reservation_id uuid NOT NULL,
     stripe_subscription_id text,
     expires_at timestamptz NOT NULL,
+    reconciled_at timestamptz,
     status text NOT NULL CHECK (status IN ('ready', 'completed', 'expired'))
 );
 
@@ -108,12 +109,7 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM public.stripe_checkout_sessions cs
         WHERE cs.user_id = p_user_id AND cs.status = 'completed'
-          AND NOT EXISTS (
-              SELECT 1 FROM public.subscriptions s
-              WHERE s.user_id = p_user_id AND s.platform = 'stripe'
-                AND s.stripe_subscription_id = cs.stripe_subscription_id
-                AND s.status IN ('canceled', 'incomplete_expired', 'unpaid')
-          )
+          AND cs.reconciled_at IS NULL
     ) THEN
         RETURN jsonb_build_object('error', 'checkout_in_progress');
     END IF;
@@ -246,7 +242,15 @@ BEGIN
     END IF;
 
     UPDATE public.stripe_checkout_sessions
-    SET status = 'completed', stripe_subscription_id = p_stripe_subscription_id
+    SET status = 'completed', stripe_subscription_id = p_stripe_subscription_id,
+        reconciled_at = CASE WHEN EXISTS (
+            SELECT 1 FROM public.subscriptions s
+            WHERE s.user_id = p_user_id AND s.platform = 'stripe'
+              AND s.stripe_subscription_id = p_stripe_subscription_id
+        ) OR EXISTS (
+            SELECT 1 FROM public.stripe_orphan_subscriptions o
+            WHERE o.user_id = p_user_id AND o.stripe_subscription_id = p_stripe_subscription_id
+        ) THEN now() ELSE NULL END
     WHERE checkout_session_id = p_checkout_session_id;
 
     UPDATE public.stripe_checkout_reservations
@@ -403,6 +407,11 @@ BEGIN
             event_id = CASE WHEN EXCLUDED.needs_refund THEN EXCLUDED.event_id ELSE stripe_orphan_subscriptions.event_id END,
             payload = CASE WHEN EXCLUDED.needs_refund THEN EXCLUDED.payload ELSE stripe_orphan_subscriptions.payload END,
             resolved_at = CASE WHEN EXCLUDED.needs_refund THEN NULL ELSE stripe_orphan_subscriptions.resolved_at END;
+
+        UPDATE public.stripe_checkout_sessions
+        SET reconciled_at = now()
+        WHERE user_id = v_user_id AND stripe_subscription_id = v_stripe_id
+          AND status = 'completed' AND reconciled_at IS NULL;
         RETURN true;
     END IF;
 
@@ -444,7 +453,14 @@ BEGIN
         subscriptions.stripe_subscription_id = EXCLUDED.stripe_subscription_id
         AND (
             subscriptions.stripe_last_event_created_at IS NULL
-            OR EXCLUDED.stripe_last_event_created_at >= subscriptions.stripe_last_event_created_at
+            OR EXCLUDED.stripe_last_event_created_at > subscriptions.stripe_last_event_created_at
+            OR (
+                EXCLUDED.stripe_last_event_created_at = subscriptions.stripe_last_event_created_at
+                AND (
+                    subscriptions.status NOT IN ('canceled', 'incomplete_expired', 'unpaid')
+                    OR EXCLUDED.status IN ('canceled', 'incomplete_expired', 'unpaid')
+                )
+            )
         )
     ) OR (
         subscriptions.stripe_subscription_id IS DISTINCT FROM EXCLUDED.stripe_subscription_id
@@ -467,6 +483,11 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Profile missing for Stripe subscription %', v_stripe_id;
     END IF;
+
+    UPDATE public.stripe_checkout_sessions
+    SET reconciled_at = now()
+    WHERE user_id = v_user_id AND stripe_subscription_id = v_stripe_id
+      AND status = 'completed' AND reconciled_at IS NULL;
 
     RETURN true;
 END;
