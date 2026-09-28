@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import { assertSingleNonTerminalSubscription, createReservedCheckoutSession } from './checkout-flow'
 import { createAdminClient } from '@/src/lib/supabase'
-import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
+import { createCheckoutSession, getOrCreateCustomer, stripe } from '@/src/lib/stripe'
 
 vi.mock('@/src/lib/supabase', () => ({ createAdminClient: vi.fn() }))
-vi.mock('@/src/lib/stripe', () => ({ createCheckoutSession: vi.fn(), getOrCreateCustomer: vi.fn() }))
+vi.mock('@/src/lib/stripe', () => ({
+  createCheckoutSession: vi.fn(),
+  getOrCreateCustomer: vi.fn(),
+  stripe: { checkout: { sessions: { retrieve: vi.fn(), expire: vi.fn() } } },
+}))
 
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
@@ -205,5 +209,66 @@ describe('createReservedCheckoutSession expiry', () => {
     expect(rpc).toHaveBeenCalledWith('finalize_stripe_checkout_reservation', expect.objectContaining({
       p_expires_at: '2030-01-01T00:00:00.000Z',
     }))
+  })
+
+  it('consumes a completed session and refuses another payable checkout', async () => {
+    vi.mocked(createCheckoutSession).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({
+      id: 'cs_old', status: 'complete', subscription: 'sub_paid',
+    } as never)
+    const rpc = vi.fn((name: string) => Promise.resolve({
+      data: name === 'reserve_stripe_checkout'
+        ? { action: 'inspect', reservation_id: 'reservation-1', session_id: 'cs_old' }
+        : true,
+      error: null,
+    }))
+    expect(await createReservedCheckoutSession({ admin: { rpc } as never, ...params })).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
+    })
+    expect(rpc).toHaveBeenCalledWith('consume_stripe_checkout', {
+      p_user_id: params.userId, p_checkout_session_id: 'cs_old', p_stripe_subscription_id: 'sub_paid',
+    })
+    expect(stripe.checkout.sessions.expire).not.toHaveBeenCalled()
+    expect(createCheckoutSession).not.toHaveBeenCalled()
+  })
+
+  it.each(['open', 'expired'] as const)('retires a Stripe %s session before creating another', async (status) => {
+    vi.mocked(stripe.checkout.sessions.expire).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({ id: 'cs_old', status } as never)
+    vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
+    vi.mocked(createCheckoutSession).mockResolvedValue({
+      id: 'cs_new', url: 'https://checkout.test/new', expires_at: 1893456000,
+    } as never)
+    let reserves = 0
+    const rpc = vi.fn((name: string) => Promise.resolve({
+      data: name === 'reserve_stripe_checkout'
+        ? ++reserves === 1
+          ? { action: 'inspect', reservation_id: 'reservation-1', session_id: 'cs_old' }
+          : { action: 'create', reservation_id: 'reservation-2', idempotency_key: 'checkout:reservation-2' }
+        : true,
+      error: null,
+    }))
+    expect(await createReservedCheckoutSession({ admin: { rpc } as never, ...params })).toMatchObject({
+      ok: true, sessionId: 'cs_new', reused: false,
+    })
+    expect(stripe.checkout.sessions.expire).toHaveBeenCalledTimes(status === 'open' ? 1 : 0)
+    expect(rpc).toHaveBeenCalledWith('retire_stripe_checkout_session', {
+      p_user_id: params.userId, p_reservation_id: 'reservation-1', p_checkout_session_id: 'cs_old',
+    })
+    expect(reserves).toBe(2)
+  })
+
+  it('keeps the reservation when Stripe cannot expire an open session', async () => {
+    vi.mocked(createCheckoutSession).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({ id: 'cs_old', status: 'open' } as never)
+    vi.mocked(stripe.checkout.sessions.expire).mockRejectedValueOnce(new Error('already complete'))
+    const rpc = vi.fn().mockResolvedValue({
+      data: { action: 'inspect', reservation_id: 'reservation-1', session_id: 'cs_old' }, error: null,
+    })
+    expect(await createReservedCheckoutSession({ admin: { rpc } as never, ...params })).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
+    })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(createCheckoutSession).not.toHaveBeenCalled()
   })
 })

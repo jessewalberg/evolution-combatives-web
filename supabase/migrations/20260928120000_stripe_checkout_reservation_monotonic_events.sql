@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS public.stripe_checkout_reservations (
     request_fingerprint text NOT NULL,
     checkout_session_id text,
     checkout_session_url text,
-    stripe_subscription_id text,
     expires_at timestamptz,
     status text NOT NULL DEFAULT 'pending',
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -25,17 +24,18 @@ ALTER TABLE public.stripe_checkout_reservations ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.stripe_checkout_reservations FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.stripe_checkout_reservations TO service_role;
 
-CREATE TABLE IF NOT EXISTS public.stripe_checkout_completions (
+CREATE TABLE IF NOT EXISTS public.stripe_checkout_sessions (
     checkout_session_id text PRIMARY KEY,
     user_id uuid NOT NULL,
     reservation_id uuid NOT NULL,
-    stripe_subscription_id text NOT NULL,
-    completed_at timestamptz NOT NULL DEFAULT now()
+    stripe_subscription_id text,
+    expires_at timestamptz NOT NULL,
+    status text NOT NULL CHECK (status IN ('ready', 'completed', 'expired'))
 );
 
-ALTER TABLE public.stripe_checkout_completions ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.stripe_checkout_completions FROM PUBLIC, anon, authenticated;
-GRANT ALL ON TABLE public.stripe_checkout_completions TO service_role;
+ALTER TABLE public.stripe_checkout_sessions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.stripe_checkout_sessions FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.stripe_checkout_sessions TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.stripe_orphan_subscriptions (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -105,16 +105,35 @@ BEGIN
         RETURN jsonb_build_object('error', 'unresolved_payment');
     END IF;
 
+    IF EXISTS (
+        SELECT 1 FROM public.stripe_checkout_sessions cs
+        WHERE cs.user_id = p_user_id AND cs.status = 'completed'
+          AND NOT EXISTS (
+              SELECT 1 FROM public.subscriptions s
+              WHERE s.user_id = p_user_id AND s.platform = 'stripe'
+                AND s.stripe_subscription_id = cs.stripe_subscription_id
+                AND s.status IN ('canceled', 'incomplete_expired', 'unpaid')
+          )
+    ) THEN
+        RETURN jsonb_build_object('error', 'checkout_in_progress');
+    END IF;
+
     SELECT * INTO v_row
     FROM public.stripe_checkout_reservations
     WHERE user_id = p_user_id
     FOR UPDATE;
 
-    IF FOUND
-       AND v_row.status = 'ready'
-       AND v_row.checkout_session_id IS NOT NULL
-       AND v_row.expires_at IS NOT NULL
-       AND v_row.expires_at > now() THEN
+    IF FOUND AND v_row.status = 'ready' THEN
+        IF v_row.checkout_session_id IS NULL OR v_row.expires_at IS NULL THEN
+            RETURN jsonb_build_object('error', 'checkout_in_progress');
+        END IF;
+        IF v_row.expires_at <= now() THEN
+            RETURN jsonb_build_object(
+                'action', 'inspect',
+                'reservation_id', v_row.reservation_id,
+                'session_id', v_row.checkout_session_id
+            );
+        END IF;
         IF v_row.tier = p_tier AND v_row.request_fingerprint = p_request_fingerprint THEN
             RETURN jsonb_build_object(
                 'action', 'reuse',
@@ -133,16 +152,6 @@ BEGIN
         RETURN jsonb_build_object('error', 'checkout_in_progress');
     END IF;
 
-    IF FOUND AND v_row.status = 'completed' AND NOT EXISTS (
-        SELECT 1 FROM public.subscriptions s
-        WHERE s.user_id = p_user_id
-          AND s.platform = 'stripe'
-          AND s.stripe_subscription_id = v_row.stripe_subscription_id
-          AND s.status IN ('canceled', 'incomplete_expired', 'unpaid')
-    ) THEN
-        RETURN jsonb_build_object('error', 'checkout_in_progress');
-    END IF;
-
     v_reservation_id := gen_random_uuid();
 
     INSERT INTO public.stripe_checkout_reservations (
@@ -157,7 +166,6 @@ BEGIN
         request_fingerprint = EXCLUDED.request_fingerprint,
         checkout_session_id = NULL,
         checkout_session_url = NULL,
-        stripe_subscription_id = NULL,
         expires_at = NULL,
         status = 'pending',
         updated_at = now();
@@ -182,6 +190,8 @@ LANGUAGE plpgsql
 SET search_path = public
 AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || p_user_id::text));
+
     UPDATE public.stripe_checkout_reservations
     SET checkout_session_id = p_checkout_session_id,
         checkout_session_url = p_checkout_session_url,
@@ -191,7 +201,14 @@ BEGIN
     WHERE user_id = p_user_id
       AND reservation_id = p_reservation_id
       AND status = 'pending';
-    RETURN FOUND;
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+
+    INSERT INTO public.stripe_checkout_sessions (
+        checkout_session_id, user_id, reservation_id, expires_at, status
+    ) VALUES (p_checkout_session_id, p_user_id, p_reservation_id, p_expires_at, 'ready');
+    RETURN true;
 END;
 $$;
 
@@ -205,59 +222,56 @@ LANGUAGE plpgsql
 SET search_path = public
 AS $$
 DECLARE
-    v_reservation_id uuid;
-    v_completion public.stripe_checkout_completions%ROWTYPE;
+    v_session public.stripe_checkout_sessions%ROWTYPE;
 BEGIN
     IF p_user_id IS NULL OR NULLIF(p_checkout_session_id, '') IS NULL
        OR NULLIF(p_stripe_subscription_id, '') IS NULL THEN
         RETURN false;
     END IF;
 
-    SELECT * INTO v_completion
-    FROM public.stripe_checkout_completions
-    WHERE checkout_session_id = p_checkout_session_id;
-    IF FOUND THEN
-        RETURN v_completion.user_id = p_user_id
-           AND v_completion.stripe_subscription_id = p_stripe_subscription_id;
+    PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || p_user_id::text));
+
+    SELECT * INTO v_session
+    FROM public.stripe_checkout_sessions
+    WHERE checkout_session_id = p_checkout_session_id
+    FOR UPDATE;
+    IF NOT FOUND OR v_session.user_id <> p_user_id THEN
+        RETURN false;
     END IF;
+    IF v_session.status = 'completed' THEN
+        RETURN v_session.stripe_subscription_id = p_stripe_subscription_id;
+    END IF;
+    IF v_session.status <> 'ready' THEN
+        RETURN false;
+    END IF;
+
+    UPDATE public.stripe_checkout_sessions
+    SET status = 'completed', stripe_subscription_id = p_stripe_subscription_id
+    WHERE checkout_session_id = p_checkout_session_id;
 
     UPDATE public.stripe_checkout_reservations
     SET status = 'completed',
         checkout_session_url = NULL,
-        stripe_subscription_id = p_stripe_subscription_id,
         updated_at = now()
     WHERE user_id = p_user_id
       AND checkout_session_id = p_checkout_session_id
       AND status = 'ready'
-    RETURNING reservation_id INTO v_reservation_id;
-    IF v_reservation_id IS NULL THEN
-        SELECT * INTO v_completion
-        FROM public.stripe_checkout_completions
-        WHERE checkout_session_id = p_checkout_session_id;
-        RETURN FOUND
-           AND v_completion.user_id = p_user_id
-           AND v_completion.stripe_subscription_id = p_stripe_subscription_id;
-    END IF;
-
-    INSERT INTO public.stripe_checkout_completions (
-        checkout_session_id, user_id, reservation_id, stripe_subscription_id
-    ) VALUES (
-        p_checkout_session_id, p_user_id, v_reservation_id, p_stripe_subscription_id
-    );
+      AND reservation_id = v_session.reservation_id;
     RETURN true;
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.release_stripe_checkout_reservation(
     p_user_id uuid,
-    p_reservation_id uuid,
-    p_checkout_session_id text
+    p_reservation_id uuid
 )
 RETURNS void
 LANGUAGE plpgsql
 SET search_path = public
 AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || p_user_id::text));
+
     UPDATE public.stripe_checkout_reservations
     SET status = 'released',
         checkout_session_id = NULL,
@@ -266,10 +280,39 @@ BEGIN
         updated_at = now()
     WHERE user_id = p_user_id
       AND reservation_id = p_reservation_id
-      AND (
-          (status = 'pending' AND checkout_session_id IS NULL)
-          OR (status = 'ready' AND checkout_session_id = p_checkout_session_id)
-      );
+      AND status = 'pending' AND checkout_session_id IS NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.retire_stripe_checkout_session(
+    p_user_id uuid,
+    p_reservation_id uuid,
+    p_checkout_session_id text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || p_user_id::text));
+
+    UPDATE public.stripe_checkout_reservations
+    SET status = 'released', checkout_session_id = NULL,
+        checkout_session_url = NULL, expires_at = NULL, updated_at = now()
+    WHERE user_id = p_user_id AND reservation_id = p_reservation_id
+      AND checkout_session_id = p_checkout_session_id AND status = 'ready';
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+
+    UPDATE public.stripe_checkout_sessions
+    SET status = 'expired'
+    WHERE user_id = p_user_id AND reservation_id = p_reservation_id
+      AND checkout_session_id = p_checkout_session_id AND status = 'ready';
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Checkout session ledger missing for %', p_checkout_session_id;
+    END IF;
+    RETURN true;
 END;
 $$;
 
@@ -282,8 +325,11 @@ GRANT EXECUTE ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid
 REVOKE ALL ON FUNCTION public.consume_stripe_checkout(uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.consume_stripe_checkout(uuid, text, text) TO service_role;
 
-REVOKE ALL ON FUNCTION public.release_stripe_checkout_reservation(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.release_stripe_checkout_reservation(uuid, uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION public.release_stripe_checkout_reservation(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_stripe_checkout_reservation(uuid, uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION public.retire_stripe_checkout_session(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.retire_stripe_checkout_session(uuid, uuid, text) TO service_role;
 
 DROP FUNCTION IF EXISTS public.apply_stripe_subscription_event(jsonb, text);
 
@@ -316,6 +362,8 @@ BEGIN
        OR v_stripe_created_at IS NULL OR p_event_id IS NULL OR v_event_created_at IS NULL THEN
         RETURN false;
     END IF;
+
+    PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || v_user_id::text));
 
     INSERT INTO public.stripe_webhook_events (event_id)
     VALUES (p_event_id)
@@ -396,7 +444,7 @@ BEGIN
         subscriptions.stripe_subscription_id = EXCLUDED.stripe_subscription_id
         AND (
             subscriptions.stripe_last_event_created_at IS NULL
-            OR EXCLUDED.stripe_last_event_created_at > subscriptions.stripe_last_event_created_at
+            OR EXCLUDED.stripe_last_event_created_at >= subscriptions.stripe_last_event_created_at
         )
     ) OR (
         subscriptions.stripe_subscription_id IS DISTINCT FROM EXCLUDED.stripe_subscription_id

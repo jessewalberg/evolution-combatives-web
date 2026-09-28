@@ -121,6 +121,40 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
     }
   })
 
+  it('accepts a same-second cancellation and rejects an older active event', async () => {
+    const db = await bootstrapDb()
+    try {
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await apply(db, 'sub_1', 1700000000, 'active', 'evt_active', 1700001000)
+      expect((await apply(db, 'sub_1', 1700000000, 'canceled', 'evt_canceled', 1700001000)).rows[0].applied).toBe(true)
+      expect((await apply(db, 'sub_1', 1700000000, 'active', 'evt_old_active', 1700000999)).rows[0].applied).toBe(false)
+      expect((await db.query<{ status: string }>('SELECT status FROM public.subscriptions WHERE user_id = $1', [userId])).rows[0].status).toBe('canceled')
+      expect((await db.query<{ subscription_tier: string | null }>('SELECT subscription_tier FROM public.profiles WHERE id = $1', [userId])).rows[0].subscription_tier).toBeNull()
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('records one paid orphan when first subscriptions arrive together', async () => {
+    const db = await bootstrapDb()
+    try {
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await Promise.all([
+        apply(db, 'sub_a', 1700000000, 'active', 'evt_a', 1700000100, true),
+        apply(db, 'sub_b', 1700000001, 'active', 'evt_b', 1700000101, true),
+      ])
+      const primary = (await db.query<{ stripe_subscription_id: string }>(
+        'SELECT stripe_subscription_id FROM public.subscriptions WHERE user_id = $1', [userId],
+      )).rows[0].stripe_subscription_id
+      expect((await db.query<{ stripe_subscription_id: string; needs_refund: boolean }>(
+        'SELECT stripe_subscription_id, needs_refund FROM public.stripe_orphan_subscriptions WHERE user_id = $1', [userId],
+      )).rows).toEqual([{ stripe_subscription_id: primary === 'sub_a' ? 'sub_b' : 'sub_a', needs_refund: true }])
+      expect((await db.query('SELECT * FROM public.stripe_webhook_events')).rows).toHaveLength(2)
+    } finally {
+      await db.close()
+    }
+  })
+
   it('upgrades one orphan row to refundable only after payment succeeds', async () => {
     const db = await bootstrapDb()
     try {
@@ -305,7 +339,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       expect(tierChange.rows[0].data.error).toBe('checkout_in_progress')
 
       await db.query(
-        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_other')`,
+        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid)`,
         [userId, firstReservationId],
       )
 
@@ -328,7 +362,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         `SELECT public.consume_stripe_checkout($1::uuid, 'cs_unknown', 'sub_paid') AS completed`,
         [userId],
       )).rows[0].completed).toBe(false)
-      expect((await db.query('SELECT * FROM public.stripe_checkout_completions')).rows).toHaveLength(0)
+      expect((await db.query<{ status: string }>('SELECT status FROM public.stripe_checkout_sessions')).rows).toEqual([{ status: 'ready' }])
 
       expect((await db.query<{ completed: boolean }>(
         `SELECT public.consume_stripe_checkout($1::uuid, 'cs_live', 'sub_paid') AS completed`,
@@ -342,7 +376,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         `SELECT public.consume_stripe_checkout($1::uuid, 'cs_live', 'sub_paid') AS completed`,
         [userId],
       )).rows[0].completed).toBe(true)
-      expect((await db.query('SELECT * FROM public.stripe_checkout_completions')).rows).toHaveLength(1)
+      expect((await db.query<{ status: string; stripe_subscription_id: string }>('SELECT status, stripe_subscription_id FROM public.stripe_checkout_sessions')).rows).toEqual([{ status: 'completed', stripe_subscription_id: 'sub_paid' }])
       expect((await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-1') AS data`, [userId],
       )).rows[0].data.error).toBe('checkout_in_progress')
@@ -359,7 +393,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       expect(next.reservation_id).not.toBe(firstReservationId)
       expect(next.idempotency_key).toBe(`checkout:${next.reservation_id}`)
 
-      await db.query('SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid, NULL)', [userId, firstReservationId])
+      await db.query('SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid)', [userId, firstReservationId])
       expect((await db.query<{ status: string; reservation_id: string }>(
         'SELECT status, reservation_id FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
       )).rows[0]).toEqual({ status: 'pending', reservation_id: next.reservation_id })
@@ -376,7 +410,7 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
       )).rows[0].status).toBe('pending')
 
       await db.query(
-        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_created_but_not_finalized')`,
+        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid)`,
         [userId, next.reservation_id],
       )
       expect((await db.query<{ status: string }>(
@@ -391,13 +425,93 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_third', 'https://checkout.test/cs_third', now() + interval '1 hour') AS finalized`,
         [userId, third.reservation_id],
       )).rows[0].finalized).toBe(true)
-      await db.query(
-        `SELECT public.release_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_third')`,
+      expect((await db.query<{ retired: boolean }>(
+        `SELECT public.retire_stripe_checkout_session($1::uuid, $2::uuid, 'cs_third') AS retired`,
         [userId, third.reservation_id],
-      )
+      )).rows[0].retired).toBe(true)
       expect((await db.query<{ status: string }>(
         'SELECT status FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
       )).rows[0].status).toBe('released')
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('inspects expired ready sessions before replacement and consumes a late first completion', async () => {
+    const db = await bootstrapDb()
+    try {
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-1') AS data`, [userId],
+      )).rows[0].data
+      await db.query(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_old', 'https://checkout.test/old', now() - interval '1 minute')`,
+        [userId, first.reservation_id],
+      )
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-2') AS data`, [userId],
+      )).rows[0].data).toMatchObject({ action: 'inspect', reservation_id: first.reservation_id, session_id: 'cs_old' })
+      expect((await db.query<{ retired: boolean }>(
+        `SELECT public.retire_stripe_checkout_session($1::uuid, $2::uuid, 'cs_wrong') AS retired`,
+        [userId, first.reservation_id],
+      )).rows[0].retired).toBe(false)
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.consume_stripe_checkout($1::uuid, 'cs_old', 'sub_paid') AS completed`, [userId],
+      )).rows[0].completed).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-2') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      expect((await db.query<{ retired: boolean }>(
+        `SELECT public.retire_stripe_checkout_session($1::uuid, $2::uuid, 'cs_old') AS retired`,
+        [userId, first.reservation_id],
+      )).rows[0].retired).toBe(false)
+
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await db.query(
+        `INSERT INTO public.subscriptions (user_id, platform, external_subscription_id, tier, status, stripe_subscription_id)
+         VALUES ($1, 'stripe', 'sub_paid', 'tier1', 'canceled', 'sub_paid')`, [userId],
+      )
+      const next = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-2') AS data`, [userId],
+      )).rows[0].data
+      expect(next.action).toBe('create')
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.consume_stripe_checkout($1::uuid, 'cs_old', 'sub_paid') AS completed`, [userId],
+      )).rows[0].completed).toBe(true)
+      expect((await db.query<{ status: string }>(
+        'SELECT status FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
+      )).rows[0].status).toBe('pending')
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('recognizes the first completion from a retained session after reservation replacement', async () => {
+    const db = await bootstrapDb()
+    try {
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-1') AS data`, [userId],
+      )).rows[0].data
+      await db.query(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_old', 'https://checkout.test/old', now() - interval '1 minute')`,
+        [userId, first.reservation_id],
+      )
+      await db.query(
+        `UPDATE public.stripe_checkout_reservations SET status = 'released', checkout_session_id = NULL,
+         checkout_session_url = NULL, expires_at = NULL WHERE user_id = $1`, [userId],
+      )
+      const next = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-2') AS data`, [userId],
+      )).rows[0].data
+      expect(next.action).toBe('create')
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.consume_stripe_checkout($1::uuid, 'cs_old', 'sub_paid') AS completed`, [userId],
+      )).rows[0].completed).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-2') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      expect((await db.query<{ status: string; reservation_id: string }>(
+        'SELECT status, reservation_id FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
+      )).rows[0]).toEqual({ status: 'pending', reservation_id: next.reservation_id })
     } finally {
       await db.close()
     }

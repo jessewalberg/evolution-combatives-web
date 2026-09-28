@@ -469,9 +469,16 @@ export interface Database {
                 Args: {
                     p_user_id: string;
                     p_reservation_id: string;
-                    p_checkout_session_id: string | null;
                 };
                 Returns: void;
+            };
+            retire_stripe_checkout_session: {
+                Args: {
+                    p_user_id: string;
+                    p_reservation_id: string;
+                    p_checkout_session_id: string;
+                };
+                Returns: boolean;
             };
         };
         Enums: {
