@@ -53,66 +53,82 @@ function buildSupabase() {
     ['user-1', { subscription_tier: null }],
   ])
 
-  function passesOrderingGuard(existing: Row | undefined, eventCreatedAt: number, eventId: string): boolean {
+  /** existing.stripe_event_created_at IS NULL OR incoming >= existing (tie-tolerant, second precision) */
+  function passesOrderingGuard(existing: Row | undefined, eventCreatedAt: number): boolean {
     if (!existing || existing.stripe_event_created_at === undefined) return true
-    if (eventCreatedAt > (existing.stripe_event_created_at as number)) return true
-    return eventCreatedAt === existing.stripe_event_created_at && eventId === existing.stripe_event_id
+    return eventCreatedAt >= (existing.stripe_event_created_at as number)
   }
 
   function applyEvent(
     p: Row,
     eventCreatedAt: number,
-    eventId: string
+    eventId: string,
+    isCreation: boolean
   ): { error?: { message: string } } {
     const stripeId = p.stripe_subscription_id as string
     const status = p.status as string
     const tier = (p.tier as string | undefined) || undefined
+    const hasUserId = Boolean(p.user_id)
     if (!stripeId) return {}
 
     let writtenUserId: string | undefined
 
-    if (p.user_id) {
+    if (isCreation) {
+      if (!p.user_id) return {}
       const userId = p.user_id as string
       const existing = subscriptions.get(userId)
-      if (!passesOrderingGuard(existing, eventCreatedAt, eventId)) {
-        return {} // stale event: a newer event already landed
-      }
+      if (!passesOrderingGuard(existing, eventCreatedAt)) return {} // stale created event
       subscriptions.set(userId, { ...p, stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
       writtenUserId = userId
-
-      const profile = profiles.get(writtenUserId)
-      if (!profile) {
-        subscriptions.set(userId, existing as Row) // atomic rollback (or delete if none existed)
-        if (!existing) subscriptions.delete(userId)
-        return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
-      }
-      profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
-      return {}
-    }
-
-    // Invoice path: match an existing row by stripe_subscription_id only,
-    // never insert, never touch tier.
-    for (const [userId, row] of subscriptions) {
-      if (row.stripe_subscription_id === stripeId) {
-        if (!passesOrderingGuard(row, eventCreatedAt, eventId)) return {}
-        Object.assign(row, { status, stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
+    } else {
+      // updated/deleted/invoice: only touch a row whose *current* Stripe id
+      // still matches - a stale event for a superseded id matches no row.
+      for (const [userId, row] of subscriptions) {
+        if (row.stripe_subscription_id !== stripeId) continue
+        if (!passesOrderingGuard(row, eventCreatedAt)) return {}
+        // Invoice events (no user_id) can never revive a terminal row.
+        if (!hasUserId && TERMINAL.has(row.status as string)) return {}
+        if (hasUserId) {
+          Object.assign(row, {
+            tier: tier ?? row.tier,
+            status,
+            cancel_at_period_end: p.cancel_at_period_end ?? row.cancel_at_period_end,
+            canceled_at: p.canceled_at ?? row.canceled_at,
+            current_period_start: p.current_period_start ?? row.current_period_start,
+            current_period_end: p.current_period_end ?? row.current_period_end,
+          })
+        } else {
+          Object.assign(row, { status })
+        }
+        Object.assign(row, { stripe_event_created_at: eventCreatedAt, stripe_event_id: eventId })
         writtenUserId = userId
         break
       }
+      if (!writtenUserId) return {}
     }
+
+    if (!hasUserId) return {} // invoice: never touches profile tier
+
+    const profile = profiles.get(writtenUserId!)
+    if (!profile) {
+      // atomic rollback of the subscription write on missing profile
+      if (isCreation) subscriptions.delete(writtenUserId!)
+      return { error: { message: `Profile missing for Stripe subscription ${stripeId}` } }
+    }
+    profile.subscription_tier = TERMINAL.has(status) ? null : (tier ?? profile.subscription_tier)
     return {}
   }
 
   const rpc = vi.fn(
     (
       name: string,
-      args: { p_subscription: Row; p_event_created_at: string; p_event_id: string }
+      args: { p_subscription: Row; p_event_created_at: string; p_event_id: string; p_is_creation: boolean }
     ) => {
       if (name !== 'apply_stripe_subscription_event') {
         return Promise.resolve({ error: new Error('Unknown RPC') })
       }
       const eventCreatedAt = new Date(args.p_event_created_at).getTime()
-      return Promise.resolve(applyEvent(args.p_subscription, eventCreatedAt, args.p_event_id))
+      return Promise.resolve(applyEvent(args.p_subscription, eventCreatedAt, args.p_event_id, args.p_is_creation))
     }
   )
 
@@ -218,6 +234,7 @@ describe('POST /api/webhooks/stripe', () => {
       }),
       p_event_created_at: expect.any(String),
       p_event_id: expect.any(String),
+      p_is_creation: true,
     })
     expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1' })
     expect(supabase.getProfileTier('user-1')).toBe('tier1')
@@ -298,11 +315,11 @@ describe('POST /api/webhooks/stripe', () => {
     expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_new', status: 'active' })
   })
 
-  it('an updated event delivered before its created event still establishes the row (it carries full metadata)', async () => {
-    // Stripe guarantees a created event's own timestamp always precedes any
-    // update for that subscription, so a genuinely out-of-order *delivery*
-    // is safe to apply here - the ordering guard (tested elsewhere) is what
-    // rejects a truly stale event, not the event type.
+  it('an updated event that arrives before its created event is a no-op, not an error (only created can establish a row)', async () => {
+    // updated/deleted only ever mutate a row matching the *current*
+    // stripe_subscription_id - they never insert. This is what stops a
+    // stale event for a superseded subscription id from hijacking a
+    // different, newer subscription's row (see the resubscribe tests).
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.updated', subscriptionEvent({ status: 'past_due' }))
     )
@@ -310,14 +327,19 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
-    expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1', status: 'past_due' })
+    expect(supabase.hasAnyRow()).toBe(false)
   })
 
   it('a genuinely stale created event (older event time) cannot overwrite a row already updated', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', subscriptionEvent({ status: 'incomplete' }))
+    )
+    await POST(webhookRequest('{}', 'sig'))
+    mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.updated', subscriptionEvent({ status: 'active' }))
     )
     await POST(webhookRequest('{}', 'sig'))
+    expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
 
     // A duplicate/delayed created delivery with an older event.created
     mockValidateWebhookSignature.mockResolvedValue(

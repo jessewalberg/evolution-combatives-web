@@ -395,8 +395,12 @@ export interface Database {
             [_ in never]: never;
         };
         Functions: {
-            record_stripe_subscription_created: {
-                Args: { p_subscription: Record<string, unknown> };
+            apply_stripe_subscription_event: {
+                Args: {
+                    p_subscription: Record<string, unknown>;
+                    p_event_created_at: string;
+                    p_event_id: string;
+                };
                 Returns: boolean;
             };
         };

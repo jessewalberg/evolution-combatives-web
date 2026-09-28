@@ -16,8 +16,11 @@ describe('wrangler.jsonc production vars', () => {
         const vars = config.vars
 
         expect(config.account_id).toBeUndefined()
-        expect(config.env.staging.vars.CLOUDFLARE_ACCOUNT_ID).toBe(PLACEHOLDER)
-        expect(config.env.preview.vars.CLOUDFLARE_ACCOUNT_ID).toBe(PLACEHOLDER)
+        // Only the committed *production* Cloudflare account id is a
+        // placeholder - staging/preview aren't secret, they're this same
+        // account's other Workers, and Stream API calls need the real id.
+        expect(config.env.staging.vars.CLOUDFLARE_ACCOUNT_ID).not.toBe(PLACEHOLDER)
+        expect(config.env.preview.vars.CLOUDFLARE_ACCOUNT_ID).not.toBe(PLACEHOLDER)
 
         expect(vars.VITE_SUPABASE_ANON_KEY).toBe(PLACEHOLDER)
         expect(vars.SUPABASE_ANON_KEY).toBe(PLACEHOLDER)

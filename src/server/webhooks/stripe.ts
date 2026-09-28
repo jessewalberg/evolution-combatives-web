@@ -45,13 +45,15 @@ type SubscriptionRpcPayload = {
  */
 async function applySubscriptionEvent(
     payload: SubscriptionRpcPayload,
-    event: Pick<Stripe.Event, 'created' | 'id'>
+    event: Pick<Stripe.Event, 'created' | 'id'>,
+    isCreation: boolean
 ) {
     const supabase = createAdminClient();
     const { error } = await supabase.rpc('apply_stripe_subscription_event', {
         p_subscription: payload,
         p_event_created_at: new Date(event.created * 1000).toISOString(),
         p_event_id: event.id,
+        p_is_creation: isCreation,
     });
 
     if (error) {
@@ -178,7 +180,7 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         return;
     }
 
-    await applySubscriptionEvent(subscriptionToRpcPayload(subscription), event);
+    await applySubscriptionEvent(subscriptionToRpcPayload(subscription), event, true);
 
     console.log(`Subscription creation recorded for user ${userId}, tier ${tier}`);
 }
@@ -187,7 +189,7 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
  * Handle subscription updates
  */
 async function handleSubscriptionUpdated(subscription: StripeSubscriptionWithPeriod, event: Stripe.Event) {
-    await applySubscriptionEvent(subscriptionToRpcPayload(subscription), event);
+    await applySubscriptionEvent(subscriptionToRpcPayload(subscription), event, false);
 
     console.log(`Subscription updated: ${subscription.id}, status: ${subscription.status}`);
 }
@@ -218,7 +220,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription, even
             canceled_at: now,
             updated_at: now,
         },
-        event
+        event,
+        false
     );
 
     console.log(`Subscription canceled: ${subscription.id}`);
@@ -243,7 +246,8 @@ async function handlePaymentSucceeded(invoice: StripeInvoiceWithSubscription, ev
             status: 'active',
             updated_at: new Date().toISOString(),
         },
-        event
+        event,
+        false
     );
 
     console.log(`Payment succeeded for subscription: ${subscriptionId}`);
@@ -265,7 +269,8 @@ async function handlePaymentFailed(invoice: StripeInvoiceWithSubscription, event
             status: 'past_due',
             updated_at: new Date().toISOString(),
         },
-        event
+        event,
+        false
     );
 
     console.log(`Payment failed for subscription: ${subscriptionId}`);
