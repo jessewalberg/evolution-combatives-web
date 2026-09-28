@@ -125,7 +125,6 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
 
     const subscriptionRow = {
         user_id: userId,
-        platform: 'stripe',
         external_subscription_id: subscription.id,
         tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
         status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
@@ -138,30 +137,16 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
         updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
-        .from('subscriptions')
-        .upsert(subscriptionRow, { onConflict: 'stripe_subscription_id' });
+    const { error } = await supabase.rpc('record_stripe_subscription_created', {
+        p_subscription: subscriptionRow,
+    });
 
     if (error) {
         console.error('Error creating subscription in database:', error);
         throw error;
     }
 
-    const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ subscription_tier: tier })
-        .eq('id', userId);
-
-    if (profileError) {
-        console.error('Error updating user profile:', profileError);
-        await supabase
-            .from('subscriptions')
-            .delete()
-            .eq('stripe_subscription_id', subscription.id);
-        throw profileError;
-    }
-
-    console.log(`Subscription created in database for user ${userId}, tier ${tier}`);
+    console.log(`Subscription creation recorded for user ${userId}, tier ${tier}`);
 }
 
 /**

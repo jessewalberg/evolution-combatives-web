@@ -6,63 +6,73 @@
  * @author Evolution Combatives
  */
 
-import { useState, useEffect } from 'react';
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
+import { useState, useEffect, type FormEvent } from 'react';
+import { createFileRoute, useSearch } from '@tanstack/react-router';
 import { Button } from '@/src/components/ui/button';
 import { Card } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
 import LoadingSpinner from '@/src/components/ui/loading';
+import { createBrowserClient } from '@/src/lib/supabase-browser';
 import { SUBSCRIPTION_PRICING, SUBSCRIPTION_FEATURES, TIER_DISPLAY_INFO } from '@/src/lib/shared/constants/subscriptionTiers';
 
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3';
 
 export const Route = createFileRoute('/subscribe')({
     validateSearch: (search: Record<string, unknown>) =>
-        search as { userId?: string; email?: string; tier?: string },
+        search as { email?: string; tier?: string },
     component: SubscribePage,
 });
 
 function SubscribePage() {
-    const search = useSearch({ strict: false }) as { userId?: string; email?: string; tier?: string };
-    const navigate = useNavigate();
+    const search = useSearch({ strict: false }) as { email?: string; tier?: string };
+    const supabase = createBrowserClient();
 
     const [selectedTier, setSelectedTier] = useState<SubscriptionTier | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [authState, setAuthState] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
+    const [email, setEmail] = useState(typeof search.email === 'string' ? search.email : '');
+    const [password, setPassword] = useState('');
 
-    // Extract parameters from URL (passed from mobile app)
-    const userId = search.userId ?? null;
-    const userEmail = search.email ?? null;
     const preselectedTier = (search.tier as SubscriptionTier | undefined) ?? null;
 
     useEffect(() => {
-        if (preselectedTier && ['beginner', 'intermediate', 'advanced'].includes(preselectedTier)) {
+        if (preselectedTier && ['tier1', 'tier2', 'tier3'].includes(preselectedTier)) {
             setSelectedTier(preselectedTier);
         }
     }, [preselectedTier]);
 
-    // Validate required parameters
-    if (!userId || !userEmail) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <Card className="max-w-md mx-auto p-6 text-center">
-                    <h1 className="text-xl font-semibold text-red-600 mb-4">Invalid Request</h1>
-                    <p className="text-gray-600">
-                        This page must be accessed through the Evolution Combatives mobile app.
-                    </p>
-                    <Button
-                        onClick={() => navigate({ to: '/' as never })}
-                        className="mt-4"
-                    >
-                        Go to Dashboard
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
+    useEffect(() => {
+        let active = true;
+        supabase.auth.getUser().then(({ data }) => {
+            if (active) setAuthState(data.user ? 'signed-in' : 'signed-out');
+        }).catch(() => {
+            if (active) setAuthState('signed-out');
+        });
+        return () => { active = false; };
+    }, [supabase]);
+
+    const handleSignIn = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setLoading(true);
+        setError(null);
+        try {
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+            if (signInError) {
+                setError(signInError.message);
+                return;
+            }
+            setPassword('');
+            setAuthState('signed-in');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Sign in failed');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleSubscribe = async (tier: SubscriptionTier) => {
-        if (!userId || !userEmail) return;
+        if (authState !== 'signed-in') return;
 
         setLoading(true);
         setError(null);
@@ -73,6 +83,7 @@ function SubscribePage() {
             });
 
             if (!csrfResponse.ok) {
+                if (csrfResponse.status === 401) setAuthState('signed-out');
                 throw new Error(`Failed to fetch CSRF token: ${csrfResponse.status} ${csrfResponse.statusText}`);
             }
 
@@ -99,6 +110,7 @@ function SubscribePage() {
             const data = await response.json();
 
             if (!response.ok) {
+                if (response.status === 401) setAuthState('signed-out');
                 throw new Error(data.error || 'Failed to create checkout session');
             }
 
@@ -145,6 +157,21 @@ function SubscribePage() {
                             </Button>
                         </Card>
                     </div>
+                )}
+
+                {authState === 'signed-out' && (
+                    <Card className="max-w-md mx-auto mb-8 p-6">
+                        <h2 className="text-xl font-semibold mb-4">Sign in to subscribe</h2>
+                        <form onSubmit={handleSignIn} className="space-y-4">
+                            <label className="block">Email
+                                <input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} className="block w-full border rounded p-2" />
+                            </label>
+                            <label className="block">Password
+                                <input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} className="block w-full border rounded p-2" />
+                            </label>
+                            <Button type="submit" disabled={loading}>Sign in</Button>
+                        </form>
+                    </Card>
                 )}
 
                 {/* Subscription Tiers */}
@@ -209,7 +236,7 @@ function SubscribePage() {
                                 {/* Subscribe Button */}
                                 <Button
                                     onClick={() => handleSubscribe(tier)}
-                                    disabled={loading}
+                                    disabled={loading || authState !== 'signed-in'}
                                     className={`w-full py-3 text-lg font-semibold transition-colors ${isPopular
                                         ? 'bg-blue-600 hover:bg-blue-700 text-white'
                                         : 'bg-gray-800 hover:bg-gray-900 text-white'

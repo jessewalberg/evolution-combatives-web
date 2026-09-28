@@ -57,6 +57,29 @@ describe('supabase clients', () => {
     expect(ssrBrowserClient).toHaveBeenCalledWith('https://test.supabase.co', 'anon-key')
   })
 
+  it.each([
+    ['VITE_SUPABASE_ANON_KEY', 'REPLACE_AT_DEPLOY'],
+    ['VITE_SUPABASE_URL', 'REPLACE_AT_DEPLOY'],
+  ])('rejects placeholder %s before creating a client', async (key, value) => {
+    vi.stubEnv(key, value)
+    const { getSupabaseConfig, createBrowserClient } = await import('./supabase')
+    expect(() => getSupabaseConfig()).toThrow(/not configured/)
+    expect(() => createBrowserClient()).toThrow(/not configured/)
+    expect(ssrBrowserClient).not.toHaveBeenCalled()
+  })
+
+  it.each(['SUPABASE_ANON_KEY', 'SUPABASE_URL'])(
+    'rejects placeholder %s from server env', async (key) => {
+      vi.stubEnv('VITE_SUPABASE_URL', '')
+      vi.stubEnv('VITE_SUPABASE_ANON_KEY', '')
+      vi.stubEnv('SUPABASE_URL', 'https://test.supabase.co')
+      vi.stubEnv('SUPABASE_ANON_KEY', 'anon-key')
+      vi.stubEnv(key, 'REPLACE_AT_DEPLOY')
+      const { getSupabaseConfig } = await import('./supabase')
+      expect(() => getSupabaseConfig()).toThrow(/not configured/)
+    }
+  )
+
   it('createServerClient wires cookies through the Start request context', async () => {
     const { createServerClient } = await import('./supabase')
     await expect(createServerClient()).resolves.toEqual({ kind: 'server' })

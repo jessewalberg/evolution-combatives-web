@@ -395,7 +395,10 @@ export interface Database {
             [_ in never]: never;
         };
         Functions: {
-            [_ in never]: never;
+            record_stripe_subscription_created: {
+                Args: { p_subscription: Record<string, unknown> };
+                Returns: boolean;
+            };
         };
         Enums: {
             subscription_tier: 'tier1' | 'tier2' | 'tier3';

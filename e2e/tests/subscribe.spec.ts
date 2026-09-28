@@ -92,24 +92,32 @@ test.describe('Subscription deep-link flow', () => {
     }
   })
 
-  test('missing query params shows Invalid Request', async ({ page }) => {
-    // Unauthenticated public page
+  test('subscription tiers work without identity query params', async ({ page }) => {
     await page.goto('/subscribe')
-    await expect(page.getByText(/invalid request/i)).toBeVisible()
+    await expect(page.getByRole('button', { name: /subscribe to/i })).toHaveCount(3)
+  })
+
+  test('mobile deep link asks for browser sign-in before checkout', async ({ page, context }) => {
+    await context.clearCookies()
+    await page.goto(`/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`)
+    await expect(page.getByRole('heading', { name: 'Sign in to subscribe' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /subscribe to/i }).first()).toBeDisabled()
+    await page.getByLabel('Password').fill(password!)
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page.getByRole('button', { name: /subscribe to/i }).first()).toBeEnabled()
   })
 
   test('deep-link renders tiers and create-checkout returns Stripe URL', async ({
     page,
-    request,
   }) => {
     await page.goto(
       `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
     )
     await expect(page.getByText(/invalid request/i)).toHaveCount(0)
 
-    const headers = await fetchCsrfHeaders(request)
+    const headers = await fetchCsrfHeaders(page.request)
     const base = process.env.VITE_APP_URL || 'http://localhost:3000'
-    const response = await request.post('/api/subscriptions/create-checkout', {
+    const response = await page.request.post('/api/subscriptions/create-checkout', {
       headers,
       data: {
         tier: 'tier1',

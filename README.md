@@ -158,7 +158,8 @@ domains stay on their current host until the separate cutover.
 
 #### Jesse's production cutover checklist
 
-1. Confirm the production Cloudflare account and Worker name
+1. Confirm the production Cloudflare account in the deployment environment's
+   `CLOUDFLARE_ACCOUNT_ID` secret and Worker name
    (`evolution-combatives-admin`) in `wrangler.jsonc`. Fill in all production
    `vars` there with live values: `VITE_SUPABASE_*`, `SUPABASE_*`, `VITE_APP_URL`,
    `APP_URL`, `ADMIN_URL`, mobile scheme, PostHog settings, Stream account and
