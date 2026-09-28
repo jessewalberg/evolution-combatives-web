@@ -1,11 +1,8 @@
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
-import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers'
+import { getStripePriceId } from '@/src/server/subscriptions/price-id'
 import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
 import { json } from '@/src/lib/http'
 import { z } from 'zod'
-
-// Use exact subscription tiers from .cursorrules
-type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
 
 // Request validation schema
 const CreateCheckoutSchema = z.object({
@@ -79,6 +76,14 @@ export async function POST({ request }: { request: Request }) {
             }
         }
 
+        const priceId = getStripePriceId(tier)
+        if (!priceId) {
+            return json(
+                { success: false, error: `Price ID not configured for tier: ${tier}` },
+                { status: 500 }
+            )
+        }
+
         // Get or create Stripe customer
         const customer = await getOrCreateCustomer(user.email!, user.id)
 
@@ -87,19 +92,10 @@ export async function POST({ request }: { request: Request }) {
             userEmail: user.email
         });
 
-        // Get pricing for the tier
-        const pricing = SUBSCRIPTION_PRICING[tier as SubscriptionTier]
-        if (!pricing) {
-            return json(
-                { success: false, error: 'Invalid subscription tier' },
-                { status: 400 }
-            )
-        }
-
         // Create Stripe checkout session
         const session = await createCheckoutSession({
             customerId: customer.id,
-            priceId: pricing.stripePriceId,
+            priceId,
             userId: user.id,
             tier: tier,
             successUrl: successUrl || `evolutioncombatives://subscription/success?tier=${tier}`,

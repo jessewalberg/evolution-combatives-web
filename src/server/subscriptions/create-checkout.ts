@@ -8,6 +8,7 @@
 
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
 import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers';
+import { getStripePriceId } from './price-id';
 import { createAdminClient } from '@/src/lib/supabase';
 import { json } from '@/src/lib/http';
 import { z } from 'zod';
@@ -72,7 +73,7 @@ export async function POST({ request }: { request: Request }) {
         }
 
         // Get Stripe price ID for the tier
-        const priceId = SUBSCRIPTION_PRICING[tier].stripePriceId;
+        const priceId = getStripePriceId(tier);
         if (!priceId) {
             return json(
                 { error: `Price ID not configured for tier: ${tier}` },

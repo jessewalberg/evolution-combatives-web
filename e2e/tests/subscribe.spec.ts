@@ -114,37 +114,21 @@ test.describe('Subscription deep-link flow', () => {
       },
     })
 
-    // create-checkout is CSRF-protected; with token we should reach Stripe or a domain error
-    expect(response.status()).not.toBe(403)
     const body = await response.json()
+    expect(response.ok(), `create-checkout failed: ${JSON.stringify(body)}`).toBe(true)
+    // Capture before asserts so afterEach can expire even if an expect throws.
+    checkoutSessionId = body.sessionId as string
+    expect(body.url).toMatch(/stripe\.com|checkout/i)
+    expect(body.sessionId).toBeTruthy()
 
-    if (response.ok()) {
-      // Capture before asserts so afterEach can expire even if an expect throws.
-      checkoutSessionId = body.sessionId as string
-      expect(body.url).toMatch(/stripe\.com|checkout/i)
-      expect(body.sessionId).toBeTruthy()
-
-      // Navigate success page (webhook may or may not have fired yet)
-      await page.goto(`/subscription-success?tier=tier1&session_id=${body.sessionId}`)
-      await expect(page.getByText(/subscription activated/i)).toBeVisible({
-        timeout: 15_000,
-      })
-    } else {
-      // Fixture always creates a fresh valid user + matching email + no active
-      // subscription. The only legitimate non-2xx outcomes are env/config gaps
-      // from create-checkout/route.ts. Any other message means the fixture or
-      // request itself is broken and must fail the test.
-      const errorMessage = String(body.error || '')
-      expect(
-        errorMessage,
-        `create-checkout failed with unexpected error: ${JSON.stringify(body)}`
-      ).toMatch(
-        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
-      )
-    }
+    // Navigate success page (webhook may or may not have fired yet)
+    await page.goto(`/subscription-success?tier=tier1&session_id=${body.sessionId}`)
+    await expect(page.getByText(/subscription activated/i)).toBeVisible({
+      timeout: 15_000,
+    })
   })
 
-  test('Subscribe button posts with CSRF and reaches Stripe or allowed error', async ({
+  test('Subscribe button posts with CSRF and reaches Stripe', async ({
     page,
   }) => {
     await page.goto(
@@ -166,9 +150,6 @@ test.describe('Subscription deep-link flow', () => {
 
     const checkoutResponse = await checkoutResponsePromise
 
-    // UI path must send CSRF; a missing token would 403 before Stripe/domain logic
-    expect(checkoutResponse.status()).not.toBe(403)
-
     const csrfErrorBanner = page.getByText(/csrf token validation failed/i)
     await expect(csrfErrorBanner).toHaveCount(0)
 
@@ -178,27 +159,13 @@ test.describe('Subscription deep-link flow', () => {
     // this test's CDP read completes ("Response body is not available for a
     // response that was navigated away from" - flaky in CI). Assert success via
     // UI-visible signals instead.
-    if (checkoutResponse.ok()) {
-      await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
-      const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
-      expect(
-        sessionId,
-        `could not extract Stripe session id from redirect URL: ${page.url()}`
-      ).toBeTruthy()
-      checkoutSessionId = sessionId
-    } else {
-      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API
-      // test), read from the page's own error banner rather than the response body.
-      const allowedErrors =
-        /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
-      const actualErrorText = await page
-        .locator('p.text-red-600')
-        .textContent()
-        .catch(() => null)
-      await expect(
-        page.getByText(allowedErrors),
-        `UI create-checkout failed with unexpected error: ${JSON.stringify(actualErrorText)}`
-      ).toBeVisible({ timeout: 10_000 })
-    }
+    expect(checkoutResponse.ok(), `UI create-checkout returned ${checkoutResponse.status()}`).toBe(true)
+    await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
+    const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
+    expect(
+      sessionId,
+      `could not extract Stripe session id from redirect URL: ${page.url()}`
+    ).toBeTruthy()
+    checkoutSessionId = sessionId
   })
 })

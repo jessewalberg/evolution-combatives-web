@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler, GET } from './create-checkout'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
@@ -68,6 +68,8 @@ describe('GET /api/subscriptions/create-checkout', () => {
 })
 
 describe('POST /api/subscriptions/create-checkout', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetOrCreateCustomer.mockResolvedValue({ id: 'cus_123' } as never)
@@ -165,6 +167,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
   })
 
   it('creates checkout session on success', async () => {
+    vi.stubEnv('STRIPE_BEGINNER_PRICE_ID', 'price_runtime_tier1')
     mockCreateAdminClient.mockReturnValue(
       buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
     )
@@ -187,7 +190,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
     expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        priceId: 'price_test_tier1',
+        priceId: 'price_runtime_tier1',
         customerId: 'cus_123',
         userId: validUserId,
         tier: 'tier1',

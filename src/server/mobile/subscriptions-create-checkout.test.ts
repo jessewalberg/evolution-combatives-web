@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler } from './subscriptions-create-checkout'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
@@ -41,6 +41,8 @@ function mobileRequest(body: Record<string, unknown>, headers: Record<string, st
 }
 
 describe('POST /api/mobile/subscriptions/create-checkout', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetUser.mockResolvedValue({
@@ -108,6 +110,7 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
   })
 
   it('creates checkout session successfully', async () => {
+    vi.stubEnv('STRIPE_INTERMEDIATE_PRICE_ID', 'price_runtime_tier2')
     const res = (await POST(
       mobileRequest({
         tier: 'tier2',
@@ -128,7 +131,19 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
       currency: 'usd',
     })
     expect(mockGetOrCreateCustomer).toHaveBeenCalledWith('user@test.com', 'user-1')
-    expect(mockCreateCheckoutSession).toHaveBeenCalled()
+    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ priceId: 'price_runtime_tier2' })
+    )
+  })
+
+  it('rejects a missing tier price before creating a Stripe customer', async () => {
+    vi.stubEnv('STRIPE_INTERMEDIATE_PRICE_ID', '')
+
+    const res = (await POST(mobileRequest({ tier: 'tier2' })))!
+
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toBe('Price ID not configured for tier: tier2')
+    expect(mockGetOrCreateCustomer).not.toHaveBeenCalled()
   })
 
   it('returns 500 when stripe throws stripe-named error', async () => {

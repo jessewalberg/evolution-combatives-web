@@ -101,6 +101,19 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(supabase.update).not.toHaveBeenCalled()
   })
 
+  it('rejects unsigned events when the signing secret is absent', async () => {
+    delete process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: JSON.stringify(buildEvent()),
+      })
+    )
+
+    expect(res.status).toBe(401)
+    expect(supabase.update).not.toHaveBeenCalled()
+  })
+
   it('processes video.ready by writing status, publish flag, and stream metadata', async () => {
     const event = buildEvent({ eventType: 'video.ready' })
     const payload = JSON.stringify(event)

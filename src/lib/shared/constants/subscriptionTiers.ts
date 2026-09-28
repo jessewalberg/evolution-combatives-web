@@ -27,22 +27,18 @@ export const SUBSCRIPTION_PRICING = {
     [SUBSCRIPTION_TIERS.NONE]: {
         monthly: 0,
         currency: 'USD',
-        stripePriceId: '', // Free tier has no Stripe price ID
     },
     [SUBSCRIPTION_TIERS.TIER1]: {
         monthly: 19,
         currency: 'USD',
-        stripePriceId: process.env.STRIPE_BEGINNER_PRICE_ID || '',
     },
     [SUBSCRIPTION_TIERS.TIER2]: {
         monthly: 29,
         currency: 'USD',
-        stripePriceId: process.env.STRIPE_INTERMEDIATE_PRICE_ID || '',
     },
     [SUBSCRIPTION_TIERS.TIER3]: {
         monthly: 39,
         currency: 'USD',
-        stripePriceId: process.env.STRIPE_ADVANCED_PRICE_ID || '',
     },
 } as const;
 
@@ -198,4 +194,4 @@ export const getTierPrice = (tier: SubscriptionTier): number => {
 
 export const getTierFeatures = (tier: SubscriptionTier): readonly string[] => {
     return SUBSCRIPTION_FEATURES[tier];
-}; 
+};

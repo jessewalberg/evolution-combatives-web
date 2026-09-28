@@ -164,9 +164,41 @@ export const ADMIN_PERMISSIONS = {
 ## 🚀 Deployment
 
 ### Cloudflare Workers Deployment
-1. Fill in the real values in `wrangler.jsonc` `vars` (currently TODO placeholders) and set Worker secrets with `wrangler secret put`
-2. Deploy: `pnpm deploy:staging` or `pnpm deploy:production` (CI deploys main → production and PRs → preview versions automatically)
-3. Deploy with automatic CI/CD
+
+This PR prepares the Worker but does not move production traffic. Merging to
+`main` deploys the production Worker on its `workers.dev` address; the live
+domains stay on their current host until the separate cutover.
+
+#### Jesse's production cutover checklist
+
+1. Confirm the production Cloudflare account and Worker name
+   (`evolution-combatives-admin`) in `wrangler.jsonc`. Fill in all production
+   `vars` there with live values: `VITE_SUPABASE_*`, `SUPABASE_*`, `VITE_APP_URL`,
+   `APP_URL`, `ADMIN_URL`, mobile scheme, PostHog settings, Stream account and
+   customer subdomain, **live** `STRIPE_PUBLISHABLE_KEY`, and all three **live**
+   `STRIPE_*_PRICE_ID` values. Replace every `update` placeholder. The public
+   app and admin URLs should point to `https://evolutioncombatives.com`.
+2. Populate the production Worker secrets from 1Password using
+   `pnpm exec wrangler secret put <NAME>` for each name: `SUPABASE_SERVICE_ROLE_KEY`,
+   **live** `STRIPE_SECRET_KEY`, **live** `STRIPE_WEBHOOK_SECRET`,
+   `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_STREAM_SIGNING_KEY`,
+   `CLOUDFLARE_STREAM_SIGNING_KEY_ID`, and
+   `CLOUDFLARE_STREAM_WEBHOOK_SECRET`. Keep these out of `vars` and source
+   control. Confirm the live Stripe keys and price IDs belong to the same
+   Stripe account.
+3. Deploy and verify the Worker on its `workers.dev` address before switching
+   traffic. Confirm sign-in, checkout creation with a live price, and the
+   `/api/health` endpoint. Apply required Supabase migrations separately.
+4. In a separate cutover change, attach `evolutioncombatives.com` and
+   `www.evolutioncombatives.com` as Worker custom domains and point both DNS
+   names to the Worker in Cloudflare. Verify HTTPS, page loads, and the API on
+   both hostnames before ending the old host's traffic.
+5. In the **live** Stripe dashboard, move the webhook endpoint from the
+   disabled Vercel deployment to
+   `https://evolutioncombatives.com/api/webhooks/stripe` on the Worker. Set its
+   new signing secret as the Worker's `STRIPE_WEBHOOK_SECRET`, then send a test
+   event and confirm delivery and subscription updates. Disable the old
+   endpoint after the Worker endpoint succeeds.
 
 ### Manual Deployment
 ```bash

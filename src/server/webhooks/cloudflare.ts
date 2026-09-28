@@ -361,25 +361,21 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Verify webhook signature if secret is configured
         const signature = request.headers.get('x-signature')
         const webhookSecret = process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
+        const isValidSignature = await verifyWebhookSignature(
+            webhookPayload,
+            signature,
+            webhookSecret || ''
+        )
 
-        if (webhookSecret) {
-            const isValidSignature = await verifyWebhookSignature(
-                webhookPayload,
-                signature,
-                webhookSecret
+        if (!isValidSignature) {
+            console.error('Invalid webhook signature')
+            await logWebhookEvent(event, false, 'Invalid webhook signature')
+            return json(
+                { error: 'Invalid signature' },
+                { status: 401 }
             )
-
-            if (!isValidSignature) {
-                console.error('Invalid webhook signature')
-                await logWebhookEvent(event, false, 'Invalid webhook signature')
-                return json(
-                    { error: 'Invalid signature' },
-                    { status: 401 }
-                )
-            }
         }
 
         console.log(`Processing Cloudflare Stream webhook: ${event.eventType} for video ${event.uid}`)
@@ -451,4 +447,4 @@ export async function DELETE() {
         { error: 'Method not allowed' },
         { status: 405 }
     )
-} 
+}
