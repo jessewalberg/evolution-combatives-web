@@ -311,7 +311,7 @@ DECLARE
     v_session public.stripe_checkout_sessions%ROWTYPE;
 BEGIN
     IF p_user_id IS NULL OR NULLIF(p_checkout_session_id, '') IS NULL
-       OR NULLIF(p_stripe_subscription_id, '') IS NULL THEN
+       OR p_stripe_subscription_id = '' THEN
         RETURN false;
     END IF;
 
@@ -325,7 +325,23 @@ BEGIN
         RETURN false;
     END IF;
     IF v_session.status = 'completed' THEN
-        RETURN v_session.stripe_subscription_id = p_stripe_subscription_id;
+        IF v_session.stripe_subscription_id IS NOT NULL AND p_stripe_subscription_id IS NOT NULL THEN
+            RETURN v_session.stripe_subscription_id = p_stripe_subscription_id;
+        END IF;
+        IF v_session.stripe_subscription_id IS NULL AND p_stripe_subscription_id IS NOT NULL THEN
+            UPDATE public.stripe_checkout_sessions
+            SET stripe_subscription_id = p_stripe_subscription_id,
+                reconciled_at = CASE WHEN EXISTS (
+                    SELECT 1 FROM public.subscriptions s
+                    WHERE s.user_id = p_user_id AND s.platform = 'stripe'
+                      AND s.stripe_subscription_id = p_stripe_subscription_id
+                ) OR EXISTS (
+                    SELECT 1 FROM public.stripe_orphan_subscriptions o
+                    WHERE o.user_id = p_user_id AND o.stripe_subscription_id = p_stripe_subscription_id
+                ) THEN now() ELSE NULL END
+            WHERE checkout_session_id = p_checkout_session_id;
+        END IF;
+        RETURN true;
     END IF;
     IF v_session.status <> 'ready' THEN
         RETURN false;

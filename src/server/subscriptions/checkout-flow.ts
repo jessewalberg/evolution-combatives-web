@@ -106,6 +106,23 @@ function isDefiniteStripeRejection(error: unknown): boolean {
         || error.type === 'StripePermissionError';
 }
 
+async function consumeCompletedSession(
+    admin: AdminClient,
+    userId: string,
+    session: { id: string; subscription?: string | { id: string } | null },
+): Promise<void> {
+    const subscriptionId = typeof session.subscription === 'string'
+        ? session.subscription : session.subscription?.id ?? null;
+    const { data, error } = await adminRpc(admin, 'consume_stripe_checkout', {
+        p_user_id: userId,
+        p_checkout_session_id: session.id,
+        p_stripe_subscription_id: subscriptionId,
+    });
+    if (error || data !== true) {
+        console.error('Unable to consume completed Stripe checkout session:', error);
+    }
+}
+
 export async function reserveOrReuseCheckoutSession(
     admin: AdminClient,
     userId: string,
@@ -297,15 +314,7 @@ async function runCheckoutAttempt(
             return { state: 'blocked', error: 'Unable to start checkout' };
         }
         if (session.status === 'complete') {
-            const subscriptionId = typeof session.subscription === 'string'
-                ? session.subscription : session.subscription?.id;
-            if (subscriptionId) {
-                await adminRpc(admin, 'consume_stripe_checkout', {
-                    p_user_id: userId,
-                    p_checkout_session_id: session.id,
-                    p_stripe_subscription_id: subscriptionId,
-                });
-            }
+            await consumeCompletedSession(admin, userId, session);
             return { state: 'blocked', error: 'Unable to start checkout' };
         }
         if (!session.url) return { state: 'blocked', error: 'Unable to start checkout' };
@@ -340,18 +349,7 @@ export async function createReservedCheckoutSession(params: {
         try {
             const session = await stripe.checkout.sessions.retrieve(sessionId);
             if (session.status === 'complete') {
-                const subscriptionId = typeof session.subscription === 'string'
-                    ? session.subscription : session.subscription?.id;
-                if (subscriptionId) {
-                    const consumed = await adminRpc(admin, 'consume_stripe_checkout', {
-                        p_user_id: userId,
-                        p_checkout_session_id: sessionId,
-                        p_stripe_subscription_id: subscriptionId,
-                    });
-                    if (consumed.error || consumed.data !== true) {
-                        console.error('Unable to consume completed Stripe checkout session:', consumed.error);
-                    }
-                }
+                await consumeCompletedSession(admin, userId, session);
                 return { ok: false, status: 500, error: 'Unable to start checkout' };
             }
             if (session.status === 'open') {
@@ -392,13 +390,36 @@ export async function createReservedCheckoutSession(params: {
     }
 
     if (reserved.result.action === 'reuse') {
-        return {
-            ok: true,
-            sessionId: reserved.result.sessionId,
-            url: reserved.result.url,
-            expiresAt: reserved.result.expiresAt,
-            reused: true,
-        };
+        const { reservationId, sessionId, url, expiresAt } = reserved.result;
+        try {
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+            if (session.status === 'open') {
+                return { ok: true, sessionId, url, expiresAt, reused: true };
+            }
+            if (session.status === 'complete') {
+                await consumeCompletedSession(admin, userId, session);
+                return { ok: false, status: 500, error: 'Unable to start checkout' };
+            }
+            if (session.status !== 'expired') {
+                return { ok: false, status: 500, error: 'Unable to start checkout' };
+            }
+            const retired = await adminRpc(admin, 'retire_stripe_checkout_session', {
+                p_user_id: userId,
+                p_reservation_id: reservationId,
+                p_checkout_session_id: sessionId,
+            });
+            if (retired.error || retired.data !== true) {
+                return { ok: false, status: 500, error: 'Unable to start checkout' };
+            }
+            reserved = await reserveOrReuseCheckoutSession(admin, userId, userEmail, tier, priceId, successUrl, cancelUrl);
+            if (!reserved.ok) return reserved;
+            if (reserved.result.action !== 'create') {
+                return { ok: false, status: 500, error: 'Unable to start checkout' };
+            }
+        } catch (error) {
+            console.error('Unable to inspect Stripe checkout session:', error);
+            return { ok: false, status: 500, error: 'Unable to start checkout' };
+        }
     }
 
     const attempt = reserved.result;

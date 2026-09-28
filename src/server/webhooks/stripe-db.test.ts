@@ -263,6 +263,46 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 })
 
 describe('reserve_stripe_checkout migration (PGlite)', () => {
+  it('records completion before a subscription ID and reconciles its later replay', async () => {
+    const db = await bootstrapDb()
+    try {
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
+      )).rows[0].data
+      await db.query(
+        `SELECT public.finalize_stripe_checkout_reservation($1::uuid, $2::uuid, 'cs_paid', 'https://checkout.test/paid', now() + interval '1 hour')`,
+        [userId, first.reservation_id],
+      )
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.consume_stripe_checkout($1::uuid, 'cs_paid', NULL::text) AS completed`, [userId],
+      )).rows[0].completed).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-b') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await apply(db, 'sub_paid', 1700000000, 'canceled', 'evt_paid', 1700000100)
+      expect((await db.query<{ reconciled_at: string | null }>(
+        `SELECT reconciled_at FROM public.stripe_checkout_sessions WHERE checkout_session_id = 'cs_paid'`,
+      )).rows[0].reconciled_at).toBeNull()
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.consume_stripe_checkout($1::uuid, 'cs_paid', 'sub_paid') AS completed`, [userId],
+      )).rows[0].completed).toBe(true)
+      const completed = (await db.query<{ stripe_subscription_id: string; reconciled_at: string | null }>(
+        `SELECT stripe_subscription_id, reconciled_at FROM public.stripe_checkout_sessions WHERE checkout_session_id = 'cs_paid'`,
+      )).rows[0]
+      expect(completed.stripe_subscription_id).toBe('sub_paid')
+      expect(completed.reconciled_at).not.toBeNull()
+      expect((await db.query<{ completed: boolean }>(
+        `SELECT public.consume_stripe_checkout($1::uuid, 'cs_paid', 'sub_other') AS completed`, [userId],
+      )).rows[0].completed).toBe(false)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2', 'request-b') AS data`, [userId],
+      )).rows[0].data.action).toBe('create')
+    } finally {
+      await db.close()
+    }
+  })
+
   it('releases a rejected checkout attempt for corrected price input', async () => {
     const db = await bootstrapDb()
     try {

@@ -474,7 +474,7 @@ export interface Database {
                 Args: {
                     p_user_id: string;
                     p_checkout_session_id: string;
-                    p_stripe_subscription_id: string;
+                    p_stripe_subscription_id: string | null;
                 };
                 Returns: boolean;
             };

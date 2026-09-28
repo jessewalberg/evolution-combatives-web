@@ -96,6 +96,7 @@ describe('createReservedCheckoutSession expiry', () => {
 
   it('returns the stored expiry when reusing a reservation', async () => {
     vi.mocked(createCheckoutSession).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({ id: 'cs_reused', status: 'open' } as never)
     const rpc = vi.fn().mockResolvedValue({
       data: {
         action: 'reuse',
@@ -116,6 +117,7 @@ describe('createReservedCheckoutSession expiry', () => {
       reused: true,
     })
     expect(createCheckoutSession).not.toHaveBeenCalled()
+    expect(stripe.checkout.sessions.retrieve).toHaveBeenCalledWith('cs_reused')
     expect(rpc).toHaveBeenCalledWith('reserve_stripe_checkout', {
       p_user_id: params.userId,
       p_tier: params.tier,
@@ -123,8 +125,89 @@ describe('createReservedCheckoutSession expiry', () => {
     })
   })
 
+  it.each([
+    ['string', 'sub_paid', 'sub_paid'],
+    ['expanded', { id: 'sub_paid' }, 'sub_paid'],
+    ['missing', null, null],
+  ] as const)('consumes a completed %s checkout before reusing its URL', async (_kind, subscription, subscriptionId) => {
+    vi.mocked(createCheckoutSession).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({
+      id: 'cs_reused', status: 'complete', subscription,
+    } as never)
+    const rpc = vi.fn((name: string) => Promise.resolve({
+      data: name === 'reserve_stripe_checkout'
+        ? {
+            action: 'reuse', reservation_id: 'reservation-1', session_id: 'cs_reused',
+            url: 'https://checkout.test/reused', expires_at: '2030-01-01T00:00:00+00:00',
+          }
+        : true,
+      error: null,
+    }))
+
+    expect(await createReservedCheckoutSession({ admin: { rpc } as never, ...params })).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
+    })
+    expect(rpc).toHaveBeenCalledWith('consume_stripe_checkout', {
+      p_user_id: params.userId, p_checkout_session_id: 'cs_reused', p_stripe_subscription_id: subscriptionId,
+    })
+    expect(rpc).not.toHaveBeenCalledWith('retire_stripe_checkout_session', expect.anything())
+    expect(createCheckoutSession).not.toHaveBeenCalled()
+  })
+
+  it('retires a reused session that Stripe reports expired before creating a new one', async () => {
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({ id: 'cs_old', status: 'expired' } as never)
+    vi.mocked(stripe.checkout.sessions.expire).mockClear()
+    vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
+    vi.mocked(createCheckoutSession).mockReset().mockResolvedValue({
+      id: 'cs_new', url: 'https://checkout.test/new', expires_at: 1893456000,
+    } as never)
+    let reserves = 0
+    const rpc = vi.fn((name: string) => Promise.resolve({
+      data: name === 'reserve_stripe_checkout'
+        ? ++reserves === 1
+          ? {
+              action: 'reuse', reservation_id: 'reservation-1', session_id: 'cs_old',
+              url: 'https://checkout.test/old', expires_at: '2030-01-01T00:00:00+00:00',
+            }
+          : { action: 'create', reservation_id: 'reservation-2', idempotency_key: 'checkout:reservation-2' }
+        : true,
+      error: null,
+    }))
+
+    expect(await createReservedCheckoutSession({ admin: { rpc } as never, ...params })).toMatchObject({
+      ok: true, sessionId: 'cs_new', reused: false,
+    })
+    expect(reserves).toBe(2)
+    expect(rpc).toHaveBeenCalledWith('retire_stripe_checkout_session', {
+      p_user_id: params.userId, p_reservation_id: 'reservation-1', p_checkout_session_id: 'cs_old',
+    })
+    expect(vi.mocked(createCheckoutSession).mock.calls[0][0].idempotencyKey).toBe('checkout:reservation-2')
+    expect(stripe.checkout.sessions.expire).not.toHaveBeenCalled()
+  })
+
+  it.each(['throws', 'unknown status'] as const)('retains a reused reservation when Stripe inspection %s', async (failure) => {
+    vi.mocked(createCheckoutSession).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockReset()
+    if (failure === 'throws') {
+      vi.mocked(stripe.checkout.sessions.retrieve).mockRejectedValueOnce(new Error('Stripe unavailable'))
+    } else {
+      vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValueOnce({ id: 'cs_reused', status: null } as never)
+    }
+    const rpc = vi.fn().mockResolvedValue({ data: {
+      action: 'reuse', reservation_id: 'reservation-1', session_id: 'cs_reused',
+      url: 'https://checkout.test/reused', expires_at: '2030-01-01T00:00:00+00:00',
+    }, error: null })
+
+    expect(await createReservedCheckoutSession({ admin: { rpc } as never, ...params })).toEqual({
+      ok: false, status: 500, error: 'Unable to start checkout',
+    })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(createCheckoutSession).not.toHaveBeenCalled()
+  })
+
   it('refuses mobile callbacks and changed price or callbacks for a live web session', async () => {
     vi.mocked(createCheckoutSession).mockClear()
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({ status: 'open' } as never)
     const webFingerprint = JSON.stringify([params.priceId, params.successUrl, params.cancelUrl, params.userEmail])
     const rpc = vi.fn((_name: string, args: { p_request_fingerprint: string }) => Promise.resolve({
       data: args.p_request_fingerprint === webFingerprint
