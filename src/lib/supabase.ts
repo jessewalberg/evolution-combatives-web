@@ -22,12 +22,18 @@ import type { Database } from './shared/types/database'
  * these are inlined VITE_* values; on the Worker they come from wrangler
  * vars via process.env (nodejs_compat populates it).
  */
+const DEPLOY_PLACEHOLDER = /^(update|REPLACE_AT_DEPLOY|TODO)$/i
+
+function isConfiguredSecret(value: string | undefined): value is string {
+    return Boolean(value && !DEPLOY_PLACEHOLDER.test(value))
+}
+
 export function getSupabaseConfig(): { url: string; anonKey: string } {
     const processEnv = typeof process !== 'undefined' ? process.env : undefined
     const url = import.meta.env.VITE_SUPABASE_URL || processEnv?.SUPABASE_URL
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || processEnv?.SUPABASE_ANON_KEY
 
-    if (!url || !anonKey) {
+    if (!url || !isConfiguredSecret(anonKey)) {
         throw new Error('Supabase environment variables are not configured (SUPABASE_URL / SUPABASE_ANON_KEY)')
     }
 

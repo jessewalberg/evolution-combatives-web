@@ -6,27 +6,12 @@ import { getCSRFCookieName, isSecureRequest } from '../../src/lib/csrf-protectio
  * CSRF regression - API-level Playwright request tests.
  * Mutating /api/* without X-CSRF-Token must be rejected (403).
  */
-test.describe('CSRF protection', () => {
-  // These tests intentionally do not need a browser session cookie for the negative case.
+test.describe('CSRF protection (unauthenticated)', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
 
-  test('GET /api/csrf-token uses a protocol-appropriate cookie', async ({
-    request,
-    baseURL,
-  }) => {
+  test('GET /api/csrf-token requires an authenticated session', async ({ request }) => {
     const response = await request.get('/api/csrf-token')
-    expect(response.ok()).toBeTruthy()
-
-    const setCookie = response.headers()['set-cookie']
-    if (baseURL?.startsWith('https:')) {
-      // HTTPS (staging/production): host-only Secure cookie
-      expect(setCookie).toMatch(/^__Host-csrf-token=/)
-      expect(setCookie).toMatch(/;\s*Secure(?:;|$)/i)
-    } else {
-      // HTTP (local dev/CI): plain cookie without Secure
-      expect(setCookie).toMatch(/^csrf-token=/)
-      expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
-    }
+    expect(response.status()).toBe(401)
   })
 
   test('HTTPS requests retain the host-only Secure cookie name', () => {
@@ -64,6 +49,25 @@ test.describe('CSRF protection', () => {
     expect(body.success).toBe(false)
     expect(String(body.error)).toMatch(/csrf/i)
   })
+})
+
+test.describe('CSRF protection (authenticated admin session)', () => {
+  test('GET /api/csrf-token uses a protocol-appropriate cookie', async ({
+    request,
+    baseURL,
+  }) => {
+    const response = await request.get('/api/csrf-token')
+    expect(response.ok()).toBeTruthy()
+
+    const setCookie = response.headers()['set-cookie']
+    if (baseURL?.startsWith('https:')) {
+      expect(setCookie).toMatch(/^__Host-csrf-token=/)
+      expect(setCookie).toMatch(/;\s*Secure(?:;|$)/i)
+    } else {
+      expect(setCookie).toMatch(/^csrf-token=/)
+      expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
+    }
+  })
 
   test('control: POST with valid CSRF token is not rejected as CSRF failure', async ({
     request,
@@ -78,8 +82,6 @@ test.describe('CSRF protection', () => {
       headers,
     })
 
-    // CSRF middleware returns 403 + "CSRF token validation failed".
-    // A valid token must not hit that path (auth may still reject with 401).
     if (response.status() === 403) {
       const body = await response.json()
       expect(String(body.error || '')).not.toMatch(/csrf token validation failed/i)

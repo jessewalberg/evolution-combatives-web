@@ -8,18 +8,25 @@ vi.mock('@/src/lib/stripe', () => ({
   getOrCreateCustomer: vi.fn(),
 }))
 
+vi.mock('@/src/lib/session-auth', () => ({
+  requireAuthenticatedSession: vi.fn(),
+}))
+
 vi.mock('@/src/lib/supabase', () => ({
-  createAdminClient: vi.fn(),
+  createServerClient: vi.fn(),
 }))
 
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
-import { createAdminClient } from '@/src/lib/supabase'
+import { requireAuthenticatedSession } from '@/src/lib/session-auth'
+import { createServerClient } from '@/src/lib/supabase'
 
 const mockCreateCheckoutSession = vi.mocked(createCheckoutSession)
 const mockGetOrCreateCustomer = vi.mocked(getOrCreateCustomer)
-const mockCreateAdminClient = vi.mocked(createAdminClient)
+const mockRequireAuthenticatedSession = vi.mocked(requireAuthenticatedSession)
+const mockCreateServerClient = vi.mocked(createServerClient)
 
 const validUserId = '11111111-1111-4111-8111-111111111111'
+const otherUserId = '22222222-2222-4222-8222-222222222222'
 const validEmail = 'user@example.com'
 
 function buildSupabase(options: {
@@ -78,13 +85,36 @@ describe('POST /api/subscriptions/create-checkout', () => {
       url: 'https://checkout.stripe.com/session',
       customer_details: { email: validEmail },
     } as never)
+    mockRequireAuthenticatedSession.mockResolvedValue({
+      userId: validUserId,
+      email: validEmail,
+    })
+    mockCreateServerClient.mockResolvedValue(
+      buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
+    )
+  })
+
+  it('returns 401 when there is no authenticated session', async () => {
+    mockRequireAuthenticatedSession.mockResolvedValue({
+      error: new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 }),
+    })
+
+    const res = await POST(
+      createNextRequest('/api/subscriptions/create-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ tier: 'tier1' }),
+      })
+    )
+
+    expect(res.status).toBe(401)
+    expect(mockCreateServerClient).not.toHaveBeenCalled()
   })
 
   it('returns 400 for invalid request data', async () => {
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'invalid', userId: 'bad', userEmail: 'not-email' }),
+        body: JSON.stringify({ tier: 'invalid' }),
       })
     )
     const body = await res.json()
@@ -94,15 +124,15 @@ describe('POST /api/subscriptions/create-checkout', () => {
     expect(body.details).toBeDefined()
   })
 
-  it('returns 401 when user not found', async () => {
-    mockCreateAdminClient.mockReturnValue(
+  it('returns 401 when profile for session user is missing', async () => {
+    mockCreateServerClient.mockResolvedValue(
       buildSupabase({ user: null, userError: true }) as never
     )
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier1', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'tier1' }),
       })
     )
     const body = await res.json()
@@ -111,25 +141,29 @@ describe('POST /api/subscriptions/create-checkout', () => {
     expect(body.error).toBe('User not found or not authenticated')
   })
 
-  it('returns 400 on email mismatch', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: { id: validUserId, email: 'other@example.com' } }) as never
-    )
+  it('ignores spoofed userId in body and uses the authenticated session user', async () => {
+    vi.stubEnv('STRIPE_BEGINNER_PRICE_ID', 'price_runtime_tier1')
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier1', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({
+          tier: 'tier1',
+          userId: otherUserId,
+          userEmail: 'attacker@example.com',
+        }),
       })
     )
-    const body = await res.json()
 
-    expect(res.status).toBe(400)
-    expect(body.error).toBe('Email mismatch')
+    expect(res.status).toBe(200)
+    expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
+    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: validUserId })
+    )
   })
 
   it('returns 400 when user already has active subscription', async () => {
-    mockCreateAdminClient.mockReturnValue(
+    mockCreateServerClient.mockResolvedValue(
       buildSupabase({
         user: { id: validUserId, email: validEmail },
         existingSubscription: { id: 'sub1', status: 'active', tier: 'tier1' },
@@ -139,7 +173,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier2', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'tier2' }),
       })
     )
     const body = await res.json()
@@ -150,14 +184,10 @@ describe('POST /api/subscriptions/create-checkout', () => {
   })
 
   it('returns 500 when priceId missing for none tier', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
-    )
-
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'none', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'none' }),
       })
     )
     const body = await res.json()
@@ -168,14 +198,11 @@ describe('POST /api/subscriptions/create-checkout', () => {
 
   it('creates checkout session on success', async () => {
     vi.stubEnv('STRIPE_BEGINNER_PRICE_ID', 'price_runtime_tier1')
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
-    )
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier1', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'tier1' }),
       })
     )
     const body = await res.json()

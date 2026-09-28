@@ -32,7 +32,9 @@ function makeEvent(type: string, object: Record<string, unknown>) {
  * HTTP response status.
  */
 function buildSupabase() {
-  const subscriptionsInsert = vi.fn().mockResolvedValue({ error: null })
+  const subscriptionsUpsert = vi.fn().mockResolvedValue({ error: null })
+  const subscriptionsDeleteEq = vi.fn().mockResolvedValue({ error: null })
+  const subscriptionsDelete = vi.fn().mockReturnValue({ eq: subscriptionsDeleteEq })
   const subscriptionsUpdateEq = vi.fn().mockResolvedValue({ error: null })
   const subscriptionsUpdate = vi.fn().mockReturnValue({ eq: subscriptionsUpdateEq })
   const subscriptionsSelectSingle = vi.fn().mockResolvedValue({
@@ -45,7 +47,8 @@ function buildSupabase() {
   const from = vi.fn((table: string) => {
     if (table === 'subscriptions') {
       return {
-        insert: subscriptionsInsert,
+        upsert: subscriptionsUpsert,
+        delete: subscriptionsDelete,
         update: subscriptionsUpdate,
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({ single: subscriptionsSelectSingle }),
@@ -60,7 +63,9 @@ function buildSupabase() {
 
   return {
     from,
-    subscriptionsInsert,
+    subscriptionsUpsert,
+    subscriptionsDelete,
+    subscriptionsDeleteEq,
     subscriptionsUpdate,
     subscriptionsUpdateEq,
     subscriptionsSelectSingle,
@@ -120,10 +125,10 @@ describe('POST /api/webhooks/stripe', () => {
 
     expect(res.status).toBe(200)
     expect(body).toEqual({ received: true })
-    expect(supabase.subscriptionsInsert).not.toHaveBeenCalled()
+    expect(supabase.subscriptionsUpsert).not.toHaveBeenCalled()
   })
 
-  it('handles customer.subscription.created by writing the subscription row and profile tier', async () => {
+  it('handles customer.subscription.created by upserting the subscription row and profile tier', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', {
         id: 'sub_1',
@@ -140,22 +145,70 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(webhookRequest('{}', 'sig'))
     expect(res.status).toBe(200)
 
-    expect(supabase.subscriptionsInsert).toHaveBeenCalledWith({
-      user_id: 'user-1',
-      platform: 'stripe',
-      external_subscription_id: 'sub_1',
-      tier: 'tier1',
-      status: 'active',
-      stripe_subscription_id: 'sub_1',
-      stripe_customer_id: 'cus_1',
-      current_period_start: new Date(1700000000 * 1000).toISOString(),
-      current_period_end: new Date(1702592000 * 1000).toISOString(),
-      cancel_at_period_end: false,
-      canceled_at: null,
-      updated_at: expect.any(String),
-    })
+    expect(supabase.subscriptionsUpsert).toHaveBeenCalledWith(
+      {
+        user_id: 'user-1',
+        platform: 'stripe',
+        external_subscription_id: 'sub_1',
+        tier: 'tier1',
+        status: 'active',
+        stripe_subscription_id: 'sub_1',
+        stripe_customer_id: 'cus_1',
+        current_period_start: new Date(1700000000 * 1000).toISOString(),
+        current_period_end: new Date(1702592000 * 1000).toISOString(),
+        cancel_at_period_end: false,
+        canceled_at: null,
+        updated_at: expect.any(String),
+      },
+      { onConflict: 'stripe_subscription_id' }
+    )
     expect(supabase.profilesUpdate).toHaveBeenCalledWith({ subscription_tier: 'tier1' })
     expect(supabase.profilesUpdateEq).toHaveBeenCalledWith('id', 'user-1')
+  })
+
+
+  it('returns 200 when customer.subscription.created is replayed (idempotent upsert)', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', {
+        id: 'sub_1',
+        status: 'active',
+        customer: 'cus_1',
+        metadata: { userId: 'user-1', tier: 'tier1' },
+        current_period_start: 1700000000,
+        current_period_end: 1702592000,
+        cancel_at_period_end: false,
+        canceled_at: null,
+      })
+    )
+
+    const first = await POST(webhookRequest('{}', 'sig'))
+    const second = await POST(webhookRequest('{}', 'sig'))
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(supabase.subscriptionsUpsert).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns 500 when profile tier update fails so Stripe can retry', async () => {
+    supabase.profilesUpdateEq.mockResolvedValueOnce({ error: { message: 'profile update failed' } })
+
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('customer.subscription.created', {
+        id: 'sub_1',
+        status: 'active',
+        customer: 'cus_1',
+        metadata: { userId: 'user-1', tier: 'tier1' },
+        current_period_start: 1700000000,
+        current_period_end: 1702592000,
+        cancel_at_period_end: false,
+        canceled_at: null,
+      })
+    )
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+    expect(res.status).toBe(500)
+    expect(supabase.subscriptionsDelete).toHaveBeenCalled()
+    expect(supabase.subscriptionsDeleteEq).toHaveBeenCalledWith('stripe_subscription_id', 'sub_1')
   })
 
   it('handles customer.subscription.updated by updating status and period fields', async () => {
@@ -294,10 +347,10 @@ describe('POST /api/webhooks/stripe', () => {
 
     const res = await POST(webhookRequest('{}', 'sig'))
     expect(res.status).toBe(200)
-    expect(supabase.subscriptionsInsert).not.toHaveBeenCalled()
+    expect(supabase.subscriptionsUpsert).not.toHaveBeenCalled()
   })
 
-  it('returns 400 when subscription insert fails', async () => {
+  it('returns 500 when subscription upsert fails', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('customer.subscription.created', {
         id: 'sub_fail',
@@ -310,10 +363,10 @@ describe('POST /api/webhooks/stripe', () => {
         canceled_at: null,
       })
     )
-    supabase.subscriptionsInsert.mockResolvedValue({ error: { message: 'dup' } })
+    supabase.subscriptionsUpsert.mockResolvedValue({ error: { message: 'dup' } })
 
     const res = await POST(webhookRequest('{}', 'sig'))
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('Webhook handler failed')
     expect(supabase.profilesUpdate).not.toHaveBeenCalled()
   })

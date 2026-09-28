@@ -7,6 +7,7 @@ import {
   expireStripeCheckoutSession,
 } from '../helpers/api'
 import { fetchCsrfHeaders } from '../helpers/csrf'
+import { signInUserSession } from '../helpers/user-session'
 
 /**
  * Subscription deep-link -> Stripe Checkout (test mode).
@@ -24,14 +25,17 @@ import { fetchCsrfHeaders } from '../helpers/csrf'
  * depends on Stripe CLI / dashboard webhook delivery to this environment.
  */
 test.describe('Subscription deep-link flow', () => {
+  test.use({ storageState: { cookies: [], origins: [] } })
+
   let userId: string | undefined
   let email: string | undefined
+  let password: string | undefined
   let checkoutSessionId: string | undefined
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ page, context, baseURL }) => {
     const supabase = createServiceRoleClient()
     email = uniqueEmail('subscribe')
-    const password = `E2eSub1!${uniqueSuffix().slice(0, 6)}`
+    password = `E2eSub1!${uniqueSuffix().slice(0, 6)}`
 
     const { data, error } = await supabase.auth.admin.createUser({
       email,
@@ -48,6 +52,8 @@ test.describe('Subscription deep-link flow', () => {
       full_name: 'E2E Subscribe User',
       admin_role: null,
     })
+
+    await signInUserSession(context, baseURL!, email, password)
   })
 
   test.afterEach(async () => {
@@ -107,8 +113,6 @@ test.describe('Subscription deep-link flow', () => {
       headers,
       data: {
         tier: 'tier1',
-        userId,
-        userEmail: email,
         successUrl: `${base}/subscription-success?tier=tier1`,
         cancelUrl: `${base}/subscription-cancel`,
       },

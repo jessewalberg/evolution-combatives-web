@@ -11,9 +11,15 @@ vi.mock('@/src/lib/csrf-protection', async (importOriginal) => {
   }
 })
 
+vi.mock('@/src/lib/session-auth', () => ({
+  requireAuthenticatedSession: vi.fn(),
+}))
+
 import { generateCSRFToken } from '@/src/lib/csrf-protection'
+import { requireAuthenticatedSession } from '@/src/lib/session-auth'
 
 const mockGenerate = vi.mocked(generateCSRFToken)
+const mockRequireAuthenticatedSession = vi.mocked(requireAuthenticatedSession)
 
 const setCookie = vi.fn()
 vi.mock('@tanstack/react-start/server', () => ({
@@ -21,7 +27,25 @@ vi.mock('@tanstack/react-start/server', () => ({
 }))
 
 describe('GET /api/csrf-token', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRequireAuthenticatedSession.mockResolvedValue({
+      userId: '11111111-1111-4111-8111-111111111111',
+      email: 'user@example.com',
+    })
+  })
+
+  it('returns 401 without an authenticated session', async () => {
+    mockRequireAuthenticatedSession.mockResolvedValue({
+      error: new Response(JSON.stringify({ success: false, error: 'Authentication required' }), {
+        status: 401,
+      }),
+    })
+
+    const res = await GET(createNextRequest('/api/csrf-token'))
+    expect(res.status).toBe(401)
+    expect(mockGenerate).not.toHaveBeenCalled()
+  })
 
   it('returns token and sets cookie', async () => {
     mockGenerate.mockReturnValue('csrf-test-token')

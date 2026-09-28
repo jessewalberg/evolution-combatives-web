@@ -91,8 +91,8 @@ function SubscribePage() {
                 credentials: 'include',
                 body: JSON.stringify({
                     tier,
-                    userId,
-                    userEmail,
+                    successUrl: `${import.meta.env.VITE_APP_URL || window.location.origin}/subscription-success?tier=${tier}`,
+                    cancelUrl: `${import.meta.env.VITE_APP_URL || window.location.origin}/subscription-cancel`,
                 }),
             });
 

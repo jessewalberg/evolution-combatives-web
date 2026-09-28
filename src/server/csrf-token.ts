@@ -5,10 +5,16 @@
  */
 
 import { generateCSRFToken, getCSRFCookieName, isSecureRequest } from '@/src/lib/csrf-protection'
+import { requireAuthenticatedSession } from '@/src/lib/session-auth'
 import { json } from '@/src/lib/http'
 
 export async function GET({ request }: { request: Request }) {
     try {
+        const auth = await requireAuthenticatedSession()
+        if ('error' in auth) {
+            return auth.error
+        }
+
         const token = generateCSRFToken()
         const maxAge = 60 * 60 * 24 // 24 hours in seconds
         const expiresAt = new Date(Date.now() + maxAge * 1000).toISOString()

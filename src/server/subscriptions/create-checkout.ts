@@ -9,30 +9,36 @@
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
 import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers';
 import { getStripePriceId } from './price-id';
-import { createAdminClient } from '@/src/lib/supabase';
+import { createServerClient } from '@/src/lib/supabase';
+import { requireAuthenticatedSession } from '@/src/lib/session-auth';
 import { json } from '@/src/lib/http';
 import { z } from 'zod';
 
-// Request validation schema
 const CreateCheckoutSchema = z.object({
     tier: z.enum(['none', 'tier1', 'tier2', 'tier3']),
-    userId: z.string().uuid(),
-    userEmail: z.string().email(),
     successUrl: z.string().url().optional(),
     cancelUrl: z.string().url().optional(),
 });
 
 export async function POST({ request }: { request: Request }) {
-    let tier, userId, userEmail;
+    let tier: string | undefined;
+    let userId: string | undefined;
+    let userEmail: string | undefined;
     try {
+        const auth = await requireAuthenticatedSession();
+        if ('error' in auth) {
+            return auth.error;
+        }
+
+        userId = auth.userId;
+        userEmail = auth.email;
+
         const body = await request.json();
         const validatedData = CreateCheckoutSchema.parse(body);
-
-        ({ tier, userId, userEmail } = validatedData);
+        tier = validatedData.tier;
         const { successUrl, cancelUrl } = validatedData;
 
-        // Verify user exists and is authenticated
-        const supabase = createAdminClient();
+        const supabase = await createServerClient();
         const { data: user, error: userError } = await supabase
             .from('profiles')
             .select('id, email')
@@ -46,15 +52,13 @@ export async function POST({ request }: { request: Request }) {
             );
         }
 
-        // Verify email matches
-        if (user.email !== userEmail) {
+        if (user.email?.toLowerCase() !== userEmail) {
             return json(
                 { error: 'Email mismatch' },
                 { status: 400 }
             );
         }
 
-        // Check if user already has an active subscription
         const { data: existingSubscription } = await supabase
             .from('subscriptions')
             .select('id, status, tier')
@@ -66,14 +70,13 @@ export async function POST({ request }: { request: Request }) {
             return json(
                 {
                     error: 'User already has an active subscription',
-                    currentTier: existingSubscription.tier
+                    currentTier: existingSubscription.tier,
                 },
                 { status: 400 }
             );
         }
 
-        // Get Stripe price ID for the tier
-        const priceId = getStripePriceId(tier);
+        const priceId = getStripePriceId(tier as 'none' | 'tier1' | 'tier2' | 'tier3');
         if (!priceId) {
             return json(
                 { error: `Price ID not configured for tier: ${tier}` },
@@ -81,14 +84,11 @@ export async function POST({ request }: { request: Request }) {
             );
         }
 
-        // Get or create Stripe customer
         const customer = await getOrCreateCustomer(userEmail, userId);
 
-        // Default URLs - redirect back to mobile app
         const defaultSuccessUrl = successUrl || `${(process.env.MOBILE_APP_SCHEME || 'evolutioncombatives')}://subscription/success?tier=${tier}`;
         const defaultCancelUrl = cancelUrl || `${(process.env.MOBILE_APP_SCHEME || 'evolutioncombatives')}://subscription/cancel`;
 
-        // Create checkout session
         const session = await createCheckoutSession({
             priceId,
             customerId: customer.id,
@@ -98,7 +98,6 @@ export async function POST({ request }: { request: Request }) {
             cancelUrl: defaultCancelUrl,
         });
 
-        // Log the checkout session creation
         console.log('✅ Checkout session created successfully:', {
             userId,
             tier,
@@ -112,7 +111,7 @@ export async function POST({ request }: { request: Request }) {
             sessionId: session.id,
             url: session.url,
             tier,
-            price: SUBSCRIPTION_PRICING[tier].monthly,
+            price: SUBSCRIPTION_PRICING[tier as keyof typeof SUBSCRIPTION_PRICING].monthly,
         });
 
     } catch (error) {
@@ -123,7 +122,6 @@ export async function POST({ request }: { request: Request }) {
             timestamp: new Date().toISOString()
         });
 
-        // Handle validation errors
         if (error instanceof z.ZodError) {
             return json(
                 {
@@ -134,7 +132,6 @@ export async function POST({ request }: { request: Request }) {
             );
         }
 
-        // Handle Stripe errors
         if (error instanceof Error && error.message.includes('Stripe')) {
             return json(
                 { error: 'Payment processing error' },
@@ -149,7 +146,6 @@ export async function POST({ request }: { request: Request }) {
     }
 }
 
-// Health check endpoint
 export async function GET() {
     return json({
         status: 'ok',

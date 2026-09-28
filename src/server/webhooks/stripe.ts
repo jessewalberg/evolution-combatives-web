@@ -23,30 +23,37 @@ interface StripeInvoiceWithSubscription extends Stripe.Invoice {
 }
 
 export async function POST({ request }: { request: Request }) {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+        console.error('STRIPE_WEBHOOK_SECRET environment variable is required');
+        return json({ error: 'Webhook not configured' }, { status: 500 });
+    }
+
+    const body = await request.text();
+    const signature = request.headers.get('stripe-signature');
+
+    if (!signature) {
+        console.error('Missing Stripe signature header');
+        return json(
+            { error: 'Missing signature' },
+            { status: 400 }
+        );
+    }
+
+    let event: Stripe.Event;
     try {
-        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-        if (!webhookSecret) {
-            console.error('STRIPE_WEBHOOK_SECRET environment variable is required');
-            return json({ error: 'Webhook not configured' }, { status: 500 });
-        }
+        event = await validateWebhookSignature(body, signature, webhookSecret);
+    } catch (error) {
+        console.error('Webhook signature error:', error);
+        return json(
+            { error: 'Webhook handler failed' },
+            { status: 400 }
+        );
+    }
 
-        const body = await request.text();
-        const signature = request.headers.get('stripe-signature');
-
-        if (!signature) {
-            console.error('Missing Stripe signature header');
-            return json(
-                { error: 'Missing signature' },
-                { status: 400 }
-            );
-        }
-
-        // Validate webhook signature
-        const event = await validateWebhookSignature(body, signature, webhookSecret);
-
+    try {
         console.log(`Received Stripe webhook: ${event.type}, ID: ${event.id}`);
 
-        // Handle the event
         switch (event.type) {
             case 'checkout.session.completed':
                 await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
@@ -77,12 +84,11 @@ export async function POST({ request }: { request: Request }) {
         }
 
         return json({ received: true });
-
     } catch (error) {
-        console.error('Webhook error:', error);
+        console.error('Webhook handler error:', error);
         return json(
             { error: 'Webhook handler failed' },
-            { status: 400 }
+            { status: 500 }
         );
     }
 }
@@ -117,30 +123,30 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
 
     const supabase = createAdminClient();
 
-    // Create subscription record in database
+    const subscriptionRow = {
+        user_id: userId,
+        platform: 'stripe',
+        external_subscription_id: subscription.id,
+        tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
+        status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: subscription.customer as string,
+        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+        updated_at: new Date().toISOString(),
+    };
+
     const { error } = await supabase
         .from('subscriptions')
-        .insert({
-            user_id: userId,
-            platform: 'stripe',
-            external_subscription_id: subscription.id,
-            tier: tier as 'none' | 'tier1' | 'tier2' | 'tier3',
-            status: subscription.status as 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid',
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: subscription.customer as string,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
-            updated_at: new Date().toISOString(),
-        });
+        .upsert(subscriptionRow, { onConflict: 'stripe_subscription_id' });
 
     if (error) {
         console.error('Error creating subscription in database:', error);
         throw error;
     }
 
-    // Update user profile with subscription tier
     const { error: profileError } = await supabase
         .from('profiles')
         .update({ subscription_tier: tier })
@@ -148,6 +154,11 @@ async function handleSubscriptionCreated(subscription: StripeSubscriptionWithPer
 
     if (profileError) {
         console.error('Error updating user profile:', profileError);
+        await supabase
+            .from('subscriptions')
+            .delete()
+            .eq('stripe_subscription_id', subscription.id);
+        throw profileError;
     }
 
     console.log(`Subscription created in database for user ${userId}, tier ${tier}`);
