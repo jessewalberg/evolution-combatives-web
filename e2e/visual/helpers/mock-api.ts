@@ -50,6 +50,12 @@ export async function installDeterminism(page: Page): Promise<void> {
   await page.clock.resume()
 
   await page.addInitScript((seedStart: number) => {
+    // The processing monitor's placeholder system load is sampled after
+    // async requests, so a seeded sequence still depends on request order.
+    if (window.location.pathname === '/dashboard/content/processing') {
+      Math.random = () => 0.03
+      return
+    }
     let seed = seedStart
     Math.random = () => {
       seed = (seed * 16807) % 2147483647
