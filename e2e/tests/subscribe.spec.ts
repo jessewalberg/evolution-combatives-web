@@ -32,7 +32,7 @@ test.describe('Subscription deep-link flow', () => {
   let password: string | undefined
   let checkoutSessionId: string | undefined
 
-  test.beforeEach(async ({ page, context, baseURL }) => {
+  test.beforeEach(async ({ context, baseURL }) => {
     const supabase = createServiceRoleClient()
     email = uniqueEmail('subscribe')
     password = `E2eSub1!${uniqueSuffix().slice(0, 6)}`
