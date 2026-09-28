@@ -48,6 +48,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build (preview env)
+        env:
+          DEPLOY_BUILD: '1'
         run: |
           node scripts/prepare-wrangler-deploy.mjs
           pnpm exec vite build

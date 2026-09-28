@@ -65,7 +65,7 @@ test('manual production and staging commands prepare values before building', ()
       copyFileSync(script, join(directory, 'scripts', 'prepare-wrangler-deploy.mjs'))
       const bin = join(directory, 'node_modules', '.bin')
       mkdirSync(bin, { recursive: true })
-      writeFileSync(join(bin, 'vite'), '#!/bin/sh\nprintf "vite:%s:%s\\n" "$CLOUDFLARE_ENV" "$*" >> "$DEPLOY_TEST_LOG"\n', { mode: 0o755 })
+      writeFileSync(join(bin, 'vite'), '#!/bin/sh\nprintf "vite:%s:%s:%s\\n" "$CLOUDFLARE_ENV" "$DEPLOY_BUILD" "$*" >> "$DEPLOY_TEST_LOG"\n', { mode: 0o755 })
       writeFileSync(join(bin, 'wrangler'), '#!/bin/sh\nprintf "wrangler:%s:%s\\n" "$CLOUDFLARE_ENV" "$*" >> "$DEPLOY_TEST_LOG"\n', { mode: 0o755 })
 
       const log = join(directory, 'steps.log')
@@ -95,7 +95,7 @@ test('manual production and staging commands prepare values before building', ()
       })
       assert.equal(success.status, 0, success.stderr)
       assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), [
-        `vite:${environment === 'staging' ? 'staging' : ''}:build`,
+        `vite:${environment === 'staging' ? 'staging' : ''}:1:build`,
         `wrangler:${environment === 'staging' ? 'staging' : ''}:deploy --config dist/server/wrangler.json`,
       ])
     } finally {

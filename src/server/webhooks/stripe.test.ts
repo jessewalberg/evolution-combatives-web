@@ -119,7 +119,7 @@ function buildSupabase() {
   }
 
   const rpc = vi.fn((name: string, args: { p_subscription: Row; p_event_id: string; p_event_created_at: number }) => {
-    if (name === 'complete_stripe_checkout_reservation') {
+    if (name === 'consume_stripe_checkout') {
       return Promise.resolve({ data: true, error: null })
     }
     if (name !== 'apply_stripe_subscription_event') {
@@ -202,7 +202,7 @@ describe('POST /api/webhooks/stripe', () => {
     expect(res.status).toBe(200)
     expect(body).toEqual({ received: true })
     expect(mockRetrieve).not.toHaveBeenCalled()
-    expect(supabase.rpc).toHaveBeenCalledWith('complete_stripe_checkout_reservation', {
+    expect(supabase.rpc).toHaveBeenCalledWith('consume_stripe_checkout', {
       p_user_id: 'user-1',
       p_checkout_session_id: 'cs_1',
       p_stripe_subscription_id: 'sub_1',
@@ -440,6 +440,18 @@ describe('POST /api/webhooks/stripe', () => {
   it('requests retry when checkout completion metadata is missing', async () => {
     mockValidateWebhookSignature.mockResolvedValue(
       makeEvent('checkout.session.completed', { id: 'cs_2', metadata: {} })
+    )
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+    expect(res.status).toBe(500)
+  })
+
+  it('requests retry when checkout completion has no matching reservation', async () => {
+    supabase.rpc.mockResolvedValueOnce({ data: false, error: null })
+    mockValidateWebhookSignature.mockResolvedValue(
+      makeEvent('checkout.session.completed', {
+        id: 'cs_unknown', subscription: 'sub_1', metadata: { userId: 'user-1' },
+      })
     )
 
     const res = await POST(webhookRequest('{}', 'sig'))

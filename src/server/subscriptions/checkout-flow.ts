@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
+import { createAdminClient } from '@/src/lib/supabase';
 import type { Database } from '@/src/lib/shared/types/database';
 
 type AdminClient = SupabaseClient<Database>;
@@ -40,12 +41,8 @@ export async function assertSingleNonTerminalSubscription(
     }
 
     const rows = (data ?? []) as Array<{ id: string; status: string; tier: string }>;
-    if (count !== null && count > 1) {
-        console.error('Ambiguous subscription state: multiple non-terminal rows for user', userId);
-        return { ok: false, status: 500, error: 'Unable to verify subscription status' };
-    }
-    if (rows.length > 1) {
-        console.error('Ambiguous subscription state: multiple non-terminal rows for user', userId);
+    if (count === null || count !== rows.length || rows.length > 1) {
+        console.error('Ambiguous subscription state for user', userId);
         return { ok: false, status: 500, error: 'Unable to verify subscription status' };
     }
 
@@ -59,6 +56,26 @@ export async function assertSingleNonTerminalSubscription(
         };
     }
 
+    try {
+        const { count: orphanCount, error: orphanError } = await createAdminClient()
+            .from('stripe_orphan_subscriptions')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('needs_refund', true)
+            .is('resolved_at', null);
+
+        if (orphanError || orphanCount === null) {
+            console.error('Error checking unresolved Stripe payments:', orphanError);
+            return { ok: false, status: 500, error: 'Unable to verify subscription status' };
+        }
+        if (orphanCount > 0) {
+            return { ok: false, status: 400, error: 'Unresolved payment requires review' };
+        }
+    } catch (error) {
+        console.error('Error checking unresolved Stripe payments:', error);
+        return { ok: false, status: 500, error: 'Unable to verify subscription status' };
+    }
+
     return { ok: true };
 }
 
@@ -70,6 +87,8 @@ function mapReserveError(code: string | undefined): { status: 400 | 500; error: 
     switch (code) {
         case 'subscription_in_progress':
             return { status: 400, error: 'User already has a subscription in progress' };
+        case 'unresolved_payment':
+            return { status: 400, error: 'Unresolved payment requires review' };
         case 'ambiguous_subscription_state':
         case 'checkout_in_progress':
             return { status: 500, error: 'Unable to start checkout' };
@@ -151,6 +170,13 @@ export async function createReservedCheckoutSession(params: {
         };
     }
 
+    let sessionId: string | null = null;
+    const releaseReservation = () => adminRpc(admin, 'release_stripe_checkout_reservation', {
+        p_user_id: userId,
+        p_reservation_id: reserved.result.reservationId,
+        p_checkout_session_id: sessionId,
+    });
+
     try {
         const customer = await getOrCreateCustomer(userEmail, userId);
         const session = await createCheckoutSession({
@@ -162,6 +188,7 @@ export async function createReservedCheckoutSession(params: {
             cancelUrl,
             idempotencyKey: reserved.result.idempotencyKey,
         });
+        sessionId = session.id;
 
         const expiresAt = session.expires_at
             ? new Date(session.expires_at * 1000).toISOString()
@@ -177,28 +204,19 @@ export async function createReservedCheckoutSession(params: {
 
         if (finalizeError || finalized !== true) {
             console.error('finalize_stripe_checkout_reservation RPC error:', finalizeError);
-            await adminRpc(admin, 'release_stripe_checkout_reservation', {
-                p_user_id: userId,
-                p_reservation_id: reserved.result.reservationId,
-            });
+            await releaseReservation();
             return { ok: false, status: 500, error: 'Unable to start checkout' };
         }
 
         if (!session.url) {
-            await adminRpc(admin, 'release_stripe_checkout_reservation', {
-                p_user_id: userId,
-                p_reservation_id: reserved.result.reservationId,
-            });
+            await releaseReservation();
             return { ok: false, status: 500, error: 'Unable to start checkout' };
         }
 
         return { ok: true, sessionId: session.id, url: session.url, reused: false };
     } catch (err) {
         console.error('Stripe checkout session creation failed:', err);
-        await adminRpc(admin, 'release_stripe_checkout_reservation', {
-            p_user_id: userId,
-            p_reservation_id: reserved.result.reservationId,
-        });
+        await releaseReservation();
         return { ok: false, status: 500, error: 'Payment processing error' };
     }
 }

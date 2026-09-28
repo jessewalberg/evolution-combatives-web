@@ -15,7 +15,7 @@ const isVitest = Boolean(process.env.VITEST)
  * block for the given CLOUDFLARE_ENV (unset → top-level; staging/preview →
  * env.<name>.vars).
  */
-function loadWranglerViteVars(cloudflareEnv: string | undefined): Record<string, string> {
+function loadWranglerViteVars(cloudflareEnv: string | undefined, deployBuild: boolean): Record<string, string> {
     const raw = readFileSync(resolve(process.cwd(), 'wrangler.jsonc'), 'utf8')
     const stripped = raw.replace(/^\s*\/\/.*$/gm, '')
     const config = JSON.parse(stripped) as {
@@ -23,14 +23,18 @@ function loadWranglerViteVars(cloudflareEnv: string | undefined): Record<string,
         env?: Record<string, { vars?: Record<string, string> }>
     }
 
-    const vars =
-        cloudflareEnv && config.env?.[cloudflareEnv]?.vars
-            ? config.env[cloudflareEnv].vars!
-            : (config.vars ?? {})
+    const selected = cloudflareEnv ? config.env?.[cloudflareEnv]?.vars : config.vars
+    if (deployBuild && !selected) {
+        throw new Error('Deployment environment is missing from Wrangler config')
+    }
+    const vars = selected ?? {}
 
     const viteVars: Record<string, string> = {}
     for (const [key, value] of Object.entries(vars)) {
         if (key.startsWith('VITE_') && typeof value === 'string') {
+            if (deployBuild && value.includes('REPLACE_AT_DEPLOY')) {
+                throw new Error(`Unresolved deploy value for ${key}`)
+            }
             viteVars[key] = value
         }
     }
@@ -38,10 +42,9 @@ function loadWranglerViteVars(cloudflareEnv: string | undefined): Record<string,
 }
 
 export default defineConfig(({ mode }) => {
-    // Prefer values already present in Vite env (.env / .env.local / process).
-    // Fall back to wrangler.jsonc vars so CI/deploy builds still inline them.
-    const existingEnv = loadEnv(mode, process.cwd(), 'VITE_')
-    const wranglerVars = loadWranglerViteVars(process.env.CLOUDFLARE_ENV)
+    const deployBuild = process.env.DEPLOY_BUILD === '1'
+    const existingEnv: Record<string, string> = deployBuild ? {} : loadEnv(mode, process.cwd(), 'VITE_')
+    const wranglerVars = loadWranglerViteVars(process.env.CLOUDFLARE_ENV, deployBuild)
     const define: Record<string, string> = {}
     for (const [key, value] of Object.entries(wranglerVars)) {
         if (existingEnv[key] !== undefined) continue
@@ -49,6 +52,7 @@ export default defineConfig(({ mode }) => {
     }
 
     return {
+        envPrefix: deployBuild ? 'DEPLOY_INTERNAL_' : 'VITE_',
         server: {
             port: 3000,
         },

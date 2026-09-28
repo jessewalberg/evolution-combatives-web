@@ -178,7 +178,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     }
 
     const supabase = createAdminClient();
-    const { data, error } = await supabase.rpc('complete_stripe_checkout_reservation', {
+    const { data, error } = await supabase.rpc('consume_stripe_checkout', {
         p_user_id: userId,
         p_checkout_session_id: session.id,
         p_stripe_subscription_id: subscriptionId,

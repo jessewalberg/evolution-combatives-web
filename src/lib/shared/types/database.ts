@@ -91,6 +91,41 @@ export interface Database {
                     updated_at?: string;
                 };
             };
+            stripe_orphan_subscriptions: {
+                Row: {
+                    id: string;
+                    user_id: string;
+                    stripe_subscription_id: string;
+                    existing_stripe_subscription_id: string;
+                    event_id: string;
+                    needs_refund: boolean;
+                    payload: Record<string, unknown>;
+                    created_at: string;
+                    resolved_at: string | null;
+                };
+                Insert: {
+                    id?: string;
+                    user_id: string;
+                    stripe_subscription_id: string;
+                    existing_stripe_subscription_id: string;
+                    event_id: string;
+                    needs_refund?: boolean;
+                    payload: Record<string, unknown>;
+                    created_at?: string;
+                    resolved_at?: string | null;
+                };
+                Update: {
+                    id?: string;
+                    user_id?: string;
+                    stripe_subscription_id?: string;
+                    existing_stripe_subscription_id?: string;
+                    event_id?: string;
+                    needs_refund?: boolean;
+                    payload?: Record<string, unknown>;
+                    created_at?: string;
+                    resolved_at?: string | null;
+                };
+            };
             disciplines: {
                 Row: {
                     id: string;
@@ -421,7 +456,7 @@ export interface Database {
                 };
                 Returns: boolean;
             };
-            complete_stripe_checkout_reservation: {
+            consume_stripe_checkout: {
                 Args: {
                     p_user_id: string;
                     p_checkout_session_id: string;
@@ -433,6 +468,7 @@ export interface Database {
                 Args: {
                     p_user_id: string;
                     p_reservation_id: string;
+                    p_checkout_session_id: string | null;
                 };
                 Returns: void;
             };
