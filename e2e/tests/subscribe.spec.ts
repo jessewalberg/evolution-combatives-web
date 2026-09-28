@@ -160,7 +160,7 @@ test.describe('Subscription deep-link flow', () => {
     const csrfErrorBanner = page.getByText(/csrf token validation failed/i)
     await expect(csrfErrorBanner).toHaveCount(0)
 
-    // Don't read checkoutResponse.json() here: app/subscribe/page.tsx's own success
+    // Don't read checkoutResponse.json() here: src/routes/subscribe.tsx's own success
     // handler reads this same response body and immediately does
     // `window.location.href = data.url`, which can evict the buffered body before
     // this test's CDP read completes ("Response body is not available for a
