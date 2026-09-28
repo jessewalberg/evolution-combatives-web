@@ -137,7 +137,7 @@ export async function POST({ request }: { request: Request }) {
                 tier,
                 price: SUBSCRIPTION_PRICING[tier].monthly,
                 currency: 'usd',
-                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                expiresAt: checkout.expiresAt,
             }
         }
 

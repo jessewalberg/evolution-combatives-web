@@ -25,7 +25,7 @@ function subscription(id: string, created: number, status: string) {
   }
 }
 
-async function bootstrapDb() {
+async function bootstrapDb(legacyCreatedAt?: string) {
   const db = new PGlite()
   await db.exec(`
     CREATE ROLE anon;
@@ -39,6 +39,7 @@ async function bootstrapDb() {
       tier text NOT NULL,
       status text NOT NULL,
       stripe_subscription_id text UNIQUE,
+      created_at timestamptz NOT NULL DEFAULT now(),
       stripe_customer_id text,
       stripe_created_at timestamptz,
       stripe_last_event_created_at timestamptz,
@@ -51,6 +52,13 @@ async function bootstrapDb() {
     );
   `)
   await db.exec(migrationBase)
+  if (legacyCreatedAt) {
+    await db.query(
+      `INSERT INTO public.subscriptions (user_id, platform, external_subscription_id, tier, status, stripe_subscription_id, created_at)
+       VALUES ($1, 'stripe', 'sub_legacy', 'tier1', 'active', 'sub_legacy', $2)`,
+      [userId, legacyCreatedAt],
+    )
+  }
   await db.exec(migrationCheckout)
   return db
 }
@@ -134,6 +142,7 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
       expect((await db.query<{ needs_refund: boolean }>(
         'SELECT needs_refund FROM public.stripe_orphan_subscriptions WHERE stripe_subscription_id = $1', ['sub_duplicate'],
       )).rows[0].needs_refund).toBe(false)
+      await apply(db, 'sub_live', 1700000000, 'active', 'evt_live_updated', 1700001300)
       await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_paid', 1700001250, true)
       await apply(db, 'sub_duplicate', 1700000001, 'active', 'evt_updated', 1700001275)
       await apply(db, 'sub_old', 1699999999, 'canceled', 'evt_old_terminal', 1700001300)
@@ -162,7 +171,7 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
       await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
       await apply(db, 'sub_old', 1700000000, 'active', 'evt_old_active', 1700000100)
       await apply(db, 'sub_old', 1700000000, 'canceled', 'evt_old_canceled', 1700000200)
-      await apply(db, 'sub_new', 1700000001, 'active', 'evt_new_active', 1700000300)
+      await apply(db, 'sub_new', 1700000300, 'active', 'evt_new_active', 1700000300)
       await apply(db, 'sub_old', 1700000000, 'canceled', 'evt_old_delayed', 1700000150)
       await apply(db, 'sub_old', 1700000000, 'canceled', 'evt_old_payment', 1700000250, true)
 
@@ -171,7 +180,35 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
         [userId],
       )).rows).toEqual([{ stripe_subscription_id: 'sub_old', needs_refund: false }])
 
-      await apply(db, 'sub_new', 1700000001, 'canceled', 'evt_new_canceled', 1700000400)
+      await apply(db, 'sub_new', 1700000300, 'canceled', 'evt_new_canceled', 1700000400)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+      )).rows[0].data.action).toBe('create')
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('backfills legacy Stripe creation time and flags a later paid duplicate', async () => {
+    const legacyCreatedAt = new Date(1700000000 * 1000).toISOString()
+    const db = await bootstrapDb(legacyCreatedAt)
+    try {
+      const backfilledAt = (await db.query<{ stripe_created_at: string }>(
+        'SELECT stripe_created_at FROM public.subscriptions WHERE user_id = $1', [userId],
+      )).rows[0].stripe_created_at
+      expect(new Date(backfilledAt).getTime()).toBe(new Date(legacyCreatedAt).getTime())
+
+      await apply(db, 'sub_duplicate', 1700000100, 'active', 'evt_duplicate_paid', 1700000200, true)
+      expect((await db.query<{ needs_refund: boolean }>(
+        'SELECT needs_refund FROM public.stripe_orphan_subscriptions WHERE stripe_subscription_id = $1',
+        ['sub_duplicate'],
+      )).rows[0].needs_refund).toBe(true)
+
+      await db.query(`UPDATE public.subscriptions SET status = 'canceled' WHERE user_id = $1`, [userId])
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
+      )).rows[0].data.error).toBe('unresolved_payment')
+      await db.query(`UPDATE public.stripe_orphan_subscriptions SET resolved_at = now() WHERE stripe_subscription_id = 'sub_duplicate'`)
       expect((await db.query<{ data: Record<string, string> }>(
         `SELECT public.reserve_stripe_checkout($1::uuid, 'tier2') AS data`, [userId],
       )).rows[0].data.action).toBe('create')
@@ -219,6 +256,10 @@ describe('reserve_stripe_checkout migration (PGlite)', () => {
         session_id: 'cs_live',
         url: 'https://checkout.test/cs_live',
       })
+      const storedExpiry = (await db.query<{ expires_at: string }>(
+        'SELECT expires_at FROM public.stripe_checkout_reservations WHERE user_id = $1', [userId],
+      )).rows[0].expires_at
+      expect(new Date(reuse.rows[0].data.expires_at).getTime()).toBe(new Date(storedExpiry).getTime())
 
       expect((await db.query<{ completed: boolean }>(
         `SELECT public.consume_stripe_checkout($1::uuid, 'cs_unknown', 'sub_paid') AS completed`,

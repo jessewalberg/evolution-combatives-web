@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { assertSingleNonTerminalSubscription } from './checkout-flow'
+import { assertSingleNonTerminalSubscription, createReservedCheckoutSession } from './checkout-flow'
 import { createAdminClient } from '@/src/lib/supabase'
+import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
 
 vi.mock('@/src/lib/supabase', () => ({ createAdminClient: vi.fn() }))
+vi.mock('@/src/lib/stripe', () => ({ createCheckoutSession: vi.fn(), getOrCreateCustomer: vi.fn() }))
 
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
@@ -75,5 +77,61 @@ describe('assertSingleNonTerminalSubscription', () => {
         ok: false, status: 500, error: 'Unable to verify subscription status',
       })
     }
+  })
+})
+
+describe('createReservedCheckoutSession expiry', () => {
+  const params = {
+    userId: 'user-1',
+    userEmail: 'user@example.com',
+    tier: 'tier1',
+    priceId: 'price_1',
+    successUrl: 'https://example.com/success',
+    cancelUrl: 'https://example.com/cancel',
+  }
+
+  it('returns the stored expiry when reusing a reservation', async () => {
+    vi.mocked(createCheckoutSession).mockClear()
+    const admin = { rpc: vi.fn().mockResolvedValue({
+      data: {
+        action: 'reuse',
+        reservation_id: 'reservation-1',
+        session_id: 'cs_reused',
+        url: 'https://checkout.test/reused',
+        expires_at: '2030-01-01T00:00:00+00:00',
+      },
+      error: null,
+    }) } as never
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toEqual({
+      ok: true,
+      sessionId: 'cs_reused',
+      url: 'https://checkout.test/reused',
+      expiresAt: '2030-01-01T00:00:00+00:00',
+      reused: true,
+    })
+    expect(createCheckoutSession).not.toHaveBeenCalled()
+  })
+
+  it('returns the Stripe expiry used to finalize a new reservation', async () => {
+    vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
+    vi.mocked(createCheckoutSession).mockResolvedValue({
+      id: 'cs_new', url: 'https://checkout.test/new', expires_at: 1893456000,
+    } as never)
+    const rpc = vi.fn((name: string) => Promise.resolve(name === 'reserve_stripe_checkout'
+      ? { data: { action: 'create', reservation_id: 'reservation-2', idempotency_key: 'checkout:reservation-2' }, error: null }
+      : { data: true, error: null }))
+    const admin = { rpc } as never
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toEqual({
+      ok: true,
+      sessionId: 'cs_new',
+      url: 'https://checkout.test/new',
+      expiresAt: '2030-01-01T00:00:00.000Z',
+      reused: false,
+    })
+    expect(rpc).toHaveBeenCalledWith('finalize_stripe_checkout_reservation', expect.objectContaining({
+      p_expires_at: '2030-01-01T00:00:00.000Z',
+    }))
   })
 })

@@ -80,7 +80,7 @@ export async function assertSingleNonTerminalSubscription(
 }
 
 type ReserveResult =
-    | { action: 'reuse'; reservationId: string; sessionId: string; url: string }
+    | { action: 'reuse'; reservationId: string; sessionId: string; url: string; expiresAt: string }
     | { action: 'create'; reservationId: string; idempotencyKey: string };
 
 function mapReserveError(code: string | undefined): { status: 400 | 500; error: string } {
@@ -119,12 +119,12 @@ export async function reserveOrReuseCheckoutSession(
     }
 
     if (payload.action === 'reuse') {
-        if (!payload.reservation_id || !payload.session_id || !payload.url) {
+        if (!payload.reservation_id || !payload.session_id || !payload.url || !payload.expires_at) {
             return { ok: false, status: 500, error: 'Unable to start checkout' };
         }
         return {
             ok: true,
-            result: { action: 'reuse', reservationId: payload.reservation_id, sessionId: payload.session_id, url: payload.url },
+            result: { action: 'reuse', reservationId: payload.reservation_id, sessionId: payload.session_id, url: payload.url, expiresAt: payload.expires_at },
         };
     }
 
@@ -151,7 +151,7 @@ export async function createReservedCheckoutSession(params: {
     successUrl: string;
     cancelUrl: string;
 }): Promise<
-    | { ok: true; sessionId: string; url: string; reused: boolean }
+    | { ok: true; sessionId: string; url: string; expiresAt: string; reused: boolean }
     | { ok: false; status: 400 | 500; error: string; currentStatus?: string; currentTier?: string }
 > {
     const { admin, userId, userEmail, tier, priceId, successUrl, cancelUrl } = params;
@@ -166,6 +166,7 @@ export async function createReservedCheckoutSession(params: {
             ok: true,
             sessionId: reserved.result.sessionId,
             url: reserved.result.url,
+            expiresAt: reserved.result.expiresAt,
             reused: true,
         };
     }
@@ -190,9 +191,7 @@ export async function createReservedCheckoutSession(params: {
         });
         sessionId = session.id;
 
-        const expiresAt = session.expires_at
-            ? new Date(session.expires_at * 1000).toISOString()
-            : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const expiresAt = new Date(session.expires_at * 1000).toISOString();
 
         const { data: finalized, error: finalizeError } = await adminRpc(admin, 'finalize_stripe_checkout_reservation', {
             p_user_id: userId,
@@ -213,7 +212,7 @@ export async function createReservedCheckoutSession(params: {
             return { ok: false, status: 500, error: 'Unable to start checkout' };
         }
 
-        return { ok: true, sessionId: session.id, url: session.url, reused: false };
+        return { ok: true, sessionId: session.id, url: session.url, expiresAt, reused: false };
     } catch (err) {
         console.error('Stripe checkout session creation failed:', err);
         await releaseReservation();

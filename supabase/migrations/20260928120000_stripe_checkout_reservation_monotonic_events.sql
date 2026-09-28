@@ -56,7 +56,12 @@ REVOKE ALL ON TABLE public.stripe_orphan_subscriptions FROM PUBLIC, anon, authen
 GRANT ALL ON TABLE public.stripe_orphan_subscriptions TO service_role;
 
 ALTER TABLE public.subscriptions
+    ADD COLUMN IF NOT EXISTS stripe_created_at timestamptz,
     ADD COLUMN IF NOT EXISTS stripe_last_event_created_at timestamptz;
+
+UPDATE public.subscriptions
+SET stripe_created_at = created_at
+WHERE platform = 'stripe' AND stripe_created_at IS NULL;
 
 CREATE OR REPLACE FUNCTION public.reserve_stripe_checkout(
     p_user_id uuid,
@@ -112,7 +117,8 @@ BEGIN
                 'action', 'reuse',
                 'reservation_id', v_row.reservation_id,
                 'session_id', v_row.checkout_session_id,
-                'url', v_row.checkout_session_url
+                'url', v_row.checkout_session_url,
+                'expires_at', v_row.expires_at
             );
         END IF;
         RETURN jsonb_build_object('error', 'checkout_in_progress');
@@ -337,8 +343,8 @@ BEGIN
             v_existing.stripe_subscription_id,
             p_event_id,
             p_payment_succeeded IS TRUE
-                AND v_existing.stripe_last_event_created_at IS NOT NULL
-                AND v_event_created_at > v_existing.stripe_last_event_created_at,
+                AND v_existing.stripe_created_at IS NOT NULL
+                AND v_event_created_at >= v_existing.stripe_created_at,
             p_subscription
         ) ON CONFLICT (stripe_subscription_id) DO UPDATE SET
             needs_refund = stripe_orphan_subscriptions.needs_refund OR EXCLUDED.needs_refund,

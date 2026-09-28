@@ -84,6 +84,7 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
       ok: true,
       sessionId: 'cs_1',
       url: 'https://checkout.stripe.com/cs',
+      expiresAt: '2030-01-01T00:00:00.000Z',
       reused: false,
     })
   })
@@ -200,10 +201,25 @@ describe('POST /api/mobile/subscriptions/create-checkout', () => {
       tier: 'tier2',
       price: 29,
       currency: 'usd',
+      expiresAt: '2030-01-01T00:00:00.000Z',
     })
     expect(mockCreateReservedCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-1', tier: 'tier2', priceId: 'price_runtime_tier2' })
     )
+  })
+
+  it('returns the stored expiry for a reused checkout session', async () => {
+    mockCreateReservedCheckoutSession.mockResolvedValue({
+      ok: true,
+      sessionId: 'cs_reused',
+      url: 'https://checkout.stripe.com/reused',
+      expiresAt: '2026-09-28T12:05:00.000Z',
+      reused: true,
+    })
+
+    const res = (await POST(mobileRequest({ tier: 'tier2' })))!
+    expect(res.status).toBe(200)
+    expect((await res.json()).data.expiresAt).toBe('2026-09-28T12:05:00.000Z')
   })
 
   it('rejects a missing tier price before creating a Stripe customer', async () => {

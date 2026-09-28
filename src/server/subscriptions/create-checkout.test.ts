@@ -78,6 +78,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
       ok: true,
       sessionId: 'cs_123',
       url: 'https://checkout.stripe.com/session',
+      expiresAt: '2030-01-01T00:00:00.000Z',
       reused: false,
     })
   })
