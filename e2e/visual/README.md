@@ -36,7 +36,7 @@ Authenticated pages use `visual-authed-*` and depend on the existing `setup` pro
 - `page.clock.install` at a fixed instant (timers resumed; Date stays fixed).
 - Seeded `Math.random` (analytics / processing mock metrics).
 - Masked relative-time / "Last updated" regions and Recharts containers.
-- Third-party noise aborted (PostHog, Cloudflare Stream iframes, remote images, `/_next/image` proxy requests).
+- Third-party noise aborted or mocked (PostHog, Cloudflare Stream iframes, remote images).
 - Full-page screenshots by default so "populated" baselines capture real below-the-fold content, not just the initial viewport.
 - Every readiness wait before a screenshot is a real, non-swallowed Playwright assertion (`.waitFor({ state: 'visible' })` with no `.catch`).
 A page that crashes or never finishes loading fails the test loudly instead of silently screenshotting broken content.

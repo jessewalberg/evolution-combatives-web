@@ -56,7 +56,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### Prerequisites
 - Node.js 22.22.2+ (or 24.15.0+, or 26+); see `package.json` `engines.node` 
-- pnpm 7+
+- pnpm 11.7.0 (see `package.json` `packageManager`)
 - Supabase account
 - Cloudflare Stream account
 - Stripe account
@@ -84,22 +84,9 @@ cp .env.example .env.local        # client-side VITE_* vars (Vite build/dev)
 cp .dev.vars.example .dev.vars    # server-side Worker vars for local dev
 ```
 
-```env
-# .env.local — client (inlined at build)
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_anon_key
-VITE_APP_URL=http://localhost:3000
-VITE_MOBILE_APP_SCHEME=evolutioncombatives
-
-# PostHog Analytics
-VITE_POSTHOG_KEY=phc_your_posthog_project_api_key_here
-VITE_POSTHOG_HOST=https://us.i.posthog.com
-```
-
-`.dev.vars` carries the server-side values (SUPABASE_SERVICE_ROLE_KEY,
-STRIPE_*, CLOUDFLARE_* Stream credentials) — see `.dev.vars.example` for the
-full list. In deployed environments these are wrangler.jsonc `vars` plus
-`wrangler secret put` secrets per Worker.
+Fill in both files using `.env.example` for client values and
+`.dev.vars.example` for Worker values. In deployed environments, Worker
+configuration comes from `wrangler.jsonc` vars and per-Worker secrets.
 
 4. **Set up database**
 ```bash
@@ -200,13 +187,10 @@ domains stay on their current host until the separate cutover.
    event and confirm delivery and subscription updates. Disable the old
    endpoint after the Worker endpoint succeeds.
 
-### Manual Deployment
+### Local production build preview
 ```bash
-# Build the application
 pnpm build
-
-# Start production server
-pnpm start
+pnpm preview
 ```
 
 ## 📊 Key Features Deep Dive
@@ -250,17 +234,15 @@ The admin dashboard integrates with the Evolution Combatives mobile app through:
 ```bash
 pnpm dev          # Start Vite dev server (Workers runtime via @cloudflare/vite-plugin)
 pnpm build        # Build for production
-pnpm start        # Start production server
+pnpm preview      # Preview the production build locally
 pnpm lint         # Run ESLint
 pnpm lint:fix     # Fix ESLint issues
-pnpm type-check   # Run TypeScript type checking
+pnpm typecheck    # Run TypeScript type checking
 ```
 
 ### Code Quality
 - **TypeScript**: Full type safety
 - **ESLint**: Code linting (eslint 9 flat config + typescript-eslint)
-- **Prettier**: Code formatting
-- **Husky**: Git hooks for quality checks
 
 ### Testing Strategy
 - Component testing with React Testing Library
@@ -273,12 +255,9 @@ pnpm type-check   # Run TypeScript type checking
 ### Content API
 - `GET /api/content/videos` - List videos with filtering
 - `POST /api/content/videos` - Create new video
-- `PUT /api/content/videos/[id]` - Update video
-- `DELETE /api/content/videos/[id]` - Delete video
+- `GET /api/content/videos/[id]` - Get a video
 
-### User Management API
-- `GET /api/users` - List users with pagination
-- `PUT /api/users/[id]` - Update user profile
+### Subscription API
 - `POST /api/subscriptions/create-checkout` - Create Stripe checkout
 
 ### Video Processing API

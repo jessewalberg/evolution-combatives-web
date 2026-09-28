@@ -1,16 +1,16 @@
 # Playwright E2E
 
-Phase 3 of the testing initiative (GitHub issue #19). These tests run against the **same shared Supabase project and Stripe test-mode keys** used by Vercel preview/staging - not a disposable test project. Treat data hygiene as mandatory.
+Phase 3 of the testing initiative (GitHub issue #19). These tests run against the shared Supabase project and Stripe test-mode keys used by preview/staging. Treat data hygiene as mandatory.
 
 ## Prerequisites
 
-- Node 20+, pnpm 9.15.0
+- Node.js 22.22.2+ (or 24.15.0+, or 26+) and pnpm 11.7.0 (see `package.json`)
 - 1Password CLI (`op`) signed in for local secret loading
 - Playwright browsers: `pnpm exec playwright install chromium webkit`
 
 ## Credentials (local)
 
-This repo never stores raw secrets. Populate a **gitignored** `.env.test.local` at the repo root (already covered by `.gitignore` pattern `.env.*.local`).
+This repo never stores raw secrets. Populate a **gitignored** `.env.test.local` at the repo root for Playwright and Vite, and `.dev.vars` for the local Worker runtime. The Worker does not inherit server secrets from the Playwright process. Use `.env.example` and `.dev.vars.example` for the respective variable names.
 
 Vault / item for local-dev:
 
@@ -25,32 +25,11 @@ op read "op://evolution-combatives-web-app/preview/VITE_SUPABASE_URL"
 op item get preview --vault evolution-combatives-web-app
 ```
 
-Required fields (same names as app env / GitHub Actions secrets):
-
-| Variable |
-|----------|
-| `VITE_SUPABASE_URL` |
-| `VITE_SUPABASE_ANON_KEY` |
-| `SUPABASE_SERVICE_ROLE_KEY` |
-| `STRIPE_SECRET_KEY` |
-| `STRIPE_PUBLISHABLE_KEY` |
-| `STRIPE_WEBHOOK_SECRET` |
-| `STRIPE_BEGINNER_PRICE_ID` |
-| `STRIPE_INTERMEDIATE_PRICE_ID` |
-| `STRIPE_ADVANCED_PRICE_ID` |
-| `CLOUDFLARE_ACCOUNT_ID` |
-| `CLOUDFLARE_API_TOKEN` |
-| `CLOUDFLARE_CUSTOMER_SUBDOMAIN` |
-| `CLOUDFLARE_STREAM_SIGNING_KEY` |
-| `CLOUDFLARE_STREAM_SIGNING_KEY_ID` |
-| `CLOUDFLARE_STREAM_WEBHOOK_SECRET` |
-| `CLOUDFLARE_WEBHOOK_SECRET` |
-| `NEXT_PUBLIC_MOBILE_APP_SCHEME` |
-| `NEXT_PUBLIC_POSTHOG_KEY` |
-| `NEXT_PUBLIC_POSTHOG_HOST` |
-| `NEXT_PUBLIC_APP_URL` |
-| `NEXT_PUBLIC_ADMIN_URL` |
-| `NODE_ENV` |
+Use the `VITE_*` values from `.env.example` in `.env.test.local`, together
+with `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY`, and
+`STRIPE_SECRET_KEY` for fixture cleanup. Set the Worker values from
+`.dev.vars.example` in `.dev.vars`. CI supplies its process variables through
+`.github/workflows/e2e.yml` and writes `.dev.vars` before starting the Worker.
 
 E2E-only credentials (admin user used by the auth setup project):
 
