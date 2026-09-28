@@ -1,6 +1,6 @@
 /**
  * Evolution Combatives - TanStack Query Configuration
- * Comprehensive query client setup for Next.js admin dashboard
+ * Comprehensive query client setup for the admin dashboard
  *
  * @description Query client configuration with type-safe keys and optimized caching
  * @author Evolution Combatives

@@ -23,7 +23,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### User & Subscription Management
 - **User Administration**: Comprehensive user account management
-- **Subscription Tiers**: Beginner ($9/mo), Intermediate ($19/mo), Advanced ($49/mo)
+- **Subscription Tiers**: Beginner, Intermediate, and Advanced
 - **Stripe Integration**: Complete payment processing and subscription management
 - **Access Control**: Role-based permissions (Super Admin, Content Admin, Support Admin)
 
@@ -114,9 +114,9 @@ The application will be available at `http://localhost:3000`
 - **questions/answers**: Q&A system for community support
 
 ### Subscription Tiers
-- **Beginner** ($9/month): Basic content access
-- **Intermediate** ($19/month): Advanced techniques and Q&A access
-- **Advanced** ($49/month): Full platform access including law enforcement content
+- **Beginner**: Basic content access
+- **Intermediate**: Advanced techniques and Q&A access
+- **Advanced**: Full platform access including law enforcement content
 
 ## 🎨 UI Components
 
@@ -276,8 +276,10 @@ pnpm typecheck    # Run TypeScript type checking
 Both checkout endpoints check for a non-terminal subscription and reject
 checkout when one is found. Both reject checkout if the subscription list or
 count cannot be verified, or if a conflicting payment still needs review.
-An identical retry reuses an unexpired Stripe Checkout session; a different
-tier, price, or callback URL cannot start another session while it remains open.
+An identical retry reuses a Stripe Checkout session only while Stripe reports
+it open. Completed sessions are not returned, and expired sessions are retired
+before a new attempt. A different tier, price, or callback URL cannot start
+another session while the prior checkout attempt remains unresolved.
 
 ### Video Processing API
 - `POST /api/video/signed-url` - Get signed upload URL

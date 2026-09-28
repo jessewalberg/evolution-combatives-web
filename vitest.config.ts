@@ -3,7 +3,7 @@ import path from 'path'
 
 export default defineConfig({
   oxc: {
-    // Next.js tsconfig uses jsx: "preserve"; Vitest must transform JSX in .tsx tests.
+    // Use the automatic JSX runtime when Vitest transforms .tsx tests.
     jsx: {
       runtime: 'automatic',
     },
