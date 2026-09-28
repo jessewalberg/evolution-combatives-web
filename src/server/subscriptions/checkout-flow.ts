@@ -234,25 +234,41 @@ export async function createReservedCheckoutSession(params: {
         return { ok: false, status: 500, error: 'Unable to start checkout' };
     }
 
-    let sessionId: string | null = null;
     const releaseReservation = () => adminRpc(admin, 'release_stripe_checkout_reservation', {
         p_user_id: userId,
         p_reservation_id: attempt.reservationId,
     });
 
+    let customerId: string;
     try {
-        const customer = await getOrCreateCustomer(userEmail, userId);
-        const session = await createCheckoutSession({
+        customerId = (await getOrCreateCustomer(userEmail, userId)).id;
+    } catch (err) {
+        console.error('Stripe customer lookup failed:', err);
+        await releaseReservation();
+        return { ok: false, status: 500, error: 'Payment processing error' };
+    }
+
+    let session: Awaited<ReturnType<typeof createCheckoutSession>>;
+    try {
+        session = await createCheckoutSession({
             priceId,
-            customerId: customer.id,
+            customerId,
             userId,
             tier,
             successUrl,
             cancelUrl,
             idempotencyKey: attempt.idempotencyKey,
         });
-        sessionId = session.id;
+    } catch (err) {
+        console.error('Stripe checkout session creation failed:', err);
+        await adminRpc(admin, 'mark_stripe_checkout_retryable', {
+            p_user_id: userId,
+            p_reservation_id: attempt.reservationId,
+        });
+        return { ok: false, status: 500, error: 'Payment processing error' };
+    }
 
+    try {
         if (!session.url) {
             await stripe.checkout.sessions.expire(session.id);
             await releaseReservation();
@@ -284,7 +300,6 @@ export async function createReservedCheckoutSession(params: {
         return { ok: true, sessionId: session.id, url: session.url, expiresAt, reused: false };
     } catch (err) {
         console.error('Stripe checkout session creation failed:', err);
-        if (sessionId === null) await releaseReservation();
         return { ok: false, status: 500, error: 'Payment processing error' };
     }
 }

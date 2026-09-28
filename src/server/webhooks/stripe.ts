@@ -72,25 +72,41 @@ async function applyCurrentSubscriptionState(
     eventCreatedAt: number,
     paymentSucceeded: boolean,
 ) {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-    const { userId, tier } = subscription.metadata || {};
-
-    if (!userId || !tier) {
-        console.error('Missing metadata on Stripe subscription:', subscriptionId);
-        return;
+    const supabase = createAdminClient();
+    const { data: leaseToken, error: acquireError } = await supabase.rpc('acquire_stripe_subscription_lease', {
+        p_stripe_subscription_id: subscriptionId,
+    });
+    if (acquireError || !leaseToken) {
+        throw acquireError ?? new Error('Stripe subscription update in progress');
     }
 
-    const supabase = createAdminClient();
-    const { error } = await supabase.rpc('apply_stripe_subscription_event', {
-        p_subscription: toRpcPayload(subscription),
-        p_event_id: eventId,
-        p_event_created_at: eventCreatedAt,
-        p_payment_succeeded: paymentSucceeded,
-    });
+    try {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const { userId, tier } = subscription.metadata || {};
 
-    if (error) {
-        console.error('Error applying Stripe subscription state:', error);
-        throw error;
+        if (!userId || !tier) {
+            console.error('Missing metadata on Stripe subscription:', subscriptionId);
+            return;
+        }
+
+        const { error } = await supabase.rpc('apply_stripe_subscription_event', {
+            p_subscription: toRpcPayload(subscription),
+            p_event_id: eventId,
+            p_event_created_at: eventCreatedAt,
+            p_payment_succeeded: paymentSucceeded,
+            p_lease_token: leaseToken,
+        });
+
+        if (error) {
+            console.error('Error applying Stripe subscription state:', error);
+            throw error;
+        }
+    } finally {
+        const { error: releaseError } = await supabase.rpc('release_stripe_subscription_lease', {
+            p_stripe_subscription_id: subscriptionId,
+            p_lease_token: leaseToken,
+        });
+        if (releaseError) throw releaseError;
     }
 }
 

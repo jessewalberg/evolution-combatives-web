@@ -436,6 +436,7 @@ export interface Database {
                     p_event_id: string;
                     p_event_created_at: number;
                     p_payment_succeeded: boolean;
+                    p_lease_token?: string;
                 };
                 Returns: boolean;
             };
@@ -446,6 +447,18 @@ export interface Database {
                     p_request_fingerprint: string;
                 };
                 Returns: Record<string, unknown>;
+            };
+            mark_stripe_checkout_retryable: {
+                Args: { p_user_id: string; p_reservation_id: string };
+                Returns: boolean;
+            };
+            acquire_stripe_subscription_lease: {
+                Args: { p_stripe_subscription_id: string };
+                Returns: string | null;
+            };
+            release_stripe_subscription_lease: {
+                Args: { p_stripe_subscription_id: string; p_lease_token: string };
+                Returns: boolean;
             };
             finalize_stripe_checkout_reservation: {
                 Args: {

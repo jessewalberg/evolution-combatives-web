@@ -255,6 +255,78 @@ describe('apply_stripe_subscription_event migration (PGlite)', () => {
 })
 
 describe('reserve_stripe_checkout migration (PGlite)', () => {
+  it('retries an ambiguous pending checkout with its original attempt and key', async () => {
+    const db = await bootstrapDb()
+    try {
+      const first = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
+      )).rows[0].data
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      expect((await db.query<{ retryable: boolean }>(
+        `SELECT public.mark_stripe_checkout_retryable($1::uuid, $2::uuid) AS retryable`,
+        [userId, first.reservation_id],
+      )).rows[0].retryable).toBe(true)
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-b') AS data`, [userId],
+      )).rows[0].data.error).toBe('checkout_in_progress')
+      const retry = (await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
+      )).rows[0].data
+      expect(retry).toMatchObject(first)
+      await db.query(`UPDATE public.stripe_checkout_reservations SET updated_at = now() - interval '11 minutes' WHERE user_id = $1`, [userId])
+      expect((await db.query<{ data: Record<string, string> }>(
+        `SELECT public.reserve_stripe_checkout($1::uuid, 'tier1', 'request-a') AS data`, [userId],
+      )).rows[0].data).toMatchObject(first)
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('fences subscription leases by token and recovers expired holders', async () => {
+    const db = await bootstrapDb()
+    try {
+      const first = (await db.query<{ lease: string | null }>(
+        `SELECT public.acquire_stripe_subscription_lease('sub_1') AS lease`,
+      )).rows[0].lease
+      expect(first).toBeTruthy()
+      expect((await db.query<{ lease: string | null }>(
+        `SELECT public.acquire_stripe_subscription_lease('sub_1') AS lease`,
+      )).rows[0].lease).toBeNull()
+      expect((await db.query<{ released: boolean }>(
+        `SELECT public.release_stripe_subscription_lease('sub_1', '00000000-0000-0000-0000-000000000001') AS released`,
+      )).rows[0].released).toBe(false)
+      await db.query(`UPDATE public.stripe_subscription_leases SET expires_at = now() - interval '1 second' WHERE stripe_subscription_id = 'sub_1'`)
+      const second = (await db.query<{ lease: string | null }>(
+        `SELECT public.acquire_stripe_subscription_lease('sub_1') AS lease`,
+      )).rows[0].lease
+      expect(second).toBeTruthy()
+      expect(second).not.toBe(first)
+      await db.query('INSERT INTO public.profiles (id) VALUES ($1)', [userId])
+      await expect(db.query(
+        `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_stale_lease', 1700000100, false, $2::uuid)`,
+        [JSON.stringify(subscription('sub_1', 1700000000, 'active')), first],
+      )).rejects.toThrow(/lease expired/)
+      expect((await db.query('SELECT * FROM public.stripe_webhook_events')).rows).toHaveLength(0)
+      expect((await db.query<{ released: boolean }>(
+        `SELECT public.release_stripe_subscription_lease('sub_1', $1::uuid) AS released`, [first],
+      )).rows[0].released).toBe(false)
+      expect((await db.query<{ applied: boolean }>(
+        `SELECT public.apply_stripe_subscription_event($1::jsonb, 'evt_live_lease', 1700000100, false, $2::uuid) AS applied`,
+        [JSON.stringify(subscription('sub_1', 1700000000, 'active')), second],
+      )).rows[0].applied).toBe(true)
+      expect((await db.query<{ released: boolean }>(
+        `SELECT public.release_stripe_subscription_lease('sub_1', $1::uuid) AS released`, [second],
+      )).rows[0].released).toBe(true)
+      expect((await db.query<{ lease: string | null }>(
+        `SELECT public.acquire_stripe_subscription_lease('sub_1') AS lease`,
+      )).rows[0].lease).toBeTruthy()
+    } finally {
+      await db.close()
+    }
+  })
+
   it('reuses only an exact price and callback request', async () => {
     const db = await bootstrapDb()
     try {

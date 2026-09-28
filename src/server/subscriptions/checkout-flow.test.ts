@@ -211,6 +211,40 @@ describe('createReservedCheckoutSession expiry', () => {
     }))
   })
 
+  it('retries a remotely created session with the same attempt after a timeout', async () => {
+    vi.mocked(getOrCreateCustomer).mockResolvedValue({ id: 'cus_1' } as never)
+    vi.mocked(createCheckoutSession).mockReset()
+    vi.mocked(createCheckoutSession)
+      .mockRejectedValueOnce(new Error('response timed out after remote creation'))
+      .mockResolvedValueOnce({ id: 'cs_remote', url: 'https://checkout.test/remote', expires_at: 1893456000 } as never)
+    const rpc = vi.fn((name: string) => Promise.resolve({
+      data: name === 'reserve_stripe_checkout'
+        ? { action: 'create', reservation_id: 'reservation-1', idempotency_key: 'checkout:reservation-1' }
+        : true,
+      error: null,
+    }))
+    const admin = { rpc } as never
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toEqual({
+      ok: false, status: 500, error: 'Payment processing error',
+    })
+    expect(rpc).toHaveBeenCalledWith('mark_stripe_checkout_retryable', {
+      p_user_id: params.userId, p_reservation_id: 'reservation-1',
+    })
+    expect(rpc).not.toHaveBeenCalledWith('release_stripe_checkout_reservation', expect.anything())
+
+    expect(await createReservedCheckoutSession({ admin, ...params })).toMatchObject({
+      ok: true, sessionId: 'cs_remote', reused: false,
+    })
+    expect(vi.mocked(createCheckoutSession).mock.calls).toHaveLength(2)
+    for (const [call] of vi.mocked(createCheckoutSession).mock.calls) {
+      expect(call.idempotencyKey).toBe('checkout:reservation-1')
+    }
+    expect(rpc).toHaveBeenCalledWith('finalize_stripe_checkout_reservation', expect.objectContaining({
+      p_reservation_id: 'reservation-1', p_checkout_session_id: 'cs_remote',
+    }))
+  })
+
   it('consumes a completed session and refuses another payable checkout', async () => {
     vi.mocked(createCheckoutSession).mockClear()
     vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValue({

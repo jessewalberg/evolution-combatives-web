@@ -119,6 +119,12 @@ function buildSupabase() {
   }
 
   const rpc = vi.fn((name: string, args: { p_subscription: Row; p_event_id: string; p_event_created_at: number }) => {
+    if (name === 'acquire_stripe_subscription_lease') {
+      return Promise.resolve({ data: 'lease-token', error: null })
+    }
+    if (name === 'release_stripe_subscription_lease') {
+      return Promise.resolve({ data: true, error: null })
+    }
     if (name === 'consume_stripe_checkout') {
       return Promise.resolve({ data: true, error: null })
     }
@@ -221,7 +227,7 @@ describe('POST /api/webhooks/stripe', () => {
 
       expect(res.status).toBe(200)
       expect(mockRetrieve).toHaveBeenCalledWith('sub_1')
-      expect(supabase.rpc).toHaveBeenLastCalledWith('apply_stripe_subscription_event',
+      expect(supabase.rpc).toHaveBeenCalledWith('apply_stripe_subscription_event',
         expect.objectContaining({ p_payment_succeeded: false }))
       expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
       expect(supabase.getProfileTier('user-1')).toBe('tier1')
@@ -251,7 +257,7 @@ describe('POST /api/webhooks/stripe', () => {
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
     expect(mockRetrieve).toHaveBeenCalledTimes(2) // still fetches live state each time
-    expect(supabase.rpc).toHaveBeenCalledTimes(2) // dedup lives inside the RPC, not skipped here
+    expect(supabase.rpc).toHaveBeenCalledTimes(6)
     expect(supabase.rowForUser('user-1')).toMatchObject({ stripe_subscription_id: 'sub_1' })
   })
 
@@ -271,7 +277,7 @@ describe('POST /api/webhooks/stripe', () => {
     mockRetrieve.mockResolvedValue(liveSubscription({ status: 'active' }))
     const succeeded = await POST(webhookRequest('{}', 'sig'))
     expect(succeeded.status).toBe(200)
-    expect(supabase.rpc).toHaveBeenLastCalledWith('apply_stripe_subscription_event',
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_stripe_subscription_event',
       expect.objectContaining({ p_payment_succeeded: true }))
     expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'active' })
 
@@ -279,7 +285,7 @@ describe('POST /api/webhooks/stripe', () => {
     mockRetrieve.mockResolvedValue(liveSubscription({ status: 'past_due' }))
     const failed = await POST(webhookRequest('{}', 'sig'))
     expect(failed.status).toBe(200)
-    expect(supabase.rpc).toHaveBeenLastCalledWith('apply_stripe_subscription_event',
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_stripe_subscription_event',
       expect.objectContaining({ p_payment_succeeded: false }))
     expect(supabase.rowForUser('user-1')).toMatchObject({ status: 'past_due' })
   })
@@ -391,13 +397,30 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(webhookRequest('{}', 'sig'))
 
     expect(res.status).toBe(200)
-    expect(supabase.rpc).not.toHaveBeenCalled()
+    expect(supabase.rpc).not.toHaveBeenCalledWith('apply_stripe_subscription_event', expect.anything())
+    expect(supabase.rpc).toHaveBeenCalledWith('release_stripe_subscription_lease', {
+      p_stripe_subscription_id: 'sub_2', p_lease_token: 'lease-token',
+    })
+  })
+
+  it('returns retryable failure on lease contention before retrieving Stripe state', async () => {
+    mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.updated', { id: 'sub_1' }))
+    supabase.rpc.mockResolvedValueOnce({ data: null, error: null })
+
+    const res = await POST(webhookRequest('{}', 'sig'))
+
+    expect(res.status).toBe(500)
+    expect(mockRetrieve).not.toHaveBeenCalled()
+    expect(supabase.rpc).toHaveBeenCalledTimes(1)
+    expect(supabase.rpc).toHaveBeenCalledWith('acquire_stripe_subscription_lease', {
+      p_stripe_subscription_id: 'sub_1',
+    })
   })
 
   it('returns 500 when the RPC reports an error', async () => {
     mockValidateWebhookSignature.mockResolvedValue(makeEvent('customer.subscription.created', { id: 'sub_fail' }))
     mockRetrieve.mockResolvedValue(liveSubscription({ id: 'sub_fail' }))
-    supabase.rpc.mockResolvedValueOnce({ error: { message: 'db failure' } })
+    supabase.rpc.mockImplementationOnce(() => Promise.resolve({ data: null, error: { message: 'db failure' } }))
 
     const res = await POST(webhookRequest('{}', 'sig'))
 

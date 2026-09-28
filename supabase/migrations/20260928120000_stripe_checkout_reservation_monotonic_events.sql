@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.stripe_checkout_reservations (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT stripe_checkout_reservations_status_check
-        CHECK (status IN ('pending', 'ready', 'completed', 'released'))
+        CHECK (status IN ('pending', 'retryable', 'ready', 'completed', 'released'))
 );
 
 CREATE UNIQUE INDEX stripe_checkout_reservations_session_id_key
@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS public.stripe_checkout_sessions (
 ALTER TABLE public.stripe_checkout_sessions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.stripe_checkout_sessions FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.stripe_checkout_sessions TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.stripe_subscription_leases (
+    stripe_subscription_id text PRIMARY KEY,
+    lease_token uuid NOT NULL,
+    expires_at timestamptz NOT NULL
+);
+
+ALTER TABLE public.stripe_subscription_leases ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.stripe_subscription_leases FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.stripe_subscription_leases TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.stripe_orphan_subscriptions (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -142,10 +152,20 @@ BEGIN
         RETURN jsonb_build_object('error', 'checkout_in_progress');
     END IF;
 
-    IF FOUND
-       AND v_row.status = 'pending'
-       AND v_row.updated_at > now() - interval '10 minutes' THEN
-        RETURN jsonb_build_object('error', 'checkout_in_progress');
+    IF FOUND AND v_row.status IN ('pending', 'retryable') THEN
+        IF v_row.tier <> p_tier OR v_row.request_fingerprint <> p_request_fingerprint
+           OR (v_row.status = 'pending' AND v_row.updated_at > now() - interval '10 minutes') THEN
+            RETURN jsonb_build_object('error', 'checkout_in_progress');
+        END IF;
+
+        UPDATE public.stripe_checkout_reservations
+        SET status = 'pending', updated_at = now()
+        WHERE user_id = p_user_id AND reservation_id = v_row.reservation_id;
+        RETURN jsonb_build_object(
+            'action', 'create',
+            'reservation_id', v_row.reservation_id,
+            'idempotency_key', 'checkout:' || v_row.reservation_id::text
+        );
     END IF;
 
     v_reservation_id := gen_random_uuid();
@@ -171,6 +191,68 @@ BEGIN
         'reservation_id', v_reservation_id,
         'idempotency_key', 'checkout:' || v_reservation_id::text
     );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.mark_stripe_checkout_retryable(
+    p_user_id uuid,
+    p_reservation_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || p_user_id::text));
+
+    UPDATE public.stripe_checkout_reservations
+    SET status = 'retryable', updated_at = now()
+    WHERE user_id = p_user_id AND reservation_id = p_reservation_id
+      AND status = 'pending' AND checkout_session_id IS NULL;
+    RETURN FOUND;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.acquire_stripe_subscription_lease(
+    p_stripe_subscription_id text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+    v_token uuid;
+BEGIN
+    IF NULLIF(p_stripe_subscription_id, '') IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    INSERT INTO public.stripe_subscription_leases (
+        stripe_subscription_id, lease_token, expires_at
+    ) VALUES (p_stripe_subscription_id, gen_random_uuid(), now() + interval '10 minutes')
+    ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+        lease_token = EXCLUDED.lease_token,
+        expires_at = EXCLUDED.expires_at
+    WHERE stripe_subscription_leases.expires_at <= now()
+    RETURNING lease_token INTO v_token;
+
+    RETURN v_token;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_stripe_subscription_lease(
+    p_stripe_subscription_id text,
+    p_lease_token uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+    DELETE FROM public.stripe_subscription_leases
+    WHERE stripe_subscription_id = p_stripe_subscription_id
+      AND lease_token = p_lease_token;
+    RETURN FOUND;
 END;
 $$;
 
@@ -323,6 +405,15 @@ $$;
 REVOKE ALL ON FUNCTION public.reserve_stripe_checkout(uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reserve_stripe_checkout(uuid, text, text) TO service_role;
 
+REVOKE ALL ON FUNCTION public.mark_stripe_checkout_retryable(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_stripe_checkout_retryable(uuid, uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION public.acquire_stripe_subscription_lease(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.acquire_stripe_subscription_lease(text) TO service_role;
+
+REVOKE ALL ON FUNCTION public.release_stripe_subscription_lease(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_stripe_subscription_lease(text, uuid) TO service_role;
+
 REVOKE ALL ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.finalize_stripe_checkout_reservation(uuid, uuid, text, text, timestamptz) TO service_role;
 
@@ -341,7 +432,8 @@ CREATE OR REPLACE FUNCTION public.apply_stripe_subscription_event(
     p_subscription jsonb,
     p_event_id text,
     p_event_created_at bigint,
-    p_payment_succeeded boolean
+    p_payment_succeeded boolean,
+    p_lease_token uuid DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -368,6 +460,14 @@ BEGIN
     END IF;
 
     PERFORM pg_advisory_xact_lock(hashtext('stripe_checkout:' || v_user_id::text));
+
+    IF p_lease_token IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM public.stripe_subscription_leases
+        WHERE stripe_subscription_id = v_stripe_id
+          AND lease_token = p_lease_token AND expires_at > clock_timestamp()
+    ) THEN
+        RAISE EXCEPTION 'Stripe subscription lease expired for %', v_stripe_id;
+    END IF;
 
     INSERT INTO public.stripe_webhook_events (event_id)
     VALUES (p_event_id)
@@ -493,6 +593,6 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean) FROM anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean) TO service_role;
+REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean, uuid) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_stripe_subscription_event(jsonb, text, bigint, boolean, uuid) TO service_role;
