@@ -204,6 +204,23 @@ describe('POST /api/video/signed-url', () => {
     expect(res.status).toBe(200)
   })
 
+  it('treats invalid video tier_required as tier3 (denied, not free)', async () => {
+    mockSubscriptionSelect.mockResolvedValue({
+      data: { tier: 'tier2' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'garbage_invalid_tier', cloudflare_video_id: 'cf-1', title: 'Corrupted Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+    expect(body.details).toContain('tier3')
+  })
+
   it('tolerates HEAD probe failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
 
