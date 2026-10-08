@@ -5,11 +5,31 @@ import { POST as POSTHandler } from './signed-url'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
 const mockGetUser = vi.fn()
+const mockProfileSelect = vi.fn()
+const mockAdminVideoSelect = vi.fn()
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
     auth: { getUser: mockGetUser },
+    from: (table: string) => {
+      if (table === 'profiles') {
+        return { select: () => ({ eq: () => ({ single: mockProfileSelect }) }) }
+      }
+      return { select: () => ({ eq: () => ({ single: vi.fn() }) }) }
+    },
   })),
+}))
+
+vi.mock('@/src/lib/supabase', () => ({
+  getSupabaseConfig: () => ({ url: 'https://test.supabase.co', anonKey: 'anon-key' }),
+  createAdminClient: () => ({
+    from: (table: string) => {
+      if (table === 'videos') {
+        return { select: () => ({ eq: () => ({ single: mockAdminVideoSelect }) }) }
+      }
+      return { select: () => ({ eq: () => ({ single: vi.fn() }) }) }
+    },
+  }),
 }))
 
 const mockGetVideoDetails = vi.fn()
@@ -35,6 +55,14 @@ describe('POST /api/video/signed-url', () => {
     vi.clearAllMocks()
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'user@test.com' } },
+      error: null,
+    })
+    mockProfileSelect.mockResolvedValue({
+      data: { subscription_tier: 'tier3' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video' },
       error: null,
     })
     mockGetVideoDetails.mockResolvedValue({
@@ -87,15 +115,16 @@ describe('POST /api/video/signed-url', () => {
     expect((await res.json()).error).toBe('Video not found in Cloudflare Stream')
   })
 
-  it('generates signed url for tier3 mp4', async () => {
+  it('generates signed url using user actual tier (tier3 user)', async () => {
     const res = (await POST(
-      authRequest({ videoId: 'cf-1', subscriptionTier: 'tier3', format: 'mp4' })
+      authRequest({ videoId: 'cf-1', format: 'mp4' })
     ))!
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.data.signed_url).toContain('token=')
+    // Should use user's actual tier (tier3) not any client-provided value
     expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
       'cf-1',
       'tier3',
@@ -104,10 +133,26 @@ describe('POST /api/video/signed-url', () => {
     )
   })
 
+  it('returns 403 when user tier insufficient for video', async () => {
+    mockProfileSelect.mockResolvedValue({
+      data: { subscription_tier: 'tier1' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: 'cf-1', title: 'Premium Video' },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+  })
+
   it('tolerates HEAD probe failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
 
-    const res = (await POST(authRequest({ videoId: 'cf-1', subscriptionTier: 'tier1' })))!
+    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
     expect(res.status).toBe(200)
   })
 

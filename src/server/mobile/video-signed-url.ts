@@ -1,8 +1,24 @@
 import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
+import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
 
-// Use exact subscription tiers from .cursorrules
 type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
+
+const TIER_HIERARCHY: Record<SubscriptionTier, number> = {
+    none: 0,
+    tier1: 1,
+    tier2: 2,
+    tier3: 3
+}
+
+function getExpirationSeconds(tier: SubscriptionTier): number {
+    switch (tier) {
+        case 'none': return 30 * 60        // 30 minutes
+        case 'tier1': return 2 * 60 * 60   // 2 hours
+        case 'tier2': return 8 * 60 * 60   // 8 hours
+        case 'tier3': return 24 * 60 * 60  // 24 hours
+    }
+}
 
 /**
  * Mobile-specific video API endpoint
@@ -17,16 +33,15 @@ export async function POST({ request }: { request: Request }) {
         return authResult.error
     }
 
-    const { user } = authResult
+    const { user, supabase } = authResult
 
     let videoId: string | undefined;
 
     try {
-        // Import videoManagement inside the function to avoid environment variable issues
         const { videoManagement } = await import('@/src/services/cloudflare-stream')
         const requestBody = await request.json()
-        const { videoId: requestVideoId, subscriptionTier = 'tier1', format = 'hls' } = requestBody
-        videoId = requestVideoId; // Store for error handling
+        const { videoId: requestVideoId, format = 'hls' } = requestBody
+        videoId = requestVideoId
 
         if (!videoId) {
             return json(
@@ -35,51 +50,103 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
+        // Fetch user's subscription tier from their profile
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('subscription_tier')
+            .eq('id', user.id)
+            .single()
+
+        if (profileError || !profile) {
+            console.error('❌ [Mobile API] Failed to fetch user profile:', profileError)
+            return json(
+                { success: false, error: 'Failed to verify subscription' },
+                { status: 500 }
+            )
+        }
+
+        const userTier: SubscriptionTier = (profile.subscription_tier as SubscriptionTier) || 'none'
+
+        // Fetch video metadata from database to get tier_required
+        const adminClient = createAdminClient()
+        const { data: video, error: videoError } = await adminClient
+            .from('videos')
+            .select('id, tier_required, cloudflare_video_id, title')
+            .eq('cloudflare_video_id', videoId)
+            .single()
+
+        if (videoError || !video) {
+            console.error('❌ [Mobile API] Video not found in database:', videoError)
+            return json(
+                {
+                    success: false,
+                    error: 'Video not found',
+                    videoId
+                },
+                { status: 404 }
+            )
+        }
+
+        const requiredTier: SubscriptionTier = (video.tier_required as SubscriptionTier) || 'none'
+
+        // Authorization check: verify user's subscription tier >= video's required tier
+        if (TIER_HIERARCHY[userTier] < TIER_HIERARCHY[requiredTier]) {
+            console.warn('🚫 [Mobile API] Access denied - insufficient subscription:', {
+                userId: user.id,
+                userTier,
+                requiredTier,
+                videoId
+            })
+            return json(
+                {
+                    success: false,
+                    error: 'Subscription tier too low',
+                    details: `This video requires ${requiredTier} subscription`
+                },
+                { status: 403 }
+            )
+        }
+
         console.log('🎥 [Mobile API] Generating signed URL:', {
             videoId,
-            subscriptionTier,
+            userTier,
+            requiredTier,
             format,
             userId: user.id,
             userEmail: user.email
-        });
+        })
 
-        // First, verify the video exists in Cloudflare Stream
+        // Verify video exists in Cloudflare Stream
         try {
-            const videoDetails = await videoManagement.getVideoDetails(videoId);
+            const streamDetails = await videoManagement.getVideoDetails(videoId)
             console.log('🎥 [Mobile API] Video exists in Cloudflare Stream:', {
                 videoId,
-                status: videoDetails.status,
-                duration: videoDetails.duration,
-                readyToStream: videoDetails.readyToStream
-            });
+                status: streamDetails.status,
+                duration: streamDetails.duration,
+                readyToStream: streamDetails.readyToStream
+            })
         } catch (error) {
-            console.error('❌ [Mobile API] Video not found in Cloudflare Stream:', error);
+            console.error('❌ [Mobile API] Video not found in Cloudflare Stream:', error)
             return json(
                 {
                     success: false,
                     error: 'Video not found in Cloudflare Stream',
                     details: `Video ${videoId} does not exist in Cloudflare Stream or is not accessible.`,
-                    videoId: videoId
+                    videoId
                 },
                 { status: 404 }
-            );
+            )
         }
 
-        // Generate signed URL with appropriate expiration based on subscription tier
+        // Generate signed URL using user's ACTUAL subscription tier (not client-provided)
         const signedUrl = await videoManagement.generateSignedUrl(
             videoId,
-            subscriptionTier as SubscriptionTier,
+            userTier,
             {
-                downloadable: format === 'mp4', // Enable download for MP4 format
-                // Set expiration based on subscription tier
-                exp: Math.floor(Date.now() / 1000) + (
-                    subscriptionTier === 'none' ? 30 * 60 : // 30 minutes for free
-                        subscriptionTier === 'tier1' ? 2 * 60 * 60 : // 2 hours for tier1
-                            subscriptionTier === 'tier2' ? 8 * 60 * 60 : // 8 hours for tier2
-                                24 * 60 * 60 // 24 hours for tier3
-                )
+                downloadable: format === 'mp4',
+                exp: Math.floor(Date.now() / 1000) + getExpirationSeconds(userTier)
             },
-            format as 'hls' | 'mp4' // Pass format to the service
+            format as 'hls' | 'mp4'
         )
 
         console.log('🎥 [Mobile API] Generated signed URL:', {
@@ -113,9 +180,9 @@ export async function POST({ request }: { request: Request }) {
                 video_id: videoId,
                 duration: videoDetails.duration || 0,
                 thumbnail_url: videoDetails.thumbnail || null,
-                expires_at: new Date(Date.now() + (subscriptionTier === 'tier1' ? 2 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)).toISOString()
+                expires_at: new Date(Date.now() + getExpirationSeconds(userTier) * 1000).toISOString()
             }
-        };
+        }
 
         console.log('✅ [Mobile API] Successfully generated video response for user:', user.email);
 

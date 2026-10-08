@@ -3,12 +3,23 @@ import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler } from './video-signed-url'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
-const mockGetUser = vi.fn()
+const mockProfileSelect = vi.fn()
+const mockAdminVideoSelect = vi.fn()
+const mockValidateMobileAppAuth = vi.fn()
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
-    auth: { getUser: mockGetUser },
-  })),
+vi.mock('@/src/lib/mobile-auth', () => ({
+  validateMobileAppAuth: (...args: unknown[]) => mockValidateMobileAppAuth(...args),
+}))
+
+vi.mock('@/src/lib/supabase', () => ({
+  createAdminClient: () => ({
+    from: (table: string) => {
+      if (table === 'videos') {
+        return { select: () => ({ eq: () => ({ single: mockAdminVideoSelect }) }) }
+      }
+      return { select: () => ({ eq: () => ({ single: vi.fn() }) }) }
+    },
+  }),
 }))
 
 const mockGetVideoDetails = vi.fn()
@@ -34,11 +45,39 @@ function mobileRequest(body: Record<string, unknown>, headers: Record<string, st
   })
 }
 
+function makeAuthSuccess() {
+  return {
+    user: { id: 'user-1', email: 'user@test.com' },
+    supabase: {
+      from: (table: string) => {
+        if (table === 'profiles') {
+          return { select: () => ({ eq: () => ({ single: mockProfileSelect }) }) }
+        }
+        return { select: () => ({ eq: () => ({ single: vi.fn() }) }) }
+      },
+    },
+  }
+}
+
+function makeAuthError(status: number, errorMsg: string) {
+  return {
+    error: new Response(JSON.stringify({ success: false, error: errorMsg }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  }
+}
+
 describe('POST /api/mobile/video/signed-url', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetUser.mockResolvedValue({
-      data: { user: { id: 'user-1', email: 'user@test.com' } },
+    mockValidateMobileAppAuth.mockResolvedValue(makeAuthSuccess())
+    mockProfileSelect.mockResolvedValue({
+      data: { subscription_tier: 'tier2' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video' },
       error: null,
     })
     mockGetVideoDetails.mockResolvedValue({
@@ -60,6 +99,8 @@ describe('POST /api/mobile/video/signed-url', () => {
   })
 
   it('returns 401 without bearer token', async () => {
+    mockValidateMobileAppAuth.mockResolvedValue(makeAuthError(401, 'Bearer token required for mobile API'))
+
     const res = (await POST(
       createNextRequest('/api/mobile/video/signed-url', {
         method: 'POST',
@@ -70,7 +111,7 @@ describe('POST /api/mobile/video/signed-url', () => {
   })
 
   it('returns 401 for invalid token', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'bad' } })
+    mockValidateMobileAppAuth.mockResolvedValue(makeAuthError(401, 'Invalid authentication token'))
 
     const res = (await POST(mobileRequest({ videoId: 'v1' })))!
     expect(res.status).toBe(401)
@@ -92,9 +133,9 @@ describe('POST /api/mobile/video/signed-url', () => {
     expect(body.error).toBe('Video not found in Cloudflare Stream')
   })
 
-  it('generates signed url successfully', async () => {
+  it('generates signed url using user actual tier', async () => {
     const res = (await POST(
-      mobileRequest({ videoId: 'cf-1', subscriptionTier: 'tier2', format: 'hls' })
+      mobileRequest({ videoId: 'cf-1', format: 'hls' })
     ))!
     const body = await res.json()
 
@@ -106,6 +147,7 @@ describe('POST /api/mobile/video/signed-url', () => {
       duration: 120,
       thumbnail_url: 'https://thumb',
     })
+    // Should use user's actual tier (tier2) not any client-provided value
     expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
       'cf-1',
       'tier2',
@@ -114,16 +156,37 @@ describe('POST /api/mobile/video/signed-url', () => {
     )
   })
 
+  it('returns 403 when user tier insufficient for video', async () => {
+    mockProfileSelect.mockResolvedValue({
+      data: { subscription_tier: 'tier1' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: 'cf-1', title: 'Premium Video' },
+      error: null,
+    })
+
+    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+  })
+
   it('supports mp4 format and tolerates HEAD probe failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
+    // User with tier2 subscription
+    mockProfileSelect.mockResolvedValue({
+      data: { subscription_tier: 'tier2' },
+      error: null,
+    })
 
     const res = (await POST(
-      mobileRequest({ videoId: 'cf-1', subscriptionTier: 'none', format: 'mp4' })
+      mobileRequest({ videoId: 'cf-1', format: 'mp4' })
     ))!
     expect(res.status).toBe(200)
     expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
       'cf-1',
-      'none',
+      'tier2',
       expect.objectContaining({ downloadable: true }),
       'mp4'
     )
@@ -147,7 +210,7 @@ describe('POST /api/mobile/video/signed-url', () => {
   })
 
   it('returns 500 when auth throws', async () => {
-    mockGetUser.mockRejectedValue(new Error('auth crash'))
+    mockValidateMobileAppAuth.mockResolvedValue(makeAuthError(500, 'Authentication failed'))
 
     const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
     expect(res.status).toBe(500)
