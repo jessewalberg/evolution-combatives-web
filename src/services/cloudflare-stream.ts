@@ -516,23 +516,14 @@ export const videoManagement = {
         const hasSigningKeys = process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID && process.env.CLOUDFLARE_STREAM_SIGNING_KEY;
 
         if (!hasSigningKeys) {
-            console.warn('🔐 Missing Cloudflare Stream signing keys - using temporary public access for development');
-            console.warn('🔐 ⚠️  SECURITY WARNING: Videos will be publicly accessible without authentication');
-            console.warn('🔐 To secure videos, configure CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY');
-
-            // Temporarily use public URLs for development (with warning)
-            try {
-                await this.updateVideoSettings(videoId, { requireSignedURLs: false });
-                const publicUrl = format === 'mp4'
-                    ? `https://${getStreamEnv().customerSubdomain}/${videoId}/downloads/default.mp4`
-                    : `https://${getStreamEnv().customerSubdomain}/${videoId}/manifest/video.m3u8`;
-
-                console.log('🔐 Returning public URL (DEVELOPMENT ONLY):', publicUrl);
-                return publicUrl;
-            } catch (settingsError) {
-                console.error('🔐 Could not configure video for public access:', settingsError);
-                throw new CloudflareStreamError('Video access configuration failed', undefined, settingsError);
-            }
+            console.error('🔐 SECURITY ERROR: Cloudflare Stream signing keys are not configured');
+            console.error('🔐 CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY are required');
+            console.error('🔐 Video playback is blocked to prevent unauthorized access to paid content');
+            throw new CloudflareStreamError(
+                'Video signing keys not configured. Contact support.',
+                503,
+                { videoId, reason: 'MISSING_SIGNING_KEYS' }
+            );
         }
 
         // Configure video to require signed URLs for security

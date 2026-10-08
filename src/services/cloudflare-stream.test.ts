@@ -369,24 +369,17 @@ describe('videoManagement', () => {
     ).rejects.toThrow(/Failed to update video settings/)
   })
 
-  it('generateSignedUrl uses public URL when signing keys missing', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true, result: {} }))
-
-    const url = await videoManagement.generateSignedUrl('vid-1', 'tier1')
-    expect(url).toContain('customer-test-subdomain')
-    expect(url).toContain('vid-1/manifest/video.m3u8')
-
-    const mp4 = await videoManagement.generateSignedUrl('vid-1', 'none', {}, 'mp4')
-    expect(mp4).toContain('downloads/default.mp4')
-  })
-
-  it('generateSignedUrl throws when public settings update fails without keys', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({ success: false, errors: [{ message: 'denied' }] }, { ok: false, status: 403, statusText: 'Forbidden' })
-    )
+  it('generateSignedUrl fails closed when signing keys missing', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    
     await expect(videoManagement.generateSignedUrl('vid-1', 'tier1')).rejects.toThrow(
-      /Video access configuration failed/
+      /Video signing keys not configured/
     )
+    
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('SECURITY ERROR')
+    )
+    errorSpy.mockRestore()
   })
 
   it('generateSignedUrl uses token API when signing keys present', async () => {
@@ -896,11 +889,10 @@ describe('securityFunctions', () => {
     vi.unstubAllEnvs()
   })
 
-  it('generateAdminPreviewUrl delegates to signed url without keys', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true, result: {} }))
-    const url = await securityFunctions.generateAdminPreviewUrl('vid-1')
-    expect(url).toContain('vid-1')
-    expect(url).toContain('manifest/video.m3u8')
+  it('generateAdminPreviewUrl fails closed without signing keys', async () => {
+    await expect(securityFunctions.generateAdminPreviewUrl('vid-1')).rejects.toThrow(
+      /Video signing keys not configured/
+    )
   })
 
   it('generateAdminPreviewUrl uses token path when signing keys set', async () => {
