@@ -3,35 +3,43 @@ import { createFileRoute } from '@tanstack/react-router'
 const POSTHOG_ORIGIN = 'https://us.i.posthog.com'
 const POSTHOG_ASSETS_ORIGIN = 'https://us-assets.i.posthog.com'
 
-const HOP_BY_HOP_HEADERS = new Set([
-    'connection',
-    'keep-alive',
-    'proxy-authenticate',
-    'proxy-authorization',
-    'te',
-    'trailer',
-    'transfer-encoding',
-    'upgrade',
+const ALLOWED_REQUEST_HEADERS = new Set([
+    'content-type',
+    'content-encoding',
+    'content-length',
+    'accept',
+    'accept-encoding',
+    'accept-language',
+    'user-agent',
+    'origin',
+    'referer',
 ])
 
-function isPathUnsafe(path: string): boolean {
-    if (path.startsWith('//') || path.startsWith('/\\')) return true
-    if (path.includes('\\')) return true
+const ALLOWED_RESPONSE_HEADERS = new Set([
+    'content-type',
+    'content-encoding',
+    'cache-control',
+    'vary',
+])
+
+function isAllowedAnalyticsPath(path: string): boolean {
+    if (path.startsWith('//') || path.startsWith('/\\')) return false
+    if (path.includes('\\')) return false
     let decoded: string
     try {
         decoded = decodeURIComponent(path)
     } catch {
-        return true
+        return false
     }
-    if (decoded.startsWith('//') || decoded.startsWith('/\\')) return true
-    if (decoded.includes('\\')) return true
-    return false
+    if (decoded.startsWith('//') || decoded.startsWith('/\\')) return false
+    if (decoded.includes('\\')) return false
+    return true
 }
 
-function stripHopByHopHeaders(headers: Headers): Headers {
+function filterAllowedHeaders(headers: Headers, allowedSet: Set<string>): Headers {
     const result = new Headers()
     for (const [key, value] of headers.entries()) {
-        if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+        if (allowedSet.has(key.toLowerCase())) {
             result.set(key, value)
         }
     }
@@ -47,7 +55,7 @@ async function proxyToPostHog(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname.replace(/^\/ingest/, '')
 
-    if (isPathUnsafe(path)) {
+    if (!isAllowedAnalyticsPath(path)) {
         return new Response(JSON.stringify({ error: 'Invalid path' }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' },
@@ -69,11 +77,8 @@ async function proxyToPostHog(request: Request): Promise<Response> {
         })
     }
 
-    const outboundHeaders = stripHopByHopHeaders(request.headers)
+    const outboundHeaders = filterAllowedHeaders(request.headers, ALLOWED_REQUEST_HEADERS)
     outboundHeaders.set('host', targetUrl.hostname)
-    outboundHeaders.delete('cookie')
-    outboundHeaders.delete('authorization')
-    outboundHeaders.delete('x-csrf-token')
 
     const response = await fetch(targetUrl.toString(), {
         method: request.method,
@@ -82,8 +87,7 @@ async function proxyToPostHog(request: Request): Promise<Response> {
         redirect: 'manual',
     })
 
-    const responseHeaders = stripHopByHopHeaders(response.headers)
-    responseHeaders.delete('set-cookie')
+    const responseHeaders = filterAllowedHeaders(response.headers, ALLOWED_RESPONSE_HEADERS)
 
     return new Response(response.body, {
         status: response.status,
