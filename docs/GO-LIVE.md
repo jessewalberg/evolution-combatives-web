@@ -29,7 +29,7 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 **⚠️ REQUIRED BEFORE FIRST PRODUCTION DEPLOY**: The production environment in `wrangler.jsonc` has placeholder values for Stripe:
 
 ```jsonc
-// Lines 76-79 in wrangler.jsonc - currently set to "update"
+// Lines 78-81 in wrangler.jsonc - currently set to "update"
 "STRIPE_PUBLISHABLE_KEY": "update",
 "STRIPE_BEGINNER_PRICE_ID": "update",
 "STRIPE_INTERMEDIATE_PRICE_ID": "update",
@@ -130,9 +130,9 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
 ---
 
-## 4. Cloudflare Stream Signed URLs (REQUIRED - High Severity)
+## 4. Cloudflare Stream Signed URLs (Required)
 
-**⚠️ CRITICAL**: Video signed URL generation will fail if Stream signing keys are not configured. This is intentional — falling back to public URLs would allow non-paying users to watch paid videos.
+Signed URL generation fails closed if Stream signing keys are not configured.
 
 ### Pre-Cutover Steps
 
@@ -150,14 +150,7 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
    # Paste the Private Key (PEM format)
    ```
 
-3. **Test Video Playback** before cutover:
-   - With signing keys configured, request a signed URL via:
-     - `/api/video/signed-url` (web admin, requires session cookie)
-     - `/api/mobile/video/signed-url` (mobile app, requires Bearer token)
-   - Verify the URL includes a `token=` parameter
-   - Verify the video plays in a browser
-
-4. - [ ] **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
+3. - [ ] **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
 
 ---
 
@@ -420,21 +413,17 @@ Run these checks after cutover:
    - [ ] `/api/mobile/video/signed-url` accepts Bearer token
    - [ ] `/api/mobile/subscriptions/create-checkout` accepts Bearer token
 
-4. **Video Playback** (already verified in Section 6, re-confirm via custom domain)
-   - [ ] Request signed URL via API
-   - [ ] Verify video plays in browser
-
-5. **Webhooks**
+4. **Webhooks**
    - [ ] Test Stripe webhook delivery (use Stripe CLI or dashboard test)
    - [ ] Test Cloudflare Stream webhook (upload a test video)
 
-6. **Security Headers**
+5. **Security Headers**
    - [ ] `X-Frame-Options: DENY`
    - [ ] `Content-Security-Policy` present
    - [ ] `Strict-Transport-Security` present
    - [ ] `X-Content-Type-Options: nosniff`
 
-7. **Admin Functions**
+6. **Admin Functions**
    - [ ] Video upload works
    - [ ] User management works
    - [ ] Q&A moderation works
