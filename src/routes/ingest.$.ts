@@ -17,7 +17,12 @@ const HOP_BY_HOP_HEADERS = new Set([
 function isPathUnsafe(path: string): boolean {
     if (path.startsWith('//') || path.startsWith('/\\')) return true
     if (path.includes('\\')) return true
-    const decoded = decodeURIComponent(path)
+    let decoded: string
+    try {
+        decoded = decodeURIComponent(path)
+    } catch {
+        return true
+    }
     if (decoded.startsWith('//') || decoded.startsWith('/\\')) return true
     if (decoded.includes('\\')) return true
     return false
@@ -67,6 +72,8 @@ async function proxyToPostHog(request: Request): Promise<Response> {
     const outboundHeaders = stripHopByHopHeaders(request.headers)
     outboundHeaders.set('host', targetUrl.hostname)
     outboundHeaders.delete('cookie')
+    outboundHeaders.delete('authorization')
+    outboundHeaders.delete('x-csrf-token')
 
     const response = await fetch(targetUrl.toString(), {
         method: request.method,

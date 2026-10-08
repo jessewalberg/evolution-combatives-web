@@ -28,7 +28,7 @@ describe('ingest proxy path validation', () => {
     return handlers[method]({ request })
   }
 
-  it('rejects /ingest//other.host/x (double slash redirect)', async () => {
+  it('keeps double-slash paths on the analytics origin', async () => {
     const res = await callProxy('/ingest//other.host/x')
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
@@ -154,5 +154,45 @@ describe('ingest proxy path validation', () => {
     expect(res.headers.get('connection')).toBeNull()
     expect(res.headers.get('keep-alive')).toBeNull()
     expect(res.headers.get('content-type')).toBe('application/json')
+  })
+
+  it('strips authorization header from outbound request', async () => {
+    vi.resetModules()
+    const mod = await import('./ingest.$')
+    const request = new Request('http://localhost/ingest/batch', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer secret-token',
+        'content-type': 'application/json',
+      },
+    })
+    const handlers = mod.Route.options.server?.handlers as Record<string, (ctx: { request: Request }) => Promise<Response>>
+    await handlers.POST({ request })
+    const [, options] = mockFetch.mock.calls[0]
+    expect(options.headers.get('authorization')).toBeNull()
+    expect(options.headers.get('content-type')).toBe('application/json')
+  })
+
+  it('strips x-csrf-token header from outbound request', async () => {
+    vi.resetModules()
+    const mod = await import('./ingest.$')
+    const request = new Request('http://localhost/ingest/batch', {
+      method: 'POST',
+      headers: {
+        'x-csrf-token': 'csrf-secret',
+        'content-type': 'application/json',
+      },
+    })
+    const handlers = mod.Route.options.server?.handlers as Record<string, (ctx: { request: Request }) => Promise<Response>>
+    await handlers.POST({ request })
+    const [, options] = mockFetch.mock.calls[0]
+    expect(options.headers.get('x-csrf-token')).toBeNull()
+    expect(options.headers.get('content-type')).toBe('application/json')
+  })
+
+  it('rejects invalid percent-encoding in path', async () => {
+    const res = await callProxy('/ingest/batch%ZZ')
+    expect(res.status).toBe(400)
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 })
