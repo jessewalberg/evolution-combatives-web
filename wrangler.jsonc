@@ -46,7 +46,9 @@
     ],
     "observability": {
         "enabled": true,
-        "head_sampling_rate": 1
+        "head_sampling_rate": 1,
+        "logs": { "enabled": true },
+        "traces": { "enabled": true, "head_sampling_rate": 0.01 }
     },
     // TODO(deploy): replace placeholder values before first production deploy.
     // VITE_* vars are injected by vite.config.ts `define` from this file at
@@ -84,7 +86,9 @@
             "workers_dev": true,
             "observability": {
                 "enabled": true,
-                "head_sampling_rate": 1
+                "head_sampling_rate": 1,
+                "logs": { "enabled": true },
+                "traces": { "enabled": true, "head_sampling_rate": 0.01 }
             },
             "unsafe": {
                 "bindings": [
@@ -122,7 +126,9 @@
             "preview_urls": true,
             "observability": {
                 "enabled": true,
-                "head_sampling_rate": 1
+                "head_sampling_rate": 1,
+                "logs": { "enabled": true },
+                "traces": { "enabled": true, "head_sampling_rate": 0.01 }
             },
             "unsafe": {
                 "bindings": [

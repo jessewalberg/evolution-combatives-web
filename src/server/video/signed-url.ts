@@ -1,14 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseConfig, createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
+import { 
+    SUBSCRIPTION_TIER_HIERARCHY,
+    type SubscriptionTier 
+} from '@/src/lib/shared/constants/subscriptionTiers'
 
-type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
-
-const TIER_HIERARCHY: Record<SubscriptionTier, number> = {
-    none: 0,
-    tier1: 1,
-    tier2: 2,
-    tier3: 3
+function isValidTier(tier: unknown): tier is SubscriptionTier {
+    return typeof tier === 'string' && tier in SUBSCRIPTION_TIER_HIERARCHY
 }
 
 function getExpirationSeconds(tier: SubscriptionTier): number {
@@ -25,7 +24,6 @@ async function validateBearerAuth(request: Request) {
         const authHeader = request.headers.get('Authorization')
         console.log('🔐 Admin API Auth Debug:', {
             hasAuthHeader: !!authHeader,
-            authHeaderStart: authHeader?.substring(0, 20) + '...',
             headerLength: authHeader?.length
         })
 
@@ -56,13 +54,11 @@ async function validateBearerAuth(request: Request) {
         console.log('🔐 User Validation Result:', {
             hasUser: !!user,
             userId: user?.id,
-            userEmail: user?.email,
-            hasError: !!userError,
-            errorMessage: userError?.message
+            hasError: !!userError
         })
 
         if (userError || !user) {
-            console.error('❌ User validation failed:', userError)
+            console.error('❌ User validation failed')
             return {
                 error: json(
                     { success: false, error: 'Invalid authentication token' },
@@ -71,7 +67,7 @@ async function validateBearerAuth(request: Request) {
             }
         }
 
-        console.log('✅ User authenticated successfully:', user.email)
+        console.log('✅ User authenticated successfully:', user.id)
         return { user, supabase }
     } catch (error) {
         console.error('Auth validation error:', error)
@@ -90,7 +86,7 @@ export async function POST({ request }: { request: Request }) {
         return authResult.error
     }
 
-    const { user, supabase } = authResult
+    const { user } = authResult
     let videoId: string | undefined
 
     try {
@@ -106,33 +102,27 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Fetch user's subscription tier from their profile
-        const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('subscription_tier')
-            .eq('id', user.id)
-            .single()
-
-        if (profileError || !profile) {
-            console.error('❌ Failed to fetch user profile:', profileError)
-            return json(
-                { success: false, error: 'Failed to verify subscription' },
-                { status: 500 }
-            )
-        }
-
-        const userTier: SubscriptionTier = (profile.subscription_tier as SubscriptionTier) || 'none'
-
-        // Fetch video metadata from database to get tier_required
+        // Derive entitlement from server-written subscriptions table
         const adminClient = createAdminClient()
+        const { data: subscription } = await adminClient
+            .from('subscriptions')
+            .select('tier')
+            .eq('user_id', user.id)
+            .in('status', ['active', 'trialing'])
+            .maybeSingle()
+
+        const dbTier = subscription?.tier
+        const userTier: SubscriptionTier = isValidTier(dbTier) ? dbTier : 'none'
+
+        // Fetch video metadata from database to get tier_required and is_published
         const { data: video, error: videoError } = await adminClient
             .from('videos')
-            .select('id, tier_required, cloudflare_video_id, title')
+            .select('id, tier_required, cloudflare_video_id, title, is_published')
             .eq('cloudflare_video_id', videoId)
             .single()
 
         if (videoError || !video) {
-            console.error('❌ Video not found in database:', videoError)
+            console.error('❌ Video not found in database')
             return json(
                 {
                     error: 'Video not found',
@@ -142,14 +132,22 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        const requiredTier: SubscriptionTier = (video.tier_required as SubscriptionTier) || 'none'
+        // Deny access to unpublished videos
+        if (!video.is_published) {
+            console.warn('🚫 Access denied - video not published:', { videoId })
+            return json(
+                { error: 'Video not available' },
+                { status: 403 }
+            )
+        }
+
+        const dbRequiredTier = video.tier_required
+        const requiredTier: SubscriptionTier = isValidTier(dbRequiredTier) ? dbRequiredTier : 'none'
 
         // Authorization check: verify user's subscription tier >= video's required tier
-        if (TIER_HIERARCHY[userTier] < TIER_HIERARCHY[requiredTier]) {
-            console.warn('🚫 Access denied - insufficient subscription:', {
+        if (SUBSCRIPTION_TIER_HIERARCHY[userTier] < SUBSCRIPTION_TIER_HIERARCHY[requiredTier]) {
+            console.warn('🚫 Access denied - insufficient entitlement:', {
                 userId: user.id,
-                userTier,
-                requiredTier,
                 videoId
             })
             return json(
@@ -163,9 +161,8 @@ export async function POST({ request }: { request: Request }) {
 
         console.log('🎥 Generating signed URL:', {
             videoId,
-            userTier,
-            requiredTier,
-            format
+            format,
+            userId: user.id
         })
 
         // Verify video exists in Cloudflare Stream

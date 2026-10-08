@@ -1,14 +1,13 @@
 import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
 import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
+import { 
+    SUBSCRIPTION_TIER_HIERARCHY,
+    type SubscriptionTier 
+} from '@/src/lib/shared/constants/subscriptionTiers'
 
-type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
-
-const TIER_HIERARCHY: Record<SubscriptionTier, number> = {
-    none: 0,
-    tier1: 1,
-    tier2: 2,
-    tier3: 3
+function isValidTier(tier: unknown): tier is SubscriptionTier {
+    return typeof tier === 'string' && tier in SUBSCRIPTION_TIER_HIERARCHY
 }
 
 function getExpirationSeconds(tier: SubscriptionTier): number {
@@ -33,7 +32,7 @@ export async function POST({ request }: { request: Request }) {
         return authResult.error
     }
 
-    const { user, supabase } = authResult
+    const { user } = authResult
 
     let videoId: string | undefined;
 
@@ -50,33 +49,27 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Fetch user's subscription tier from their profile
-        const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('subscription_tier')
-            .eq('id', user.id)
-            .single()
-
-        if (profileError || !profile) {
-            console.error('❌ [Mobile API] Failed to fetch user profile:', profileError)
-            return json(
-                { success: false, error: 'Failed to verify subscription' },
-                { status: 500 }
-            )
-        }
-
-        const userTier: SubscriptionTier = (profile.subscription_tier as SubscriptionTier) || 'none'
-
-        // Fetch video metadata from database to get tier_required
+        // Derive entitlement from server-written subscriptions table
         const adminClient = createAdminClient()
+        const { data: subscription } = await adminClient
+            .from('subscriptions')
+            .select('tier')
+            .eq('user_id', user.id)
+            .in('status', ['active', 'trialing'])
+            .maybeSingle()
+
+        const dbTier = subscription?.tier
+        const userTier: SubscriptionTier = isValidTier(dbTier) ? dbTier : 'none'
+
+        // Fetch video metadata from database to get tier_required and is_published
         const { data: video, error: videoError } = await adminClient
             .from('videos')
-            .select('id, tier_required, cloudflare_video_id, title')
+            .select('id, tier_required, cloudflare_video_id, title, is_published')
             .eq('cloudflare_video_id', videoId)
             .single()
 
         if (videoError || !video) {
-            console.error('❌ [Mobile API] Video not found in database:', videoError)
+            console.error('❌ [Mobile API] Video not found in database')
             return json(
                 {
                     success: false,
@@ -87,14 +80,22 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        const requiredTier: SubscriptionTier = (video.tier_required as SubscriptionTier) || 'none'
+        // Deny access to unpublished videos
+        if (!video.is_published) {
+            console.warn('🚫 [Mobile API] Access denied - video not published:', { videoId })
+            return json(
+                { success: false, error: 'Video not available' },
+                { status: 403 }
+            )
+        }
+
+        const dbRequiredTier = video.tier_required
+        const requiredTier: SubscriptionTier = isValidTier(dbRequiredTier) ? dbRequiredTier : 'none'
 
         // Authorization check: verify user's subscription tier >= video's required tier
-        if (TIER_HIERARCHY[userTier] < TIER_HIERARCHY[requiredTier]) {
-            console.warn('🚫 [Mobile API] Access denied - insufficient subscription:', {
+        if (SUBSCRIPTION_TIER_HIERARCHY[userTier] < SUBSCRIPTION_TIER_HIERARCHY[requiredTier]) {
+            console.warn('🚫 [Mobile API] Access denied - insufficient entitlement:', {
                 userId: user.id,
-                userTier,
-                requiredTier,
                 videoId
             })
             return json(
@@ -109,11 +110,8 @@ export async function POST({ request }: { request: Request }) {
 
         console.log('🎥 [Mobile API] Generating signed URL:', {
             videoId,
-            userTier,
-            requiredTier,
             format,
-            userId: user.id,
-            userEmail: user.email
+            userId: user.id
         })
 
         // Verify video exists in Cloudflare Stream
@@ -184,7 +182,7 @@ export async function POST({ request }: { request: Request }) {
             }
         }
 
-        console.log('✅ [Mobile API] Successfully generated video response for user:', user.email);
+        console.log('✅ [Mobile API] Successfully generated video response for user:', user.id);
 
         return json(response)
 
