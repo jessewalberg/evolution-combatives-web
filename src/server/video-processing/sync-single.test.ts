@@ -263,6 +263,7 @@ describe('POST /api/video-processing/sync-single', () => {
 
   it('returns 400 when cloudflare video ID is invalid format before service call', async () => {
     authSuccess(mockAuth)
+    const updateMock = vi.fn()
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn().mockReturnValue({
@@ -278,13 +279,16 @@ describe('POST /api/video-processing/sync-single', () => {
             }),
           }),
         }),
+        update: updateMock,
       })),
     } as never)
 
     const res = await POST(request({ videoId: 'v1' }))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('Invalid video ID format')
-    // Service should NOT be called when validation fails
+    // Stream service should NOT be called when validation fails
     expect(mockCheckUploadStatus).not.toHaveBeenCalled()
+    // Videos row should NOT be updated when validation fails
+    expect(updateMock).not.toHaveBeenCalled()
   })
 })
