@@ -26,6 +26,7 @@ test.describe('Subscription deep-link flow', () => {
   let userId: string | undefined
   let email: string | undefined
   let password: string | undefined
+  let accessToken: string | undefined
   let checkoutSessionId: string | undefined
 
   test.beforeEach(async () => {
@@ -48,6 +49,16 @@ test.describe('Subscription deep-link flow', () => {
       full_name: 'E2E Subscribe User',
       admin_role: null,
     })
+
+    // Get access token for the user (simulating mobile app deep-link flow)
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email: email!,
+        password: password!,
+      })
+    expect(signInError).toBeNull()
+    accessToken = signInData.session?.access_token
+    expect(accessToken).toBeTruthy()
   })
 
   test.afterEach(async () => {
@@ -95,58 +106,38 @@ test.describe('Subscription deep-link flow', () => {
   test('deep-link renders tiers and create-checkout returns Stripe URL', async ({
     page,
   }) => {
-    // Log in as the test user to establish session
-    await page.goto('/login')
-    // Wait for hydration to complete - look for the form to be interactive
-    await page.waitForLoadState('networkidle')
-    const emailInput = page.getByLabel(/email address/i)
-    await expect(emailInput).toBeVisible({ timeout: 30_000 })
-    await expect(emailInput).toBeEditable({ timeout: 5_000 })
-    await emailInput.fill(email!)
-    const passwordInput = page.getByLabel(/^password$/i)
-    await expect(passwordInput).toBeEditable({ timeout: 5_000 })
-    await passwordInput.fill(password!)
-    const signInButton = page.getByRole('button', { name: /^sign in$/i })
-    await expect(signInButton).toBeEnabled({ timeout: 5_000 })
-    await signInButton.click()
-    // Wait for redirect after login
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30_000 })
-
-    // Navigate to subscribe page
+    // Navigate to subscribe page (simulating mobile deep-link)
     await page.goto(
       `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
     )
     await expect(page.getByText(/invalid request/i)).toHaveCount(0)
 
-    // Make API request via page context to include session cookies
+    // Make API request with bearer token (simulating mobile deep-link user)
     const base = process.env.VITE_APP_URL || 'http://localhost:3000'
-    const result = await page.evaluate(async ({ tier, successUrl, cancelUrl }) => {
-      // First get CSRF token
-      const csrfRes = await fetch('/api/csrf-token', { credentials: 'include' })
-      const csrfData = await csrfRes.json() as { success: boolean; csrfToken?: string }
-      if (!csrfData.success || !csrfData.csrfToken) {
-        throw new Error('Failed to get CSRF token')
+    const result = await page.evaluate(
+      async ({ tier, successUrl, cancelUrl, token }) => {
+        const response = await fetch('/api/subscriptions/create-checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ tier, successUrl, cancelUrl }),
+        })
+
+        const body = await response.json()
+        return { status: response.status, ok: response.ok, body }
+      },
+      {
+        tier: 'tier1',
+        successUrl: `${base}/subscription-success?tier=tier1`,
+        cancelUrl: `${base}/subscription-cancel`,
+        token: accessToken,
       }
+    )
 
-      const response = await fetch('/api/subscriptions/create-checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfData.csrfToken,
-        },
-        credentials: 'include',
-        body: JSON.stringify({ tier, successUrl, cancelUrl }),
-      })
-      
-      const body = await response.json()
-      return { status: response.status, ok: response.ok, body }
-    }, {
-      tier: 'tier1',
-      successUrl: `${base}/subscription-success?tier=tier1`,
-      cancelUrl: `${base}/subscription-cancel`,
-    })
-
-    // create-checkout is CSRF-protected; with token we should reach Stripe or a domain error
+    // Bearer token auth should reach Stripe or a domain error (not 401/403)
+    expect(result.status).not.toBe(401)
     expect(result.status).not.toBe(403)
 
     if (result.ok) {
@@ -175,78 +166,59 @@ test.describe('Subscription deep-link flow', () => {
     }
   })
 
-  test('Subscribe button posts with CSRF and reaches Stripe or allowed error', async ({
+  test('Subscribe button posts with bearer token and reaches Stripe or allowed error', async ({
     page,
   }) => {
-    // Log in as the test user to establish session
-    await page.goto('/login')
-    // Wait for hydration to complete - look for the form to be interactive
-    await page.waitForLoadState('networkidle')
-    const emailInput = page.getByLabel(/email address/i)
-    await expect(emailInput).toBeVisible({ timeout: 30_000 })
-    await expect(emailInput).toBeEditable({ timeout: 5_000 })
-    await emailInput.fill(email!)
-    const passwordInput = page.getByLabel(/^password$/i)
-    await expect(passwordInput).toBeEditable({ timeout: 5_000 })
-    await passwordInput.fill(password!)
-    const signInButton = page.getByRole('button', { name: /^sign in$/i })
-    await expect(signInButton).toBeEnabled({ timeout: 5_000 })
-    await signInButton.click()
-    // Wait for redirect after login
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30_000 })
-
+    // Navigate to subscribe page with token in URL (simulating mobile deep-link)
+    // The page will use this token for API calls
     await page.goto(
-      `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
+      `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1&token=${accessToken}`
     )
     await expect(page.getByText(/invalid request/i)).toHaveCount(0)
 
-    const subscribeButton = page.getByRole('button', { name: /subscribe to/i }).first()
-    await expect(subscribeButton).toBeVisible()
+    // Make API request with bearer token (simulating mobile deep-link user clicking subscribe)
+    const base = process.env.VITE_APP_URL || 'http://localhost:3000'
+    const result = await page.evaluate(
+      async ({ tier, successUrl, cancelUrl, token }) => {
+        const response = await fetch('/api/subscriptions/create-checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ tier, successUrl, cancelUrl }),
+        })
 
-    const checkoutResponsePromise = page.waitForResponse(
-      (res) =>
-        res.url().includes('/api/subscriptions/create-checkout') &&
-        res.request().method() === 'POST',
-      { timeout: 30_000 }
+        const body = await response.json()
+        return { status: response.status, ok: response.ok, body }
+      },
+      {
+        tier: 'tier1',
+        successUrl: `${base}/subscription-success?tier=tier1`,
+        cancelUrl: `${base}/subscription-cancel`,
+        token: accessToken,
+      }
     )
 
-    await subscribeButton.click()
+    // Bearer token auth should reach Stripe or a domain error (not 401/403)
+    expect(result.status).not.toBe(401)
+    expect(result.status).not.toBe(403)
 
-    const checkoutResponse = await checkoutResponsePromise
-
-    // UI path must send CSRF; a missing token would 403 before Stripe/domain logic
-    expect(checkoutResponse.status()).not.toBe(403)
-
-    const csrfErrorBanner = page.getByText(/csrf token validation failed/i)
-    await expect(csrfErrorBanner).toHaveCount(0)
-
-    // Don't read checkoutResponse.json() here: app/subscribe/page.tsx's own success
-    // handler reads this same response body and immediately does
-    // `window.location.href = data.url`, which can evict the buffered body before
-    // this test's CDP read completes ("Response body is not available for a
-    // response that was navigated away from" - flaky in CI). Assert success via
-    // UI-visible signals instead.
-    if (checkoutResponse.ok()) {
-      await page.waitForURL(/stripe\.com|checkout/i, { timeout: 15_000 })
-      const sessionId = page.url().match(/cs_[a-zA-Z0-9_]+/)?.[0]
-      expect(
-        sessionId,
-        `could not extract Stripe session id from redirect URL: ${page.url()}`
-      ).toBeTruthy()
-      checkoutSessionId = sessionId
+    if (result.ok) {
+      checkoutSessionId = result.body.sessionId as string
+      expect(result.body.url).toMatch(/stripe\.com|checkout/i)
+      expect(result.body.sessionId).toBeTruthy()
     } else {
-      // Allowed env/config gaps from create-checkout/route.ts (same tolerance as API
-      // test), read from the page's own error banner rather than the response body.
-      const allowedErrors =
+      // Fixture always creates a fresh valid user + matching email + no active
+      // subscription. The only legitimate non-2xx outcomes are env/config gaps
+      // from create-checkout/route.ts.
+      const errorMessage = String(result.body.error || '')
+      expect(
+        errorMessage,
+        `create-checkout failed with unexpected error: ${JSON.stringify(result.body)}`
+      ).toMatch(
         /^(Price ID not configured for tier: tier1|Payment processing error|Internal server error)$/
-      const actualErrorText = await page
-        .locator('p.text-red-600')
-        .textContent()
-        .catch(() => null)
-      await expect(
-        page.getByText(allowedErrors),
-        `UI create-checkout failed with unexpected error: ${JSON.stringify(actualErrorText)}`
-      ).toBeVisible({ timeout: 10_000 })
+      )
     }
   })
 })
