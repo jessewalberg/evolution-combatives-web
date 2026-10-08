@@ -66,13 +66,13 @@ export function needsCSRFProtection(request: Request): boolean {
     const pathname = new URL(request.url).pathname
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
     const isApiRoute = pathname.startsWith('/api/')
-    const isWebhook = pathname.includes('/webhook')
+    const isWebhookRoute = pathname.startsWith('/api/webhooks/')
     const isMobileApi = pathname.startsWith('/api/mobile/')
 
     // Skip CSRF for:
-    // - Webhooks (they have their own signature verification)
+    // - Webhook routes (they have their own signature verification)
     // - Mobile API routes (use Bearer auth, not vulnerable to CSRF)
-    return isStateChanging && isApiRoute && !isWebhook && !isMobileApi
+    return isStateChanging && isApiRoute && !isWebhookRoute && !isMobileApi
 }
 
 /**

@@ -25,12 +25,22 @@ describe('needsCSRFProtection', () => {
     expect(needsCSRFProtection(createNextRequest('/api/content/videos', { method: 'DELETE' }))).toBe(true)
   })
 
-  it('skips GET, non-API, webhooks, and mobile API', () => {
+  it('skips GET, non-API, and mobile API', () => {
     expect(needsCSRFProtection(createNextRequest('/api/content/videos', { method: 'GET' }))).toBe(false)
     expect(needsCSRFProtection(createNextRequest('/dashboard', { method: 'POST' }))).toBe(false)
-    expect(needsCSRFProtection(createNextRequest('/api/webhooks/stripe', { method: 'POST' }))).toBe(false)
-    expect(needsCSRFProtection(createNextRequest('/api/webhook/test', { method: 'POST' }))).toBe(false)
     expect(needsCSRFProtection(createNextRequest('/api/mobile/video/signed-url', { method: 'POST' }))).toBe(false)
+  })
+
+  it('exempts /api/webhooks/* routes with exact prefix match', () => {
+    expect(needsCSRFProtection(createNextRequest('/api/webhooks/stripe', { method: 'POST' }))).toBe(false)
+    expect(needsCSRFProtection(createNextRequest('/api/webhooks/cloudflare', { method: 'POST' }))).toBe(false)
+    expect(needsCSRFProtection(createNextRequest('/api/webhooks/cloudflare', { method: 'DELETE' }))).toBe(false)
+  })
+
+  it('requires CSRF for paths containing webhook but not under /api/webhooks/', () => {
+    expect(needsCSRFProtection(createNextRequest('/api/webhook/test', { method: 'POST' }))).toBe(true)
+    expect(needsCSRFProtection(createNextRequest('/api/some-webhook', { method: 'POST' }))).toBe(true)
+    expect(needsCSRFProtection(createNextRequest('/api/v1/webhook-handler', { method: 'POST' }))).toBe(true)
   })
 })
 
