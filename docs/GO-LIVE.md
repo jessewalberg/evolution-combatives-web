@@ -193,10 +193,11 @@ Note: The production `workers.dev` URL is not needed because production has `wor
 **Redirect URLs** — add these:
 ```
 https://evolution-combatives-admin-staging.jesse-6b1.workers.dev/**
-https://*.evolution-combatives-admin-preview.jesse-6b1.workers.dev/**
+https://evolution-combatives-admin-preview.jesse-6b1.workers.dev/**
+https://*-evolution-combatives-admin-preview.jesse-6b1.workers.dev/**
 ```
 
-The wildcard covers all PR preview version URLs.
+The wildcard with hyphen covers all PR preview version URLs (e.g., `<id>-evolution-combatives-admin-preview...`).
 
 ---
 
@@ -309,7 +310,7 @@ Staging and preview Workers are protected by Cloudflare Access. This was configu
 | Application | Hostname | Purpose |
 |-------------|----------|---------|
 | Staging | `evolution-combatives-admin-staging.jesse-6b1.workers.dev` | Staging Worker |
-| Preview | `*.evolution-combatives-admin-preview.jesse-6b1.workers.dev` | Preview Worker + all version/preview URLs |
+| Preview | `*evolution-combatives-admin-preview.jesse-6b1.workers.dev` | Preview Worker + all version/preview URLs |
 
 **Allowed Users**:
 - `jesseparrot@gmail.com`
