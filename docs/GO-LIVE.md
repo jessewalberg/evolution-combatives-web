@@ -141,13 +141,11 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
 Signed URL generation fails closed if Stream signing keys are not configured.
 
-### Separate Stream Accounts (Required)
-- [ ] **Use separate Cloudflare Stream accounts** for staging/preview versus production:
-  - Staging and preview Workers **must** use a non-production Stream account (separate account ID and API token)
-  - This isolates test uploads and webhooks from production video library
-  - Prevents accidental cross-environment video ID collisions and webhook delivery confusion
-  - Update `CLOUDFLARE_ACCOUNT_ID` in `wrangler.jsonc` `env.staging` and `env.preview` blocks if needed
-  - Each environment's Stream signing keys and webhook secrets belong to their respective accounts
+### Separate Cloudflare Account for Non-Production Stream (Required)
+- [ ] Staging and preview use Cloudflare Stream in a **separate Cloudflare account** (a different account ID) from production. A second Stream library, API token, or signing key inside the production Cloudflare account does not satisfy this item.
+  - Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_CUSTOMER_SUBDOMAIN` in `wrangler.jsonc` `env.staging` and `env.preview` to the non-production account's values.
+  - Create the staging/preview `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_STREAM_SIGNING_KEY_ID`, `CLOUDFLARE_STREAM_SIGNING_KEY`, and `CLOUDFLARE_STREAM_WEBHOOK_SECRET` in the non-production account and set them with `wrangler secret put --env staging` / `--env preview`.
+  - Upload test videos to the non-production account only.
 
 ### Pre-Cutover Steps
 
