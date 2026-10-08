@@ -2,7 +2,7 @@
  * Evolution Combatives - Login API Route
  * Handles admin authentication requests
  *
- * @description Secure API endpoint for admin login with rate limiting and validation
+ * @description Secure API endpoint for admin login with validation
  * @author Evolution Combatives
  */
 
@@ -24,110 +24,12 @@ const loginRequestSchema = z.object({
     rememberMe: z.boolean().optional().default(false)
 })
 
-// Rate limiting storage (in production, use Redis)
-const loginAttempts = new Map<string, { count: number; resetTime: number }>()
-
-const MAX_ATTEMPTS = 5
-const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
-
-/**
- * Rate limiting helper
- */
-function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetTime: number } {
-    const now = Date.now()
-    const attempts = loginAttempts.get(identifier)
-
-    // Clean expired entries periodically
-    if (Math.random() < 0.1) {
-        for (const [key, value] of loginAttempts.entries()) {
-            if (now > value.resetTime) {
-                loginAttempts.delete(key)
-            }
-        }
-    }
-
-    if (!attempts || now > attempts.resetTime) {
-        // New window
-        const resetTime = now + LOCKOUT_DURATION
-        loginAttempts.set(identifier, { count: 1, resetTime })
-        return { allowed: true, remaining: MAX_ATTEMPTS - 1, resetTime }
-    }
-
-    if (attempts.count >= MAX_ATTEMPTS) {
-        // Rate limit exceeded
-        return { allowed: false, remaining: 0, resetTime: attempts.resetTime }
-    }
-
-    // Increment counter
-    attempts.count++
-    loginAttempts.set(identifier, attempts)
-    return {
-        allowed: true,
-        remaining: MAX_ATTEMPTS - attempts.count,
-        resetTime: attempts.resetTime
-    }
-}
-
-/**
- * Clear failed attempts on successful login
- */
-function clearFailedAttempts(identifier: string) {
-    loginAttempts.delete(identifier)
-}
-
-/**
- * Get client IP for rate limiting
- */
-function getClientIP(request: Request): string {
-    // Behind Cloudflare the real client IP arrives in cf-connecting-ip
-    const cfConnectingIP = request.headers.get('cf-connecting-ip')
-    if (cfConnectingIP) return cfConnectingIP
-
-    const forwarded = request.headers.get('x-forwarded-for')
-    const realIP = request.headers.get('x-real-ip')
-
-    if (forwarded) {
-        return forwarded.split(',')[0].trim()
-    }
-
-    if (realIP) {
-        return realIP
-    }
-
-    return 'unknown'
-}
-
 /**
  * POST /api/auth/login
  * Authenticate admin user
  */
 export async function POST({ request }: { request: Request }) {
     try {
-        const clientIP = getClientIP(request)
-        const rateLimitKey = `login:${clientIP}`
-
-        // Check rate limiting
-        const rateLimit = checkRateLimit(rateLimitKey)
-        if (!rateLimit.allowed) {
-            return json(
-                {
-                    success: false,
-                    error: 'Too many failed attempts',
-                    message: 'Account temporarily locked. Please try again later.',
-                    retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
-                },
-                {
-                    status: 429,
-                    headers: {
-                        'X-RateLimit-Limit': MAX_ATTEMPTS.toString(),
-                        'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-                        'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString(),
-                        'Retry-After': Math.ceil((rateLimit.resetTime - Date.now()) / 1000).toString()
-                    }
-                }
-            )
-        }
-
         // Parse and validate request body
         const body = await request.json()
         const validatedData = loginRequestSchema.parse(body)
@@ -157,14 +59,7 @@ export async function POST({ request }: { request: Request }) {
                             ? 'Please check your email and click the confirmation link before signing in.'
                             : 'Authentication failed. Please try again.'
                 },
-                {
-                    status: 401,
-                    headers: {
-                        'X-RateLimit-Limit': MAX_ATTEMPTS.toString(),
-                        'X-RateLimit-Remaining': (rateLimit.remaining - 1).toString(),
-                        'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
-                    }
-                }
+                { status: 401 }
             )
         }
 
@@ -209,11 +104,8 @@ export async function POST({ request }: { request: Request }) {
             .update({ last_login_at: new Date().toISOString() })
             .eq('id', authData.user.id)
 
-        // Clear failed attempts on successful login
-        clearFailedAttempts(rateLimitKey)
-
         // Return success response
-        const response = json({
+        return json({
             success: true,
             message: 'Login successful',
             user: {
@@ -223,13 +115,6 @@ export async function POST({ request }: { request: Request }) {
                 name: profile.full_name
             }
         })
-
-        // Set rate limit headers
-        response.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString())
-        response.headers.set('X-RateLimit-Remaining', MAX_ATTEMPTS.toString())
-        response.headers.set('X-RateLimit-Reset', new Date(Date.now() + LOCKOUT_DURATION).toISOString())
-
-        return response
 
     } catch (error) {
         // Log error for debugging in development
