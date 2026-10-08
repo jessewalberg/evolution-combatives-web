@@ -175,6 +175,23 @@ export class CloudflareStreamUploadError extends CloudflareStreamError {
     }
 }
 
+// Stream video ID validation: 32 lowercase hex characters
+const STREAM_VIDEO_ID_PATTERN = /^[a-f0-9]{32}$/
+
+export function isValidStreamVideoId(videoId: string): boolean {
+    return STREAM_VIDEO_ID_PATTERN.test(videoId)
+}
+
+export function validateStreamVideoId(videoId: string): void {
+    if (!isValidStreamVideoId(videoId)) {
+        throw new CloudflareStreamError(
+            'Invalid video ID format',
+            400,
+            { videoId }
+        )
+    }
+}
+
 // API Base Configuration (server-side only)
 const getStreamApiBase = () => {
     if (typeof window !== 'undefined') {
@@ -261,13 +278,8 @@ export const uploadFunctions = {
         videoId: string
     }> {
         const payload: Record<string, unknown> = {
-            maxDurationSeconds: options.maxDurationSeconds || 3600 // 1 hour default, required field
-        }
-
-        // Only add other fields if specified
-
-        if (options.requireSignedURLs !== undefined) {
-            payload.requireSignedURLs = options.requireSignedURLs
+            maxDurationSeconds: options.maxDurationSeconds || 3600, // 1 hour default, required field
+            requireSignedURLs: options.requireSignedURLs !== false // Default to true for paid content
         }
 
         if (options.thumbnailTimestampPct !== undefined) {
@@ -306,61 +318,13 @@ export const uploadFunctions = {
         }
 
         try {
-            console.log('DEBUG: Raw options passed to getUploadUrl:', JSON.stringify(options, null, 2))
-            console.log('DEBUG: Constructed payload before stringification:', JSON.stringify(payload, null, 2))
-            console.log('DEBUG: Stringified payload:', JSON.stringify(payload))
-
-            console.log('Cloudflare Stream API Request:', {
-                url: getStreamDirectUploadApi(),
-                headers: getStreamHeaders(),
-                payload: payload
-            })
-
             const response = await fetch(getStreamDirectUploadApi(), {
                 method: 'POST',
                 headers: getStreamHeaders(),
                 body: JSON.stringify(payload)
             })
 
-            console.log('Cloudflare Stream API Response:', {
-                status: response.status,
-                statusText: response.statusText,
-                headers: Object.fromEntries(response.headers.entries())
-            })
-
-            const responseText = await response.text()
-            console.log('Cloudflare Stream API Response Body:', responseText)
-
-            let data
-            try {
-                data = JSON.parse(responseText)
-            } catch (parseError) {
-                throw new CloudflareStreamError(
-                    `Failed to parse API response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-                    response.status,
-                    responseText
-                )
-            }
-
-            if (!response.ok) {
-                const errorMessage = data.errors?.[0]?.message || `HTTP ${response.status}: ${response.statusText}`
-                console.log('Cloudflare Stream API Error Details:', data.errors)
-                throw new CloudflareStreamError(
-                    errorMessage,
-                    response.status,
-                    data.errors
-                )
-            }
-
-            if (!data.success) {
-                const errorMessage = data.errors?.[0]?.message || 'Unknown Cloudflare Stream error'
-                console.log('Cloudflare Stream API Error Details:', data.errors)
-                throw new CloudflareStreamError(
-                    errorMessage,
-                    data.errors?.[0]?.code,
-                    data.errors
-                )
-            }
+            const data = await handleStreamResponse<StreamUploadResponse>(response)
 
             return {
                 uploadUrl: data.result.uploadURL,
@@ -433,6 +397,7 @@ export const uploadFunctions = {
      * Check upload and processing status
      */
     async checkUploadStatus(videoId: string): Promise<UploadProgress> {
+        validateStreamVideoId(videoId)
         try {
             const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 headers: getStreamHeaders()
@@ -466,6 +431,7 @@ export const videoManagement = {
      * Get video details from Cloudflare Stream
      */
     async getVideoDetails(videoId: string): Promise<StreamVideoMetadata> {
+        validateStreamVideoId(videoId)
         try {
             const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 headers: getStreamHeaders()
@@ -486,6 +452,7 @@ export const videoManagement = {
      * Update video settings (e.g., requireSignedURLs)
      */
     async updateVideoSettings(videoId: string, settings: { requireSignedURLs?: boolean }): Promise<void> {
+        validateStreamVideoId(videoId)
         try {
             const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'POST',
@@ -512,13 +479,11 @@ export const videoManagement = {
         options: SignedUrlOptions = {},
         format: 'hls' | 'mp4' = 'hls'
     ): Promise<string> {
+        validateStreamVideoId(videoId)
         // Check if we have signing keys configured for secure JWT generation
         const hasSigningKeys = process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID && process.env.CLOUDFLARE_STREAM_SIGNING_KEY;
 
         if (!hasSigningKeys) {
-            console.error('🔐 SECURITY ERROR: Cloudflare Stream signing keys are not configured');
-            console.error('🔐 CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY are required');
-            console.error('🔐 Video playback is blocked to prevent unauthorized access to paid content');
             throw new CloudflareStreamError(
                 'Video signing keys not configured. Contact support.',
                 503,
@@ -529,9 +494,8 @@ export const videoManagement = {
         // Configure video to require signed URLs for security
         try {
             await this.updateVideoSettings(videoId, { requireSignedURLs: true });
-            console.log('🔐 Video configured to require signed URLs (secure mode)');
-        } catch (error) {
-            console.warn('🔐 Could not configure video settings:', error);
+        } catch {
+            // Settings update is best-effort; proceed with token generation
         }
 
         // Set expiration based on subscription tier
@@ -564,12 +528,6 @@ export const videoManagement = {
                 accessRules: options.accessRules || []
             }
 
-            console.log('🔐 Generating secure JWT token with RSA signing:', {
-                videoId,
-                keyId: process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID,
-                expiration: new Date(expiration * 1000).toISOString()
-            });
-
             // TODO: Implement proper RSA JWT signing here
             // For now, we'll use Cloudflare's token generation API as fallback
             // In production, you should use a JWT library like 'jsonwebtoken' with RSA signing
@@ -581,14 +539,7 @@ export const videoManagement = {
                     body: JSON.stringify(payload)
                 })
 
-                console.log('🔐 Token response status:', response.status);
                 const data = await handleStreamResponse<{ result: { token: string } }>(response)
-
-                console.log('🔐 Token generated successfully:', {
-                    hasToken: !!data.result.token,
-                    tokenLength: data.result.token?.length,
-                    tokenPreview: data.result.token?.substring(0, 50) + '...'
-                });
 
                 // Construct the signed URL based on requested format using customer subdomain
                 if (format === 'mp4') {
@@ -625,6 +576,7 @@ export const videoManagement = {
             fit?: 'clip' | 'crop' | 'pad' | 'scale-down'
         } = {}
     ): Promise<string> {
+        validateStreamVideoId(videoId)
         const params = new URLSearchParams()
 
         if (options.time) params.set('time', options.time.toString())
@@ -681,6 +633,7 @@ export const videoManagement = {
      * Delete video from Cloudflare Stream
      */
     async deleteVideo(videoId: string): Promise<void> {
+        validateStreamVideoId(videoId)
         try {
             const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'DELETE',
@@ -709,6 +662,7 @@ export const videoManagement = {
             thumbnailTimestampPct?: number
         }
     ): Promise<StreamVideoMetadata> {
+        validateStreamVideoId(videoId)
         try {
             const response = await fetch(`${getStreamApiBase()}/${videoId}`, {
                 method: 'POST',
