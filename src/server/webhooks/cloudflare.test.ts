@@ -390,6 +390,52 @@ describe('POST /api/webhooks/cloudflare', () => {
     )
   })
 
+  it('processes downloading state by writing processing status without is_published', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'downloading', pctComplete: '25.000000', errorReasonCode: '', errorReasonText: '' },
+      readyToStream: false,
+    })
+    const payload = JSON.stringify(webhookPayload)
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signPayload(payload) },
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'processing' })
+    )
+  })
+
+  it('processes pendingupload state by writing processing status without is_published', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'pendingupload', pctComplete: '0.000000', errorReasonCode: '', errorReasonText: '' },
+      readyToStream: false,
+    })
+    const payload = JSON.stringify(webhookPayload)
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signPayload(payload) },
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'processing' })
+    )
+  })
+
   it('makes NO database write for unknown state (no-op)', async () => {
     const webhookPayload = {
       uid: VALID_VIDEO_UID,
