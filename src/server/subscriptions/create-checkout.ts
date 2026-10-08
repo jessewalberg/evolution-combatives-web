@@ -1,9 +1,12 @@
 /**
- * Evolution Combatives - Create Stripe Checkout Session API (Web)
+ * Evolution Combatives - Create Stripe Checkout Session API
  * Handles creation of Stripe checkout sessions for subscription payments
  * 
- * This endpoint uses cookie-based session auth for web clients.
- * Mobile clients should use /api/mobile/subscriptions/create-checkout instead.
+ * This endpoint accepts EITHER:
+ * - Cookie session auth (for web admin users)
+ * - Bearer token auth (for mobile deep-link users accessing /subscribe page)
+ * 
+ * User identity is always derived from the authenticated token/session, never from request body.
  *
  * @description Secure API endpoint for initiating subscription payments
  * @author Evolution Combatives
@@ -13,6 +16,7 @@ import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
 import { SUBSCRIPTION_PRICING, type SubscriptionTier } from '@/src/lib/shared/constants/subscriptionTiers';
 import { createAdminClient } from '@/src/lib/supabase';
 import { validateSessionAuth } from '@/src/lib/api-auth';
+import { validateMobileAppAuth } from '@/src/lib/mobile-auth';
 import { json } from '@/src/lib/http';
 import { z } from 'zod';
 
@@ -23,21 +27,39 @@ const CreateCheckoutSchema = z.object({
     cancelUrl: z.string().url().optional(),
 });
 
-export async function POST({ request: _request }: { request: Request }): Promise<Response> {
-    // Validate cookie session - user identity derived from session, not request body
-    const authResult = await validateSessionAuth();
-    if ('error' in authResult) {
-        return authResult.error;
+export async function POST({ request }: { request: Request }): Promise<Response> {
+    let userId: string;
+    let userEmail: string | undefined;
+    
+    // Try cookie session auth first (for web admin users)
+    const sessionResult = await validateSessionAuth();
+    if (!('error' in sessionResult)) {
+        userId = sessionResult.user.userId;
+        userEmail = sessionResult.user.email;
+    } else {
+        // Fall back to Bearer token auth (for mobile deep-link users)
+        const mobileResult = await validateMobileAppAuth(request, 'Checkout API');
+        if ('error' in mobileResult) {
+            return json(
+                { success: false, error: 'Authentication required' },
+                { status: 401 }
+            );
+        }
+        userId = mobileResult.user.id;
+        userEmail = mobileResult.user.email;
     }
     
-    const { user: sessionUser } = authResult;
-    const userId = sessionUser.userId;
-    const userEmail = sessionUser.email;
+    if (!userEmail) {
+        return json(
+            { error: 'User email not found' },
+            { status: 400 }
+        );
+    }
     
     let tier: SubscriptionTier | undefined;
     
     try {
-        const body = await _request.json();
+        const body = await request.json();
         const validatedData = CreateCheckoutSchema.parse(body);
 
         tier = validatedData.tier;
