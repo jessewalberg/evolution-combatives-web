@@ -79,16 +79,32 @@ describe('VIDEO_ALLOWED_BULK_STATUS_FIELDS', () => {
 })
 
 describe('VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS', () => {
-    it('only allows processing_status, duration_seconds, and is_published', () => {
-        expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.size).toBe(3)
+    it('only allows processing_status and duration_seconds', () => {
+        expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.size).toBe(2)
         expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('processing_status')).toBe(true)
         expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('duration_seconds')).toBe(true)
-        expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('is_published')).toBe(true)
     })
 
-    it('does not allow cloudflare_video_id, title, or other fields', () => {
+    it('does not allow is_published, cloudflare_video_id, title, or other fields', () => {
+        expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('is_published')).toBe(false)
         expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('cloudflare_video_id')).toBe(false)
         expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('title')).toBe(false)
         expect(VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS.has('id')).toBe(false)
+    })
+
+    it('filters update-status data to drop is_published while keeping processing_status', () => {
+        const input = {
+            processing_status: 'ready',
+            duration_seconds: 120,
+            is_published: true,
+            title: 'should-be-stripped',
+        }
+        const result = filterAllowedFields(input, VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS)
+        expect(result).toEqual({
+            processing_status: 'ready',
+            duration_seconds: 120,
+        })
+        expect(result).not.toHaveProperty('is_published')
+        expect(result).not.toHaveProperty('title')
     })
 })

@@ -21,8 +21,8 @@
 //   CLOUDFLARE_STREAM_WEBHOOK_SECRET
 //
 // Per Wrangler v4 env inheritance, `account_id`, `compatibility_date`,
-// `compatibility_flags`, `main`, `workers_dev`, and `routes` flow down. `vars`
-// and `observability` do NOT inherit and must be repeated per env block.
+// `compatibility_flags`, `main`, `workers_dev`, `preview_urls`, and `routes`
+// flow down. `vars` and `observability` do NOT inherit; repeat per env block.
 // Custom domains are attached in a separate cutover change after the first
 // production deploy. Staging and preview set `routes: []` explicitly.
 //
@@ -39,9 +39,11 @@
     "compatibility_date": "2026-08-01",
     "compatibility_flags": ["nodejs_compat"],
     "main": "@tanstack/react-start/server-entry",
-    // Production has no workers.dev route (staging/preview re-enable workers_dev
-    // for themselves). Custom domains are attached in a separate cutover change.
+    // Production has no workers.dev route and no preview URLs (staging/preview
+    // re-enable workers_dev for themselves). Custom domains are attached in a
+    // separate cutover change.
     "workers_dev": false,
+    "preview_urls": false,
     "observability": {
         "enabled": true,
         "head_sampling_rate": 1,

@@ -41,7 +41,6 @@ export const VIDEO_ALLOWED_BULK_STATUS_FIELDS = new Set([
 export const VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS = new Set([
     'processing_status',
     'duration_seconds',
-    'is_published',
 ])
 
 export function filterAllowedFields<T extends Record<string, unknown>>(
