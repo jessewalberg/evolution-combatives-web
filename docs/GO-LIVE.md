@@ -157,7 +157,7 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
    - Verify the URL includes a `token=` parameter
    - Verify the video plays in a browser
 
-5. - [ ] **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
+4. - [ ] **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
 
 ---
 
@@ -192,19 +192,15 @@ The wildcard with hyphen covers all PR preview version URLs (e.g., `<id>-evoluti
 
 ---
 
-## 6. Post-Deploy Stream Verification (Before DNS Cutover)
+## 6. Post-Deploy Verification (Before DNS Cutover)
 
 After deploying to production but BEFORE updating DNS:
 
-1. **Confirm signed playback works**:
-   - Request a signed URL via `/api/video/signed-url` (web admin) or `/api/mobile/video/signed-url` (mobile)
-   - Verify the URL contains a `token=` parameter
-   - Verify the video plays successfully
-   - Verify an unsigned URL is rejected with 403
-
-2. **Mobile playback test**: Using a mobile build pointed at the production Worker URL (not the custom domain yet), verify a paid test user can play a paid video.
+- [ ] Stream signing already enforced; confirm signed playback works on web and mobile after deploy.
 
 ---
+
+## 7. DNS Cutover
 
 ### Current DNS (Vercel)
 The domain `evolutioncombatives.com` currently points to Vercel.
@@ -230,10 +226,6 @@ After DNS propagation:
 curl -I https://evolutioncombatives.com/api/health
 # Should show Server: cloudflare
 ```
-
----
-
-## 7. DNS Cutover
 
 ---
 
@@ -475,4 +467,4 @@ Run these checks after cutover:
 | Smoke testing | 15 minutes |
 | **Total** | ~1.5 hours |
 
-Note: Cloudflare Access on staging/preview is already configured (see Section 9).
+Note: Cloudflare Access on staging/preview is already configured (see Section 10).
