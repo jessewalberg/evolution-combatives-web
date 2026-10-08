@@ -83,6 +83,13 @@ These are repo-level secrets (not environment secrets) because both CI jobs and 
 ### GitHub Environments
 Create two GitHub Environments: `production` and `preview`
 
+### Required Reviewers (Production Protection)
+- [ ] **Enable required reviewers** for the `production` GitHub environment:
+  1. Go to repo **Settings → Environments → production**
+  2. Check **Required reviewers**
+  3. Add designated reviewer(s) who must approve production deployments
+  4. This ensures production deploys require explicit human approval before running
+
 ### Production Environment Secrets
 | Secret Name | Where to Get Value | Purpose |
 |-------------|-------------------|---------|
@@ -133,6 +140,14 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
 ## 4. Cloudflare Stream Signed URLs (Required)
 
 Signed URL generation fails closed if Stream signing keys are not configured.
+
+### Separate Stream Accounts (Required)
+- [ ] **Use separate Cloudflare Stream accounts** for staging/preview versus production:
+  - Staging and preview Workers **must** use a non-production Stream account (separate account ID and API token)
+  - This isolates test uploads and webhooks from production video library
+  - Prevents accidental cross-environment video ID collisions and webhook delivery confusion
+  - Update `CLOUDFLARE_ACCOUNT_ID` in `wrangler.jsonc` `env.staging` and `env.preview` blocks if needed
+  - Each environment's Stream signing keys and webhook secrets belong to their respective accounts
 
 ### Pre-Cutover Steps
 
