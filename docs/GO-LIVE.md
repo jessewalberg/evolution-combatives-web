@@ -24,6 +24,28 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 
 ## Pre-Deployment Prerequisites
 
+### 0. Update Production Stripe Values in wrangler.jsonc (LAUNCH BLOCKER)
+
+**⚠️ REQUIRED BEFORE FIRST PRODUCTION DEPLOY**: The production environment in `wrangler.jsonc` has placeholder values for Stripe:
+
+```jsonc
+// Lines 76-79 in wrangler.jsonc - currently set to "update"
+"STRIPE_PUBLISHABLE_KEY": "update",
+"STRIPE_BEGINNER_PRICE_ID": "update",
+"STRIPE_INTERMEDIATE_PRICE_ID": "update",
+"STRIPE_ADVANCED_PRICE_ID": "update"
+```
+
+Replace these with live-mode values from Stripe Dashboard → Products → Pricing before deploying to production:
+- `STRIPE_PUBLISHABLE_KEY` → `pk_live_...` from Stripe → Developers → API keys
+- `STRIPE_BEGINNER_PRICE_ID` → Price ID for $9 Beginner tier
+- `STRIPE_INTERMEDIATE_PRICE_ID` → Price ID for $19 Intermediate tier
+- `STRIPE_ADVANCED_PRICE_ID` → Price ID for $49 Advanced tier
+
+Staging and preview environments already have test-mode values configured.
+
+---
+
 ### 1. Cloudflare Account Configuration
 
 #### Required: Cloudflare API Token
@@ -48,8 +70,17 @@ Create an API token with the following scopes:
 
 ---
 
-## 2. GitHub Environment Secrets
+## 2. GitHub Secrets
 
+### Repository-Level Secrets (Already Configured)
+| Secret Name | Where to Get Value | Purpose |
+|-------------|-------------------|---------|
+| `CF_ACCESS_CLIENT_ID` | Zero Trust → Service Tokens | CI access to Access-protected staging/preview URLs |
+| `CF_ACCESS_CLIENT_SECRET` | Zero Trust → Service Tokens | CI access to Access-protected staging/preview URLs |
+
+These are repo-level secrets (not environment secrets) because both CI jobs and local Playwright runs may need them.
+
+### GitHub Environments
 Create two GitHub Environments: `production` and `preview`
 
 ### Production Environment Secrets
@@ -63,8 +94,6 @@ Create two GitHub Environments: `production` and `preview`
 |-------------|-------------------|---------|
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API Tokens page | Deploy preview Workers |
 | `CLOUDFLARE_ACCOUNT_ID` | `6b13f76a2d42fd29437154c35fa8a0c9` | Worker deployment |
-| `CF_ACCESS_CLIENT_ID` | Zero Trust → Service Tokens (optional) | CI access to Access-protected previews |
-| `CF_ACCESS_CLIENT_SECRET` | Zero Trust → Service Tokens (optional) | CI access to Access-protected previews |
 
 ---
 
@@ -133,7 +162,9 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
      ```
 
 4. **Test Video Playback** before cutover:
-   - With signing keys configured, request a signed URL via `/api/video/signed-url`
+   - With signing keys configured, request a signed URL via:
+     - `/api/video/signed-url` (web admin, requires session cookie)
+     - `/api/mobile/video/signed-url` (mobile app, requires Bearer token)
    - Verify the URL includes a `token=` parameter
    - Verify the video plays in a browser
 
@@ -141,19 +172,31 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
 ## 5. Supabase Auth Configuration
 
-Update these settings in Supabase Dashboard → Authentication → URL Configuration:
+Update redirect URL settings in Supabase Dashboard → Authentication → URL Configuration for each project.
 
-### Site URL
-- **Value**: `https://evolutioncombatives.com` (no change needed)
+### Production Project (`bxpxpkiubjbcmgsnfpvp`)
 
-### Redirect URLs
-Add these allowed redirect URLs:
+**Site URL**: `https://evolutioncombatives.com` (no change needed)
+
+**Redirect URLs** — add these:
 ```
 https://evolutioncombatives.com/**
 https://www.evolutioncombatives.com/**
-https://evolution-combatives-admin.jesse-6b1.workers.dev/**
-https://evolution-combatives-admin-staging.jesse-6b1.workers.dev/**
 ```
+
+Note: The production `workers.dev` URL is not needed because production has `workers_dev: false` in wrangler.jsonc.
+
+### Staging/Preview Project (`hknjeztslvbenmlaqfqa`)
+
+**Site URL**: `https://evolution-combatives-admin-staging.jesse-6b1.workers.dev`
+
+**Redirect URLs** — add these:
+```
+https://evolution-combatives-admin-staging.jesse-6b1.workers.dev/**
+https://*.evolution-combatives-admin-preview.jesse-6b1.workers.dev/**
+```
+
+The wildcard covers all PR preview version URLs.
 
 ---
 
@@ -188,7 +231,18 @@ curl -I https://evolutioncombatives.com/api/health
 
 ## 7. Stripe Webhook Configuration
 
-### Create New Webhook Endpoint
+### Check for Existing Endpoint (Recommended)
+
+The domain `evolutioncombatives.com` is not changing, so a live-mode webhook endpoint may already exist from the Vercel deployment:
+
+1. Go to **Stripe Dashboard → Developers → Webhooks**
+2. Look for an existing endpoint at `https://evolutioncombatives.com/api/webhooks/stripe`
+3. **If it exists**: Reuse it and its existing signing secret (set as `STRIPE_WEBHOOK_SECRET`)
+4. **If it doesn't exist**: Create a new endpoint (see below)
+
+**Do not create a duplicate endpoint** — this would cause double-delivery of webhook events.
+
+### Create New Webhook Endpoint (Only If None Exists)
 1. Go to Stripe Dashboard → Developers → Webhooks
 2. Add endpoint: `https://evolutioncombatives.com/api/webhooks/stripe`
 3. Select events:
@@ -217,7 +271,18 @@ If Vercel was returning 402 DEPLOYMENT_DISABLED, Stripe webhook deliveries may h
 
 ## 8. Cloudflare Stream Webhook Configuration
 
-### Create Webhook
+### Check for Existing Webhook (Recommended)
+
+A Stream webhook endpoint may already exist from the Vercel deployment:
+
+1. Go to **Cloudflare Dashboard → Stream → Notifications**
+2. Look for an existing webhook at `https://evolutioncombatives.com/api/webhooks/cloudflare`
+3. **If it exists**: Reuse it and retrieve its signing secret (set as `CLOUDFLARE_STREAM_WEBHOOK_SECRET`)
+4. **If it doesn't exist**: Create a new webhook (see below)
+
+**Do not create a duplicate webhook** — this would cause double-delivery of events.
+
+### Create New Webhook (Only If None Exists)
 1. Go to Cloudflare Dashboard → Stream → Notifications
 2. Add notification webhook: `https://evolutioncombatives.com/api/webhooks/cloudflare`
 3. Select events:
@@ -231,46 +296,51 @@ If Vercel was returning 402 DEPLOYMENT_DISABLED, Stripe webhook deliveries may h
 
 ---
 
-## 9. Protect Staging and Preview URLs with Cloudflare Access
+## 9. Cloudflare Access Protection (DONE)
 
-The staging Worker (`evolution-combatives-admin-staging`) and preview Worker (`evolution-combatives-admin-preview`) are publicly accessible via their `workers.dev` URLs. Only the app's login page stands between unauthenticated users and the admin interface.
+Staging and preview Workers are protected by Cloudflare Access. This was configured via `cf` CLI on Oct 8, 2026.
 
-### Enable Cloudflare Access
+### Current Configuration
 
-1. Go to **Cloudflare Dashboard → Workers & Pages**
-2. Select `evolution-combatives-admin-staging`
-3. Go to **Settings → Domains & Routes**
-4. For `workers.dev`, click **Enable Cloudflare Access**
-5. Click **Manage Cloudflare Access** to configure the policy:
-   - Add your email and team members' emails
-   - Or set policy to "Emails ending in @yourdomain.com"
-6. Repeat for `evolution-combatives-admin-preview`
-7. For Preview URLs on the preview Worker, also enable Access
+**Zero Trust Team**: `teamworkformula.cloudflareaccess.com`
 
-### Create a Service Token for CI/CD
+**Access Applications** (self-hosted):
 
-Once Access is enabled, GitHub Actions and Playwright E2E tests need a service token to authenticate:
+| Application | Hostname | Purpose |
+|-------------|----------|---------|
+| Staging | `evolution-combatives-admin-staging.jesse-6b1.workers.dev` | Staging Worker |
+| Preview | `*.evolution-combatives-admin-preview.jesse-6b1.workers.dev` | Preview Worker + all version/preview URLs |
 
-1. Go to **Cloudflare Dashboard → Zero Trust → Access → Service Tokens**
-2. Click **Create a Service Token**
-3. Name it `CI/CD token` and set duration (e.g., 1 year)
-4. Copy the `Client ID` and `Client Secret`
+**Allowed Users**:
+- `jesseparrot@gmail.com`
+- `jesse@jessewalberg.com`
 
-### Add Service Token to Access Policy
+**Service Token**:
+- Name: `evolution-combatives-ci`
+- Expires: 2027-10-08
+- Policy: `non_identity` (both applications)
+- Stored as repo-level GitHub secrets: `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`
+
+### Known Limitation (Accepted)
+
+Stripe test-mode webhooks and Cloudflare Stream webhooks to staging and preview URLs are blocked by Access. There is no bypass configured — this is by design. Test webhooks locally or use the production endpoint.
+
+### Adding a Teammate
 
 1. Go to **Zero Trust → Access → Applications**
-2. Find the "Cloudflare Workers Preview URLs" policy (auto-created)
-3. Edit the policy and add a rule:
-   - **Include** → **Service Token** → Select your CI/CD token
-4. Repeat for the staging Worker's policy if separate
+2. Select the staging or preview application
+3. Edit the policy and add an **Include** rule:
+   - **Emails** → Add the teammate's email address
+4. Repeat for the other application
 
-### Add Service Token to GitHub Secrets
+### Rotating the Service Token (Before Oct 2027)
 
-Add to the `preview` environment:
-- `CF_ACCESS_CLIENT_ID` — The Client ID from the service token
-- `CF_ACCESS_CLIENT_SECRET` — The Client Secret from the service token
-
-The CI workflows will automatically send these headers when the secrets are set. When the secrets are absent (e.g., before configuring Access), the workflows skip the headers and work normally.
+1. Go to **Zero Trust → Access → Service Tokens**
+2. Create a new service token (e.g., `evolution-combatives-ci-2027`)
+3. Update GitHub repo secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` with new values
+4. Update both Access application policies to include the new token
+5. Test CI runs successfully
+6. Delete the old service token
 
 ---
 
@@ -386,14 +456,16 @@ Run these checks after cutover:
 
 | Step | Estimated Time |
 |------|----------------|
+| Update production Stripe values in wrangler.jsonc | 5 minutes |
 | Set Worker secrets | 10 minutes |
 | Set GitHub secrets | 5 minutes |
 | Configure Stream signing keys | 10 minutes |
 | Verify videos have requireSignedURLs | 15 minutes |
 | Update Supabase URLs | 5 minutes |
-| Create Stripe webhook | 5 minutes |
-| Create Stream webhook | 5 minutes |
-| Enable Access on staging/preview | 10 minutes |
+| Verify/create Stripe webhook | 5 minutes |
+| Verify/create Stream webhook | 5 minutes |
 | DNS cutover | 5-15 minutes (propagation) |
 | Smoke testing | 15 minutes |
 | **Total** | ~1.5 hours |
+
+Note: Cloudflare Access on staging/preview is already configured (see Section 9).
