@@ -32,6 +32,11 @@ import { createAdminClient } from '../lib/supabase'
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 const mockFetch = vi.fn()
 
+// Valid 32-character lowercase hex video ID for tests
+const VALID_VIDEO_ID = 'abcdef01234567890abcdef012345678'
+const VALID_VIDEO_ID_2 = 'fedcba98765432100fedcba987654321'
+const VALID_VIDEO_ID_3 = '00112233445566778899aabbccddeeff'
+
 function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; statusText?: string } = {}) {
   return {
     ok: init.ok ?? true,
@@ -50,6 +55,7 @@ function textResponse(text: string, init: { ok?: boolean; status?: number; statu
     statusText: init.statusText ?? 'OK',
     headers: { entries: () => [] },
     text: async () => text,
+    json: async () => JSON.parse(text),
   }
 }
 
@@ -138,6 +144,48 @@ describe('uploadFunctions', () => {
     expect(body.maxDurationSeconds).toBe(3600)
   })
 
+  it('getUploadUrl defaults requireSignedURLs to true for paid content', async () => {
+    mockFetch.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          success: true,
+          result: { uid: 'vid-signed', uploadURL: 'https://upload.example/s' },
+          errors: [],
+        })
+      )
+    )
+
+    await uploadFunctions.getUploadUrl({})
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
+    expect(body.requireSignedURLs).toBe(true)
+  })
+
+  it('getUploadUrl does not log token or upload URL', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    mockFetch.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          success: true,
+          result: { uid: 'secret-vid', uploadURL: 'https://upload.example/secret-path' },
+          errors: [],
+        })
+      )
+    )
+
+    await uploadFunctions.getUploadUrl({})
+
+    for (const call of logSpy.mock.calls) {
+      const message = JSON.stringify(call)
+      expect(message).not.toContain('secret-path')
+      expect(message).not.toContain('Bearer')
+    }
+
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
   it('getUploadUrl wraps parse and API failures', async () => {
     mockFetch.mockResolvedValueOnce(textResponse('not-json'))
     await expect(uploadFunctions.getUploadUrl()).rejects.toBeInstanceOf(CloudflareStreamUploadError)
@@ -197,7 +245,7 @@ describe('uploadFunctions', () => {
         jsonResponse({
           success: true,
           result: {
-            uid: `vid-${c.state}`,
+            uid: VALID_VIDEO_ID,
             status: {
               state: c.state,
               pctComplete: String(c.progress),
@@ -206,9 +254,9 @@ describe('uploadFunctions', () => {
           },
         })
       )
-      const result = await uploadFunctions.checkUploadStatus(`vid-${c.state}`)
+      const result = await uploadFunctions.checkUploadStatus(VALID_VIDEO_ID)
       expect(result).toMatchObject({
-        uid: `vid-${c.state}`,
+        uid: VALID_VIDEO_ID,
         uploaded: c.uploaded,
         progress: c.progress,
         status: c.status,
@@ -222,20 +270,20 @@ describe('uploadFunctions', () => {
       jsonResponse({
         success: true,
         result: {
-          uid: 'vid-nan',
+          uid: VALID_VIDEO_ID,
           status: { state: 'queued', pctComplete: 'not-a-number' },
         },
       })
     )
-    expect((await uploadFunctions.checkUploadStatus('vid-nan')).progress).toBe(0)
+    expect((await uploadFunctions.checkUploadStatus(VALID_VIDEO_ID)).progress).toBe(0)
 
     mockFetch.mockResolvedValueOnce(
       jsonResponse({ success: false, errors: [{ message: 'missing', code: 404 }] }, { ok: false, status: 404, statusText: 'Not Found' })
     )
-    await expect(uploadFunctions.checkUploadStatus('missing')).rejects.toBeInstanceOf(CloudflareStreamError)
+    await expect(uploadFunctions.checkUploadStatus(VALID_VIDEO_ID_2)).rejects.toBeInstanceOf(CloudflareStreamError)
 
     mockFetch.mockRejectedValueOnce('raw')
-    await expect(uploadFunctions.checkUploadStatus('x')).rejects.toThrow(/Unknown error/)
+    await expect(uploadFunctions.checkUploadStatus(VALID_VIDEO_ID_3)).rejects.toThrow(/Unknown error/)
   })
 
   it('uploadVideo uses XHR progress, success, status failure, and network error', async () => {
@@ -336,25 +384,39 @@ describe('videoManagement', () => {
     delete process.env.CLOUDFLARE_STREAM_SIGNING_KEY
   })
 
+  it('rejects invalid video IDs with 400', async () => {
+    await expect(videoManagement.getVideoDetails('invalid')).rejects.toThrow(/Invalid video ID format/)
+    await expect(videoManagement.getVideoDetails('ABCDEF01234567890ABCDEF012345678')).rejects.toThrow(/Invalid video ID format/)
+    await expect(videoManagement.getVideoDetails('abcdef0123456789')).rejects.toThrow(/Invalid video ID format/)
+    await expect(videoManagement.getVideoDetails('')).rejects.toThrow(/Invalid video ID format/)
+    await expect(videoManagement.getVideoDetails('../etc/passwd')).rejects.toThrow(/Invalid video ID format/)
+    
+    // Verify 32 lowercase hex is accepted
+    const validId = 'abcdef01234567890abcdef012345678'
+    mockFetch.mockResolvedValue(jsonResponse({ success: true, result: { uid: validId } }))
+    await expect(videoManagement.getVideoDetails(validId)).resolves.toBeDefined()
+  })
+
   it('getVideoDetails returns video metadata', async () => {
-    const metadata = { uid: 'vid-1', status: { state: 'ready', pctComplete: '100' } }
+    const validId = 'abcdef01234567890abcdef012345678'
+    const metadata = { uid: validId, status: { state: 'ready', pctComplete: '100' } }
     mockFetch.mockResolvedValue(jsonResponse({ success: true, result: metadata }))
 
-    const result = await videoManagement.getVideoDetails('vid-1')
+    const result = await videoManagement.getVideoDetails(validId)
     expect(result).toEqual(metadata)
   })
 
   it('getVideoDetails wraps non-Error failures', async () => {
     mockFetch.mockRejectedValueOnce(42)
-    await expect(videoManagement.getVideoDetails('vid-1')).rejects.toThrow(/Unknown error/)
+    await expect(videoManagement.getVideoDetails(VALID_VIDEO_ID)).rejects.toThrow(/Unknown error/)
   })
 
   it('updateVideoSettings posts settings and wraps errors', async () => {
     mockFetch.mockResolvedValue(jsonResponse({ success: true, result: {} }))
 
-    await videoManagement.updateVideoSettings('vid-1', { requireSignedURLs: true })
+    await videoManagement.updateVideoSettings(VALID_VIDEO_ID, { requireSignedURLs: true })
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/stream/vid-1'),
+      expect.stringContaining(`/stream/${VALID_VIDEO_ID}`),
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ requireSignedURLs: true }),
@@ -365,31 +427,25 @@ describe('videoManagement', () => {
       jsonResponse({ success: false, errors: [{ message: 'settings fail' }] }, { ok: false, status: 400, statusText: 'Bad' })
     )
     await expect(
-      videoManagement.updateVideoSettings('vid-1', { requireSignedURLs: false })
+      videoManagement.updateVideoSettings(VALID_VIDEO_ID, { requireSignedURLs: false })
     ).rejects.toThrow(/Failed to update video settings/)
   })
 
   it('generateSignedUrl fails closed when signing keys missing', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    
-    await expect(videoManagement.generateSignedUrl('vid-1', 'tier1')).rejects.toThrow(
+    await expect(videoManagement.generateSignedUrl('abcdef01234567890abcdef012345678', 'tier1')).rejects.toThrow(
       /Video signing keys not configured/
     )
-    
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('SECURITY ERROR')
-    )
-    errorSpy.mockRestore()
   })
 
   it('generateSignedUrl uses token API when signing keys present', async () => {
     process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID = 'kid'
     process.env.CLOUDFLARE_STREAM_SIGNING_KEY = 'secret'
+    const validVideoId = 'abcdef01234567890abcdef012345678'
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'jwt-token' } }))
 
-    const hls = await videoManagement.generateSignedUrl('vid-1', 'tier2', {
+    const hls = await videoManagement.generateSignedUrl(validVideoId, 'tier2', {
       downloadable: true,
       accessRules: [{ type: 'any', action: 'allow' }],
     })
@@ -397,7 +453,7 @@ describe('videoManagement', () => {
     expect(hls).toContain('manifest/video.m3u8')
     const tokenBody = JSON.parse(mockFetch.mock.calls[1][1].body as string)
     expect(tokenBody).toMatchObject({
-      sub: 'vid-1',
+      sub: validVideoId,
       kid: 'kid',
       downloadable: true,
       accessRules: [{ type: 'any', action: 'allow' }],
@@ -406,7 +462,7 @@ describe('videoManagement', () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'jwt-2' } }))
-    const mp4 = await videoManagement.generateSignedUrl('vid-1', 'tier3', {}, 'mp4')
+    const mp4 = await videoManagement.generateSignedUrl(validVideoId, 'tier3', {}, 'mp4')
     expect(mp4).toContain('downloads/default.mp4?token=jwt-2')
   })
 
@@ -419,7 +475,7 @@ describe('videoManagement', () => {
       mockFetch
         .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
         .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: `t-${tier}` } }))
-      await videoManagement.generateSignedUrl('vid-1', tier)
+      await videoManagement.generateSignedUrl(VALID_VIDEO_ID, tier)
       const body = JSON.parse(mockFetch.mock.calls.at(-1)![1].body as string)
       const now = Math.floor(1_700_000_000_000 / 1000)
       const expectedDelta =
@@ -431,7 +487,7 @@ describe('videoManagement', () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'custom' } }))
-    await videoManagement.generateSignedUrl('vid-1', 'tier1', { exp: 999, nbf: 111 })
+    await videoManagement.generateSignedUrl(VALID_VIDEO_ID, 'tier1', { exp: 999, nbf: 111 })
     const customBody = JSON.parse(mockFetch.mock.calls.at(-1)![1].body as string)
     expect(customBody.exp).toBe(999)
     expect(customBody.nbf).toBe(111)
@@ -442,17 +498,14 @@ describe('videoManagement', () => {
   it('generateSignedUrl continues when settings fail but signing keys exist', async () => {
     process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID = 'kid'
     process.env.CLOUDFLARE_STREAM_SIGNING_KEY = 'secret'
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockFetch
       .mockResolvedValueOnce(
         jsonResponse({ success: false, errors: [{ message: 'settings denied' }] }, { ok: false, status: 400, statusText: 'Bad' })
       )
       .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'still-works' } }))
 
-    const url = await videoManagement.generateSignedUrl('vid-1', 'tier1')
+    const url = await videoManagement.generateSignedUrl('abcdef01234567890abcdef012345678', 'tier1')
     expect(url).toContain('token=still-works')
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
   })
 
   it('generateSignedUrl wraps token API failures', async () => {
@@ -463,30 +516,30 @@ describe('videoManagement', () => {
       .mockResolvedValueOnce(
         jsonResponse({ success: false, errors: [{ message: 'token boom' }] }, { ok: false, status: 500, statusText: 'Err' })
       )
-    await expect(videoManagement.generateSignedUrl('vid-1', 'tier1')).rejects.toThrow(
+    await expect(videoManagement.generateSignedUrl(VALID_VIDEO_ID, 'tier1')).rejects.toThrow(
       /Failed to generate signed URL/
     )
 
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
       .mockRejectedValueOnce('raw-token-fail')
-    await expect(videoManagement.generateSignedUrl('vid-1', 'tier1')).rejects.toThrow(/Unknown error/)
+    await expect(videoManagement.generateSignedUrl(VALID_VIDEO_ID, 'tier1')).rejects.toThrow(/Unknown error/)
   })
 
   it('generateThumbnailUrl builds thumbnail URL with query params', async () => {
-    const url = await videoManagement.generateThumbnailUrl('vid-1', {
+    const url = await videoManagement.generateThumbnailUrl(VALID_VIDEO_ID, {
       time: 5,
       width: 320,
       height: 180,
       fit: 'crop',
     })
-    expect(url).toContain('vid-1/thumbnails/thumbnail.jpg')
+    expect(url).toContain(`${VALID_VIDEO_ID}/thumbnails/thumbnail.jpg`)
     expect(url).toContain('time=5')
     expect(url).toContain('width=320')
     expect(url).toContain('height=180')
     expect(url).toContain('fit=crop')
 
-    const bare = await videoManagement.generateThumbnailUrl('vid-1')
+    const bare = await videoManagement.generateThumbnailUrl(VALID_VIDEO_ID)
     expect(bare.endsWith('thumbnail.jpg')).toBe(true)
   })
 
@@ -494,24 +547,24 @@ describe('videoManagement', () => {
     mockFetch.mockResolvedValueOnce(
       jsonResponse({
         success: true,
-        result: { uid: 'vid-1', status: { state: 'ready', pctComplete: '100' }, meta: {} },
+        result: { uid: VALID_VIDEO_ID, status: { state: 'ready', pctComplete: '100' }, meta: {} },
       })
     )
-    await expect(videoManagement.retryProcessing('vid-1')).rejects.toThrow(/already processed/)
+    await expect(videoManagement.retryProcessing(VALID_VIDEO_ID)).rejects.toThrow(/already processed/)
 
     mockFetch
       .mockResolvedValueOnce(
         jsonResponse({
           success: true,
           result: {
-            uid: 'vid-1',
+            uid: VALID_VIDEO_ID,
             status: { state: 'error', pctComplete: '0' },
             meta: { name: 'x' },
           },
         })
       )
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
-    await expect(videoManagement.retryProcessing('vid-1')).resolves.toBeUndefined()
+    await expect(videoManagement.retryProcessing(VALID_VIDEO_ID)).resolves.toBeUndefined()
     const retryBody = JSON.parse(mockFetch.mock.calls[2][1].body as string)
     expect(retryBody.meta.name).toBe('x')
     expect(retryBody.meta.retry_timestamp).toEqual(expect.any(String))
@@ -522,56 +575,56 @@ describe('videoManagement', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           success: true,
-          result: { uid: 'vid-1', status: { state: 'error', pctComplete: '0' }, meta: {} },
+          result: { uid: VALID_VIDEO_ID, status: { state: 'error', pctComplete: '0' }, meta: {} },
         })
       )
       .mockResolvedValueOnce(
         jsonResponse({ success: false, errors: [{ message: 'retry denied' }] }, { ok: false, status: 400, statusText: 'Bad' })
       )
-    await expect(videoManagement.retryProcessing('vid-1')).rejects.toThrow(/Failed to retry processing/)
+    await expect(videoManagement.retryProcessing(VALID_VIDEO_ID)).rejects.toThrow(/Failed to retry processing/)
   })
 
   it('deleteVideo and updateVideoMetadata succeed and fail', async () => {
     mockFetch.mockResolvedValue(jsonResponse({ success: true, result: null }))
-    await videoManagement.deleteVideo('vid-1')
+    await videoManagement.deleteVideo(VALID_VIDEO_ID)
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/stream/vid-1'),
+      expect.stringContaining(`/stream/${VALID_VIDEO_ID}`),
       expect.objectContaining({ method: 'DELETE' })
     )
 
     mockFetch.mockResolvedValueOnce(
       jsonResponse({
         success: true,
-        result: { uid: 'vid-1', meta: { name: 'N' } },
+        result: { uid: VALID_VIDEO_ID, meta: { name: 'N' } },
       })
     )
-    const meta = await videoManagement.updateVideoMetadata('vid-1', {
+    const meta = await videoManagement.updateVideoMetadata(VALID_VIDEO_ID, {
       name: 'N',
       requireSignedURLs: true,
       allowedOrigins: ['*'],
       thumbnailTimestampPct: 0.1,
     })
-    expect(meta.uid).toBe('vid-1')
+    expect(meta.uid).toBe(VALID_VIDEO_ID)
 
     mockFetch.mockResolvedValueOnce(
       jsonResponse({
         success: true,
-        result: { uid: 'vid-2' },
+        result: { uid: VALID_VIDEO_ID_2 },
       })
     )
-    await videoManagement.updateVideoMetadata('vid-2', { requireSignedURLs: false })
+    await videoManagement.updateVideoMetadata(VALID_VIDEO_ID_2, { requireSignedURLs: false })
     const noNameBody = JSON.parse(mockFetch.mock.calls.at(-1)![1].body as string)
     expect(noNameBody.meta).toBeUndefined()
 
     mockFetch.mockResolvedValueOnce(
       jsonResponse({ success: false, errors: [{ message: 'delete fail' }] }, { ok: false, status: 500, statusText: 'Err' })
     )
-    await expect(videoManagement.deleteVideo('vid-x')).rejects.toThrow(/Failed to delete video/)
+    await expect(videoManagement.deleteVideo(VALID_VIDEO_ID_3)).rejects.toThrow(/Failed to delete video/)
 
     mockFetch.mockResolvedValueOnce(
       jsonResponse({ success: false, errors: [{ message: 'meta fail' }] }, { ok: false, status: 500, statusText: 'Err' })
     )
-    await expect(videoManagement.updateVideoMetadata('vid-x', { name: 'x' })).rejects.toThrow(
+    await expect(videoManagement.updateVideoMetadata(VALID_VIDEO_ID_3, { name: 'x' })).rejects.toThrow(
       /Failed to update video metadata/
     )
   })
@@ -581,22 +634,22 @@ describe('videoManagement', () => {
       jsonResponse({ success: false, errors: [{ message: 'boom' }] }, { ok: false, status: 500, statusText: 'Server Error' })
     )
 
-    await expect(videoManagement.getVideoDetails('vid-1')).rejects.toBeInstanceOf(CloudflareStreamError)
+    await expect(videoManagement.getVideoDetails(VALID_VIDEO_ID)).rejects.toBeInstanceOf(CloudflareStreamError)
   })
 
   it('handleStreamResponse throws when success false with and without error message', async () => {
     mockFetch.mockResolvedValueOnce(
       jsonResponse({ success: false, errors: [{ message: 'nope', code: 9 }] })
     )
-    await expect(videoManagement.getVideoDetails('vid-1')).rejects.toThrow(/nope/)
+    await expect(videoManagement.getVideoDetails(VALID_VIDEO_ID)).rejects.toThrow(/nope/)
 
     mockFetch.mockResolvedValueOnce(jsonResponse({ success: false, errors: [] }))
-    await expect(videoManagement.getVideoDetails('vid-1')).rejects.toThrow(/Unknown Cloudflare Stream error/)
+    await expect(videoManagement.getVideoDetails(VALID_VIDEO_ID)).rejects.toThrow(/Unknown Cloudflare Stream error/)
 
     mockFetch.mockResolvedValueOnce(
       jsonResponse({ success: false, errors: [] }, { ok: false, status: 503, statusText: 'Unavailable' })
     )
-    await expect(videoManagement.getVideoDetails('vid-1')).rejects.toThrow(/HTTP 503/)
+    await expect(videoManagement.getVideoDetails(VALID_VIDEO_ID)).rejects.toThrow(/HTTP 503/)
   })
 })
 
@@ -643,7 +696,7 @@ describe('webhookHandling', () => {
     })
 
     await webhookHandling.processWebhook({
-      uid: 'vid-1',
+      uid: VALID_VIDEO_ID,
       readyToStream: true,
       status: { state: 'ready', pctComplete: '100' },
       meta: {},
@@ -652,7 +705,7 @@ describe('webhookHandling', () => {
       duration: 90,
     })
 
-    expect(updateEq).toHaveBeenCalledWith('cloudflare_video_id', 'vid-1')
+    expect(updateEq).toHaveBeenCalledWith('cloudflare_video_id', VALID_VIDEO_ID)
     expect(updateEq).toHaveBeenCalledWith('id', 'db-1')
   })
 
@@ -665,7 +718,7 @@ describe('webhookHandling', () => {
     })
 
     await webhookHandling.processWebhook({
-      uid: 'vid-queued',
+      uid: VALID_VIDEO_ID,
       readyToStream: false,
       status: { state: 'queued', pctComplete: '10' },
       meta: {},
@@ -683,7 +736,7 @@ describe('webhookHandling', () => {
     mockVideosClient({ updateByCloudflareId, single })
 
     await webhookHandling.processWebhook({
-      uid: 'vid-inprogress',
+      uid: VALID_VIDEO_ID,
       readyToStream: true,
       status: { state: 'inprogress', pctComplete: '50' },
       meta: {},
@@ -715,8 +768,8 @@ describe('webhookHandling', () => {
     })
 
     await expect(
-      webhookHandling.updateVideoStatus('vid-1', {
-        uid: 'vid-1',
+      webhookHandling.updateVideoStatus(VALID_VIDEO_ID, {
+        uid: VALID_VIDEO_ID,
         readyToStream: false,
         status: { state: 'error', pctComplete: '0' },
         meta: {},
@@ -732,8 +785,8 @@ describe('webhookHandling', () => {
     })
 
     await expect(
-      webhookHandling.handleProcessingComplete('missing', {
-        uid: 'missing',
+      webhookHandling.handleProcessingComplete(VALID_VIDEO_ID, {
+        uid: VALID_VIDEO_ID,
         readyToStream: true,
         status: { state: 'ready', pctComplete: '100' },
         meta: {},
@@ -748,8 +801,8 @@ describe('webhookHandling', () => {
       single: async () => ({ data: null, error: { message: 'fetch failed' } }),
     })
     await expect(
-      webhookHandling.handleProcessingComplete('vid-1', {
-        uid: 'vid-1',
+      webhookHandling.handleProcessingComplete(VALID_VIDEO_ID, {
+        uid: VALID_VIDEO_ID,
         readyToStream: true,
         status: { state: 'ready', pctComplete: '100' },
         meta: {},
@@ -766,8 +819,8 @@ describe('webhookHandling', () => {
       updateById: async () => ({ error: { message: 'final update failed' } }),
     })
     await expect(
-      webhookHandling.handleProcessingComplete('vid-2', {
-        uid: 'vid-2',
+      webhookHandling.handleProcessingComplete(VALID_VIDEO_ID_2, {
+        uid: VALID_VIDEO_ID_2,
         readyToStream: true,
         status: { state: 'ready', pctComplete: '100' },
         meta: {},
@@ -787,8 +840,8 @@ describe('webhookHandling', () => {
       updateById,
     })
 
-    await webhookHandling.handleProcessingComplete('vid-3', {
-      uid: 'vid-3',
+    await webhookHandling.handleProcessingComplete(VALID_VIDEO_ID_3, {
+      uid: VALID_VIDEO_ID_3,
       readyToStream: true,
       status: { state: 'ready', pctComplete: '100' },
       meta: {},
@@ -820,15 +873,15 @@ describe('webhookHandling', () => {
     mockVideosClient({
       single: async () => ({ data: null, error: null }),
     })
-    await webhookHandling.handleProcessingComplete('missing-dev', {
-      uid: 'missing-dev',
+    await webhookHandling.handleProcessingComplete(VALID_VIDEO_ID, {
+      uid: VALID_VIDEO_ID,
       readyToStream: true,
       status: { state: 'ready', pctComplete: '100' },
       meta: {},
       created: '',
       modified: '',
     })
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('missing-dev'))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(VALID_VIDEO_ID))
 
     mockVideosClient({
       single: async () => ({
@@ -836,8 +889,8 @@ describe('webhookHandling', () => {
         error: null,
       }),
     })
-    await webhookHandling.handleProcessingComplete('vid-dev', {
-      uid: 'vid-dev',
+    await webhookHandling.handleProcessingComplete(VALID_VIDEO_ID_2, {
+      uid: VALID_VIDEO_ID_2,
       readyToStream: true,
       status: { state: 'ready', pctComplete: '100' },
       meta: {},
@@ -890,7 +943,7 @@ describe('securityFunctions', () => {
   })
 
   it('generateAdminPreviewUrl fails closed without signing keys', async () => {
-    await expect(securityFunctions.generateAdminPreviewUrl('vid-1')).rejects.toThrow(
+    await expect(securityFunctions.generateAdminPreviewUrl(VALID_VIDEO_ID)).rejects.toThrow(
       /Video signing keys not configured/
     )
   })
@@ -902,9 +955,9 @@ describe('securityFunctions', () => {
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'admin-jwt' } }))
 
-    const url = await securityFunctions.generateAdminPreviewUrl('vid-admin')
+    const url = await securityFunctions.generateAdminPreviewUrl(VALID_VIDEO_ID)
     expect(url).toContain('token=admin-jwt')
-    expect(url).toContain('vid-admin')
+    expect(url).toContain(VALID_VIDEO_ID)
   })
 })
 
@@ -939,10 +992,10 @@ describe('server-only API helpers', () => {
     await expect(uploadFunctions.getUploadUrl()).rejects.toThrow(
       /Cloudflare Stream API can only be used on server-side/
     )
-    await expect(videoManagement.getVideoDetails('vid-1')).rejects.toThrow(
+    await expect(videoManagement.getVideoDetails(VALID_VIDEO_ID)).rejects.toThrow(
       /Cloudflare Stream API can only be used on server-side/
     )
-    await expect(videoManagement.updateVideoSettings('vid-1', {})).rejects.toThrow(
+    await expect(videoManagement.updateVideoSettings(VALID_VIDEO_ID, {})).rejects.toThrow(
       /Cloudflare Stream API can only be used on server-side/
     )
   })

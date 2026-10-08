@@ -320,10 +320,13 @@ describe('POST /api/webhooks/cloudflare payload validation', () => {
   })
 
   it('returns 400 for invalid JSON', async () => {
-        const res = await POST(
+    process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET = WEBHOOK_SECRET
+    const invalidPayload = 'not-json'
+    const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
-        body: 'not-json',
+        body: invalidPayload,
+        headers: { 'x-signature': signPayload(invalidPayload) },
       })
     )
     expect(res.status).toBe(400)
