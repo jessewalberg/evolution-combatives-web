@@ -330,3 +330,27 @@ describe('POST /api/webhooks/cloudflare payload validation', () => {
     expect((await res.json()).error).toBe('Invalid JSON payload')
   })
 })
+
+describe('POST /api/webhooks/cloudflare secret configuration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockCreateAdminClient.mockReturnValue(buildSupabase() as never)
+  })
+
+  it('returns 503 when webhook secret is not configured', async () => {
+    delete process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
+
+    const payload = JSON.stringify(buildEvent())
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'x-signature': 'sha256=any' },
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(503)
+    expect(body.error).toBe('Webhook not configured')
+  })
+})
