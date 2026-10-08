@@ -403,7 +403,7 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Verify webhook signature BEFORE parsing or logging body
+        // Verify webhook signature
         const signature = request.headers.get('Webhook-Signature')
         const webhookSecret = process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
@@ -421,14 +421,13 @@ export async function POST({ request }: { request: Request }) {
         )
 
         if (!isValidSignature) {
-            // Do not log body or insert into webhook_logs for invalid signatures
             return json(
                 { error: 'Invalid signature' },
                 { status: 401 }
             )
         }
 
-        // Signature verified - now safe to parse
+        // Parse JSON
         try {
             payload = JSON.parse(webhookPayload)
         } catch {
@@ -479,7 +478,7 @@ export async function POST({ request }: { request: Request }) {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-        // Log failed webhook processing (signature already verified at this point)
+        // Log failed webhook processing
         if (payload!) {
             await logWebhookEvent(payload, false, errorMessage)
         }
