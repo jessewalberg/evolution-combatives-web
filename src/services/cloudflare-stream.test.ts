@@ -105,7 +105,6 @@ describe('uploadFunctions', () => {
 
     const result = await uploadFunctions.getUploadUrl({
       maxDurationSeconds: 600,
-      requireSignedURLs: true,
       thumbnailTimestampPct: 0.5,
       creator: 'admin',
       expiry: '2026-01-01',

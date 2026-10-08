@@ -138,8 +138,8 @@ describe('downloadCsv', () => {
             revokeObjectURL: revokeObjectURLMock
         })
 
-        vi.spyOn(document.body, 'appendChild').mockImplementation(appendChildMock)
-        vi.spyOn(document.body, 'removeChild').mockImplementation(removeChildMock)
+        vi.spyOn(document.body, 'appendChild').mockImplementation(appendChildMock as unknown as <T extends Node>(node: T) => T)
+        vi.spyOn(document.body, 'removeChild').mockImplementation(removeChildMock as unknown as <T extends Node>(child: T) => T)
     })
 
     afterEach(() => {
