@@ -150,18 +150,7 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
    # Paste the Private Key (PEM format)
    ```
 
-3. **Enable requireSignedURLs on Videos**:
-   - Go to Stream → Videos
-   - For each video, enable "Require signed URLs"
-   - Or use the API to bulk-update:
-     ```bash
-     curl -X POST "https://api.cloudflare.com/client/v4/accounts/{account_id}/stream/{video_id}" \
-       -H "Authorization: Bearer {api_token}" \
-       -H "Content-Type: application/json" \
-       -d '{"requireSignedURLs": true}'
-     ```
-
-4. **Test Video Playback** before cutover:
+3. **Test Video Playback** before cutover:
    - With signing keys configured, request a signed URL via:
      - `/api/video/signed-url` (web admin, requires session cookie)
      - `/api/mobile/video/signed-url` (mobile app, requires Bearer token)
@@ -203,7 +192,19 @@ The wildcard with hyphen covers all PR preview version URLs (e.g., `<id>-evoluti
 
 ---
 
-## 6. DNS Cutover
+## 6. Post-Deploy Stream Verification (Before DNS Cutover)
+
+After deploying to production but BEFORE updating DNS:
+
+1. **Confirm signed playback works**:
+   - Request a signed URL via `/api/video/signed-url` (web admin) or `/api/mobile/video/signed-url` (mobile)
+   - Verify the URL contains a `token=` parameter
+   - Verify the video plays successfully
+   - Verify an unsigned URL is rejected with 403
+
+2. **Mobile playback test**: Using a mobile build pointed at the production Worker URL (not the custom domain yet), verify a paid test user can play a paid video.
+
+---
 
 ### Current DNS (Vercel)
 The domain `evolutioncombatives.com` currently points to Vercel.
@@ -232,7 +233,11 @@ curl -I https://evolutioncombatives.com/api/health
 
 ---
 
-## 7. Stripe Webhook Configuration
+## 7. DNS Cutover
+
+---
+
+## 8. Stripe Webhook Configuration
 
 ### Check for Existing Endpoint (Recommended)
 
@@ -272,7 +277,7 @@ If Vercel was returning 402 DEPLOYMENT_DISABLED, Stripe webhook deliveries may h
 
 ---
 
-## 8. Cloudflare Stream Webhook Configuration
+## 9. Cloudflare Stream Webhook Configuration
 
 ### Check for Existing Webhook (Recommended)
 
@@ -299,7 +304,7 @@ A Stream webhook endpoint may already exist from the Vercel deployment:
 
 ---
 
-## 9. Cloudflare Access Protection (DONE)
+## 10. Cloudflare Access Protection (DONE)
 
 Staging and preview Workers are protected by Cloudflare Access. This was configured via `cf` CLI on Oct 8, 2026.
 
@@ -347,7 +352,7 @@ Stripe test-mode webhooks and Cloudflare Stream webhooks to staging and preview 
 
 ---
 
-## 10. PostHog & Sentry Configuration
+## 11. PostHog & Sentry Configuration
 
 ### PostHog
 No changes required - already configured via `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in `wrangler.jsonc`.
@@ -423,12 +428,9 @@ Run these checks after cutover:
    - [ ] `/api/mobile/video/signed-url` accepts Bearer token
    - [ ] `/api/mobile/subscriptions/create-checkout` accepts Bearer token
 
-4. **Video Playback (CRITICAL)**
-   - [ ] Stream signing already enforced; confirm signed playback works on web and mobile after deploy
+4. **Video Playback** (already verified in Section 6, re-confirm via custom domain)
    - [ ] Request signed URL via API
-   - [ ] Verify URL contains `token=` parameter
    - [ ] Verify video plays in browser
-   - [ ] Verify unsigned URL is rejected (403)
 
 5. **Webhooks**
    - [ ] Test Stripe webhook delivery (use Stripe CLI or dashboard test)
@@ -464,10 +466,11 @@ Run these checks after cutover:
 | Set Worker secrets | 10 minutes |
 | Set GitHub secrets | 5 minutes |
 | Configure Stream signing keys | 10 minutes |
-| Verify videos have requireSignedURLs | 15 minutes |
 | Update Supabase URLs | 5 minutes |
 | Verify/create Stripe webhook | 5 minutes |
 | Verify/create Stream webhook | 5 minutes |
+| Production deploy | 5 minutes |
+| Stream signed playback verification | 10 minutes |
 | DNS cutover | 5-15 minutes (propagation) |
 | Smoke testing | 15 minutes |
 | **Total** | ~1.5 hours |

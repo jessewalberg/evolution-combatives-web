@@ -247,7 +247,6 @@ pnpm type-check   # Run TypeScript type checking
 ### User Management API
 - `GET /api/users` - List users with pagination
 - `PUT /api/users/[id]` - Update user profile
-- `POST /api/subscriptions/create-checkout` - Create Stripe checkout
 
 ### Video Processing API
 - `POST /api/video/signed-url` - Get signed upload URL
