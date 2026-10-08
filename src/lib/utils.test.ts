@@ -14,6 +14,7 @@ import {
   debounce,
   getTacticalStatusText,
   formatTierName,
+  getSafeRedirectUrl,
 } from '@/src/lib/utils'
 
 describe('cn', () => {
@@ -168,5 +169,50 @@ describe('tactical / tier display', () => {
     expect(formatTierName('tier2')).toBe('Tier 2 Operator')
     expect(formatTierName('tier1')).toBe('Tier 1 Recruit')
     expect(formatTierName('none')).toBe('No Active Subscription')
+  })
+})
+
+describe('getSafeRedirectUrl', () => {
+  it('accepts valid relative paths starting with /', () => {
+    expect(getSafeRedirectUrl('/dashboard')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/dashboard/users')).toBe('/dashboard/users')
+    expect(getSafeRedirectUrl('/login')).toBe('/login')
+    expect(getSafeRedirectUrl('/')).toBe('/')
+    expect(getSafeRedirectUrl('/path?query=1')).toBe('/path?query=1')
+  })
+
+  it('returns fallback for null, undefined, and empty', () => {
+    expect(getSafeRedirectUrl(null)).toBe('/dashboard')
+    expect(getSafeRedirectUrl(undefined)).toBe('/dashboard')
+    expect(getSafeRedirectUrl('')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('   ')).toBe('/dashboard')
+  })
+
+  it('uses custom fallback when provided', () => {
+    expect(getSafeRedirectUrl(null, '/login')).toBe('/login')
+    expect(getSafeRedirectUrl('https://evil.com', '/home')).toBe('/home')
+  })
+
+  it('rejects absolute URLs with protocols', () => {
+    expect(getSafeRedirectUrl('https://evil.com')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('http://evil.com/path')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('javascript:alert(1)')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('data:text/html,<script>alert(1)</script>')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('HTTPS://EVIL.COM')).toBe('/dashboard')
+  })
+
+  it('rejects protocol-relative URLs', () => {
+    expect(getSafeRedirectUrl('//evil.com')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('//evil.com/path')).toBe('/dashboard')
+  })
+
+  it('rejects paths not starting with /', () => {
+    expect(getSafeRedirectUrl('dashboard')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('evil.com')).toBe('/dashboard')
+  })
+
+  it('rejects URLs with encoded bypass attempts', () => {
+    expect(getSafeRedirectUrl('/%2f%2fevil.com')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/%2Fevil.com')).toBe('/dashboard')
   })
 })

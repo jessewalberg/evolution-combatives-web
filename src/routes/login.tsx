@@ -17,6 +17,7 @@ import { createClientComponentClient } from '@/src/lib/supabase-browser'
 import { Input } from '@/src/components/ui/input'
 import { Button } from '@/src/components/ui/button'
 import { ThemeToggle } from '@/src/providers/ThemeProvider'
+import { getSafeRedirectUrl } from '@/src/lib/utils'
 
 // Icons
 import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react'
@@ -50,7 +51,7 @@ const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
 function LoginPage() {
     const navigate = useNavigate()
     const search = useSearch({ strict: false }) as { redirectTo?: string }
-    const redirectTo = search.redirectTo || '/dashboard'
+    const redirectTo = getSafeRedirectUrl(search.redirectTo, '/dashboard')
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLocked, setIsLocked] = useState(false)

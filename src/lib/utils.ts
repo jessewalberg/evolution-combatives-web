@@ -377,6 +377,71 @@ export function generateInitials(
 // ============================================================================
 
 /**
+ * Validates and sanitizes a redirect URL for safe navigation
+ * Prevents open redirect vulnerabilities by accepting only app-relative paths
+ * 
+ * @param url - URL to validate (may be user-provided)
+ * @param fallback - Fallback path if URL is invalid (default: '/dashboard')
+ * @returns Safe redirect path
+ * 
+ * @example
+ * ```tsx
+ * getSafeRedirectUrl('/dashboard/users') // '/dashboard/users'
+ * getSafeRedirectUrl('https://evil.com') // '/dashboard'
+ * getSafeRedirectUrl('//evil.com') // '/dashboard'
+ * getSafeRedirectUrl('/login', '/home') // '/login'
+ * getSafeRedirectUrl(undefined) // '/dashboard'
+ * ```
+ */
+export function getSafeRedirectUrl(
+    url: string | undefined | null,
+    fallback: string = '/dashboard'
+): string {
+    if (!url || typeof url !== 'string') {
+        return fallback
+    }
+
+    const trimmed = url.trim()
+
+    // Reject empty strings
+    if (!trimmed) {
+        return fallback
+    }
+
+    // Reject protocol-relative URLs (//example.com)
+    if (trimmed.startsWith('//')) {
+        return fallback
+    }
+
+    // Reject absolute URLs with protocols (http:, https:, javascript:, etc.)
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+        return fallback
+    }
+
+    // Only accept paths that start with /
+    if (!trimmed.startsWith('/')) {
+        return fallback
+    }
+
+    // Reject paths with encoded characters that could bypass checks
+    // (e.g., %2f%2f for //, %3a for :)
+    try {
+        const decoded = decodeURIComponent(trimmed)
+        if (decoded !== trimmed) {
+            // Re-validate decoded version
+            if (decoded.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(decoded)) {
+                return fallback
+            }
+        }
+    } catch {
+        // Invalid encoding, reject
+        return fallback
+    }
+
+    return trimmed
+}
+
+/**
  * Validates email address format
  * Uses comprehensive regex pattern for email validation
  * 

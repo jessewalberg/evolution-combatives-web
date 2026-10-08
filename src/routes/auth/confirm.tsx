@@ -5,6 +5,7 @@ import { Card } from '@/src/components/ui/card'
 import { Button } from '@/src/components/ui/button'
 import { Shield, CheckCircle, AlertCircle, Info } from 'lucide-react'
 import { Spinner } from '@/src/components/ui/loading'
+import { getSafeRedirectUrl } from '@/src/lib/utils'
 
 type VerificationStatus = 'loading' | 'success' | 'error' | 'already_verified'
 
@@ -120,7 +121,7 @@ function AuthConfirmPage() {
                             setVerificationState({
                                 status: 'already_verified',
                                 message: 'Your email has already been verified. You can now sign in.',
-                                redirectUrl: redirect_to || '/login'
+                                redirectUrl: getSafeRedirectUrl(redirect_to, '/login')
                             })
                         } else {
                             setVerificationState({
