@@ -21,8 +21,10 @@
 //   CLOUDFLARE_STREAM_WEBHOOK_SECRET
 //
 // Per Wrangler v4 env inheritance, `account_id`, `compatibility_date`,
-// `compatibility_flags`, `main`, and `workers_dev` flow down. `vars` and
-// `observability` do NOT inherit and must be repeated per env block.
+// `compatibility_flags`, `main`, `workers_dev`, and `routes` flow down. `vars`
+// and `observability` do NOT inherit and must be repeated per env block.
+// Staging and preview set `routes: []` to avoid inheriting production's
+// custom-domain routes.
 //
 // With this compatibility date + nodejs_compat, Workers populates
 // `process.env` from vars/secrets, so server code can keep reading
@@ -84,6 +86,7 @@
         "staging": {
             "name": "evolution-combatives-admin-staging",
             "workers_dev": true,
+            "routes": [],
             "observability": {
                 "enabled": true,
                 "head_sampling_rate": 1,
@@ -120,6 +123,7 @@
         "preview": {
             "name": "evolution-combatives-admin-preview",
             "workers_dev": true,
+            "routes": [],
             // PR previews upload versions of this Worker via `wrangler
             // versions upload`; preview_urls gives each version its own
             // workers.dev URL.
