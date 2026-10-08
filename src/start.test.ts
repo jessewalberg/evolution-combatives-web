@@ -16,7 +16,6 @@ describe('isPublicRoute', () => {
             '/forgot-password',
             '/reset-password',
             '/auth/confirm',
-            '/subscribe',
             '/subscription-success',
             '/health',
             '/favicon.ico',

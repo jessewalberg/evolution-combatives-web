@@ -8,7 +8,6 @@ describe('ROUTES', () => {
     expect(ROUTES.SIGNUP).toBe('/sign-up')
     expect(ROUTES.FORGOT_PASSWORD).toBe('/forgot-password')
     expect(ROUTES.RESET_PASSWORD).toBe('/reset-password')
-    expect(ROUTES.SUBSCRIBE).toBe('/subscribe')
     expect(ROUTES.SUBSCRIPTION_SUCCESS).toBe('/subscription-success')
     expect(ROUTES.AUTH.CONFIRM).toBe('/auth/confirm')
     expect(ROUTES.DASHBOARD.HOME).toBe('/dashboard')
@@ -48,7 +47,6 @@ describe('ROUTES', () => {
     expect(ROUTES.API.CONTENT.DISCIPLINES).toBe('/api/content/disciplines')
     expect(ROUTES.API.CLOUDFLARE.UPLOAD).toBe('/api/cloudflare/upload')
     expect(ROUTES.API.VIDEO.SIGNED_URL).toBe('/api/video/signed-url')
-    expect(ROUTES.API.SUBSCRIPTIONS.CREATE_CHECKOUT).toBe('/api/subscriptions/create-checkout')
   })
 })
 

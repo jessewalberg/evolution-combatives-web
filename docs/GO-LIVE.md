@@ -170,8 +170,6 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
 5. - [ ] **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
 
-6. - [ ] **Confirm Cloudflare Stream playback settings for paid videos match the signed-URL flow** (Jesse to approve the exact change).
-
 ---
 
 ## 5. Supabase Auth Configuration
@@ -426,6 +424,7 @@ Run these checks after cutover:
    - [ ] `/api/mobile/subscriptions/create-checkout` accepts Bearer token
 
 4. **Video Playback (CRITICAL)**
+   - [ ] Stream signing already enforced; confirm signed playback works on web and mobile after deploy
    - [ ] Request signed URL via API
    - [ ] Verify URL contains `token=` parameter
    - [ ] Verify video plays in browser

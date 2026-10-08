@@ -32,6 +32,34 @@ describe('needsCSRFProtection', () => {
     expect(needsCSRFProtection(createNextRequest('/api/webhook/test', { method: 'POST' }))).toBe(false)
     expect(needsCSRFProtection(createNextRequest('/api/mobile/video/signed-url', { method: 'POST' }))).toBe(false)
   })
+
+  it('skips requests with Bearer token authorization (not vulnerable to CSRF)', () => {
+    expect(
+      needsCSRFProtection(
+        createNextRequest('/api/content/videos', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer some-token' },
+        })
+      )
+    ).toBe(false)
+
+    // Non-bearer auth should still require CSRF
+    expect(
+      needsCSRFProtection(
+        createNextRequest('/api/content/videos', {
+          method: 'POST',
+          headers: { Authorization: 'Basic credentials' },
+        })
+      )
+    ).toBe(true)
+
+    // No auth header still requires CSRF
+    expect(
+      needsCSRFProtection(
+        createNextRequest('/api/content/videos', { method: 'POST' })
+      )
+    ).toBe(true)
+  })
 })
 
 describe('isSecureRequest / getCSRFCookieName', () => {

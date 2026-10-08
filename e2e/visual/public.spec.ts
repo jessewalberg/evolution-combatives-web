@@ -1,12 +1,11 @@
 import { test } from '@playwright/test'
-import { FIXTURE_IDS } from './fixtures'
 import { prepareVisualPage } from './helpers/prepare'
 import { expectVisualScreenshot } from './helpers/screenshot'
 import { viewportLabel } from './helpers/viewport'
 
 /**
  * Public pages - no admin storageState (set on visual-public-* projects).
- * Covered: login, sign-up, subscribe, subscription-success.
+ * Covered: login, sign-up, subscription-success.
  * Skipped (not in issue #20 list): forgot-password, reset-password, auth/confirm, `/` redirect.
  */
 
@@ -30,18 +29,6 @@ test.describe('@visual public pages', () => {
       timeout: 30_000,
     })
     await expectVisualScreenshot(page, `sign-up-${vp}`)
-  })
-
-  test('subscribe @visual', async ({ page }, testInfo) => {
-    const vp = viewportLabel(testInfo.project.name)
-    await page.goto(
-      `/subscribe?userId=${FIXTURE_IDS.regularUser}&email=officer@test.evolutioncombatives.com`
-    )
-    await page.getByRole('heading', { name: 'Choose Your Training Level', exact: true }).waitFor({
-      state: 'visible',
-      timeout: 30_000,
-    })
-    await expectVisualScreenshot(page, `subscribe-${vp}`)
   })
 
   test('subscription-success @visual', async ({ page }, testInfo) => {

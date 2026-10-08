@@ -25,7 +25,6 @@ const ROUTE_CONFIG = {
         '/forgot-password',
         '/reset-password',
         '/auth/confirm',
-        '/subscribe',
         '/subscription-success',
         '/subscription-cancel',
         '/health',

@@ -69,8 +69,15 @@ export function needsCSRFProtection(request: Request): boolean {
     const isWebhook = pathname.includes('/webhook')
     const isMobileApi = pathname.startsWith('/api/mobile/')
 
-    // Skip CSRF for webhooks (they have their own verification) and mobile API routes (use Bearer auth)
-    return isStateChanging && isApiRoute && !isWebhook && !isMobileApi
+    // Bearer token auth is not vulnerable to CSRF (tokens aren't sent automatically by browsers)
+    const authHeader = request.headers.get('authorization')
+    const hasBearerToken = authHeader?.startsWith('Bearer ')
+
+    // Skip CSRF for:
+    // - Webhooks (they have their own signature verification)
+    // - Mobile API routes (use Bearer auth)
+    // - Requests with Bearer tokens (not vulnerable to CSRF)
+    return isStateChanging && isApiRoute && !isWebhook && !isMobileApi && !hasBearerToken
 }
 
 /**
