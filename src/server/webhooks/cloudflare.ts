@@ -343,30 +343,17 @@ export async function POST({ request }: { request: Request }) {
         webhookPayload = await request.text()
 
         if (!webhookPayload) {
-            console.error('Empty webhook payload received')
             return json(
                 { error: 'Empty payload' },
                 { status: 400 }
             )
         }
 
-        // Parse JSON event
-        try {
-            event = JSON.parse(webhookPayload)
-        } catch (parseError) {
-            console.error('Invalid JSON payload:', parseError)
-            return json(
-                { error: 'Invalid JSON payload' },
-                { status: 400 }
-            )
-        }
-
-        // Verify webhook signature - fail closed if secret not configured
+        // Verify webhook signature BEFORE parsing or logging body - fail closed if secret not configured
         const signature = request.headers.get('x-signature')
         const webhookSecret = process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
         if (!webhookSecret) {
-            console.error('CLOUDFLARE_STREAM_WEBHOOK_SECRET not configured')
             return json(
                 { error: 'Webhook not configured' },
                 { status: 503 }
@@ -380,15 +367,24 @@ export async function POST({ request }: { request: Request }) {
         )
 
         if (!isValidSignature) {
-            console.error('Invalid webhook signature')
-            await logWebhookEvent(event, false, 'Invalid webhook signature')
+            console.warn('Webhook signature validation failed')
             return json(
                 { error: 'Invalid signature' },
                 { status: 401 }
             )
         }
 
-        console.log(`Processing Cloudflare Stream webhook: ${event.eventType} for video ${event.uid}`)
+        // Signature verified - now safe to parse and log
+        try {
+            event = JSON.parse(webhookPayload)
+        } catch {
+            return json(
+                { error: 'Invalid JSON payload' },
+                { status: 400 }
+            )
+        }
+
+        console.log(`Processing webhook: ${event.eventType} for video ${event.uid}`)
 
         // Process the webhook event with retry logic
         await withRetry(
@@ -406,8 +402,6 @@ export async function POST({ request }: { request: Request }) {
         // Log successful webhook processing
         await logWebhookEvent(event, true)
 
-        console.log(`Successfully processed webhook ${event.eventId} for video ${event.uid}`)
-
         return json(
             {
                 success: true,
@@ -420,9 +414,8 @@ export async function POST({ request }: { request: Request }) {
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        console.error('Webhook processing failed:', error)
 
-        // Log failed webhook processing
+        // Log failed webhook processing (signature already verified at this point)
         if (event!) {
             await logWebhookEvent(event, false, errorMessage)
         }
