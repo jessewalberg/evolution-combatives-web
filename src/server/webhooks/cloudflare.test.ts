@@ -269,7 +269,7 @@ describe('POST /api/webhooks/cloudflare', () => {
     Object.values(spies).forEach(spy => spy.mockRestore())
   })
 
-  it('processes ready state by writing status, publish flag, and stream metadata', async () => {
+  it('processes ready state by writing status and stream metadata but NOT is_published', async () => {
     const webhookPayload = buildWebhookPayload({
       status: { state: 'ready', pctComplete: '100.000000', errorReasonCode: '', errorReasonText: '' },
       readyToStream: true,
@@ -293,10 +293,12 @@ describe('POST /api/webhooks/cloudflare', () => {
       state: 'ready',
       updated: true,
     })
+    // Verify is_published is NOT included - admins control publishing
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
     expect(supabase.update).toHaveBeenCalledWith(
       expect.objectContaining({
         processing_status: 'ready',
-        is_published: true,
         duration_seconds: 120,
         resolution: '1920x1080',
         hls_url: 'https://example.invalid/manifest/video.m3u8',
@@ -309,7 +311,7 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(supabase.updateEq).toHaveBeenCalledWith('id', 'db-video-1')
   })
 
-  it('processes inprogress state by writing processing status and unpublished', async () => {
+  it('processes inprogress state by writing processing status without is_published', async () => {
     const webhookPayload = buildWebhookPayload({
       status: { state: 'inprogress', pctComplete: '50.000000', errorReasonCode: '', errorReasonText: '' },
       readyToStream: false,
@@ -328,15 +330,16 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.updated).toBe(true)
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
     expect(supabase.update).toHaveBeenCalledWith(
       expect.objectContaining({
         processing_status: 'processing',
-        is_published: false,
       })
     )
   })
 
-  it('processes error state by writing error status and reason', async () => {
+  it('processes error state by writing error status and reason without is_published', async () => {
     const webhookPayload = buildWebhookPayload({
       status: { state: 'error', errorReasonCode: 'ERR_TRANSCODE', errorReasonText: 'Transcode failed' },
       readyToStream: false,
@@ -353,17 +356,18 @@ describe('POST /api/webhooks/cloudflare', () => {
     )
 
     expect(res.status).toBe(200)
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
     expect(supabase.update).toHaveBeenCalledWith(
       expect.objectContaining({
         processing_status: 'error',
-        is_published: false,
         error_code: 'ERR_TRANSCODE',
         error_message: 'Transcode failed',
       })
     )
   })
 
-  it('processes queued state by writing processing status', async () => {
+  it('processes queued state by writing processing status without is_published', async () => {
     const webhookPayload = buildWebhookPayload({
       status: { state: 'queued', pctComplete: '0.000000', errorReasonCode: '', errorReasonText: '' },
       readyToStream: false,
@@ -379,8 +383,10 @@ describe('POST /api/webhooks/cloudflare', () => {
     )
 
     expect(res.status).toBe(200)
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
     expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'processing', is_published: false })
+      expect.objectContaining({ processing_status: 'processing' })
     )
   })
 
@@ -481,7 +487,7 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(supabase.update).not.toHaveBeenCalled()
   })
 
-  it('processes ready but not readyToStream as processing state', async () => {
+  it('processes ready but not readyToStream as processing state without is_published', async () => {
     const webhookPayload = buildWebhookPayload({
       status: { state: 'ready', pctComplete: '100.000000', errorReasonCode: '', errorReasonText: '' },
       readyToStream: false,
@@ -498,10 +504,11 @@ describe('POST /api/webhooks/cloudflare', () => {
     )
 
     expect(res.status).toBe(200)
+    const updateArg = supabase.update.mock.calls[0][0]
+    expect(updateArg).not.toHaveProperty('is_published')
     expect(supabase.update).toHaveBeenCalledWith(
       expect.objectContaining({
         processing_status: 'processing',
-        is_published: false,
       })
     )
   })

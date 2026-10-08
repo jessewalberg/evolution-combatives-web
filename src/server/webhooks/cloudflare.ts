@@ -159,9 +159,9 @@ const KNOWN_STATES = new Set(['ready', 'inprogress', 'error', 'queued', 'downloa
 
 // Derive DB status from webhook payload
 // Returns null for unknown states (no-op)
+// Ready videos stay unpublished until an admin publishes them.
 function deriveStatusFromPayload(payload: CloudflareStreamWebhookPayload): {
     processingStatus: string
-    isPublished: boolean
     metadata: Record<string, unknown>
 } | null {
     const state = payload.status?.state
@@ -197,22 +197,22 @@ function deriveStatusFromPayload(payload: CloudflareStreamWebhookPayload): {
         if (payload.size) {
             metadata.file_size = payload.size
         }
-        return { processingStatus: 'ready', isPublished: true, metadata }
+        return { processingStatus: 'ready', metadata }
     }
 
     if (state === 'error') {
         metadata.error_code = payload.status?.errorReasonCode
         metadata.error_message = payload.status?.errorReasonText
-        return { processingStatus: 'error', isPublished: false, metadata }
+        return { processingStatus: 'error', metadata }
     }
 
     if (state === 'inprogress' || state === 'queued' || state === 'downloading' || state === 'pendingupload') {
-        return { processingStatus: 'processing', isPublished: false, metadata }
+        return { processingStatus: 'processing', metadata }
     }
 
     // Ready but not readyToStream yet - still processing
     if (state === 'ready' && !payload.readyToStream) {
-        return { processingStatus: 'processing', isPublished: false, metadata }
+        return { processingStatus: 'processing', metadata }
     }
 
     return null
@@ -244,10 +244,10 @@ async function updateVideoStatus(
         throw new Error(`Video with UID ${videoUid} not found in database: ${fetchError?.message}`)
     }
 
-    // Build update data
+    // Build update data - webhook updates processing_status but never is_published.
+    // Admins control publishing; the webhook reflects transcode completion only.
     const updateData: Record<string, unknown> = {
         processing_status: derived.processingStatus,
-        is_published: derived.isPublished,
         updated_at: new Date().toISOString()
     }
 
