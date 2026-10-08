@@ -378,7 +378,7 @@ export function generateInitials(
 
 /**
  * Validates and sanitizes a redirect URL for safe navigation
- * Prevents open redirect vulnerabilities by accepting only app-relative paths
+ * Accepts only app-relative paths for safe navigation
  * 
  * @param url - URL to validate (may be user-provided)
  * @param fallback - Fallback path if URL is invalid (default: '/dashboard')
@@ -439,13 +439,26 @@ export function getSafeRedirectUrl(
         return fallback
     }
 
-    // Reject paths with encoded characters that could bypass checks
-    // (e.g., %2f%2f for //, %3a for :)
+    // Validate decoded value for special characters
+    // (e.g., %2f%2f for //, %3a for :, %5c for \, %00 for null, %20 for space)
     try {
         const decoded = decodeURIComponent(trimmed)
         if (decoded !== trimmed) {
-            // Re-validate decoded version
+            // Re-validate decoded version for all dangerous patterns
             if (decoded.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(decoded)) {
+                return fallback
+            }
+            // Check decoded value for backslash
+            if (decoded.includes('\\')) {
+                return fallback
+            }
+            // Check decoded value for control characters (ASCII 0-31 and 127)
+            // eslint-disable-next-line no-control-regex
+            if (/[\x00-\x1f\x7f]/.test(decoded)) {
+                return fallback
+            }
+            // Check decoded value for embedded whitespace
+            if (/\s/.test(decoded)) {
                 return fallback
             }
         }

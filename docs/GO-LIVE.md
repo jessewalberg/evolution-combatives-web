@@ -238,13 +238,7 @@ The domain `evolutioncombatives.com` is not changing, so a live-mode webhook end
 ### Create New Webhook Endpoint (Only If None Exists)
 1. Go to Stripe Dashboard → Developers → Webhooks
 2. Add endpoint: `https://evolutioncombatives.com/api/webhooks/stripe`
-3. Select events:
-   - `checkout.session.completed`
-   - `customer.subscription.created`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `invoice.payment_succeeded`
-   - `invoice.payment_failed`
+3. Select the subscription and checkout events needed for the app
 4. Copy the webhook signing secret → Set as `STRIPE_WEBHOOK_SECRET`
 
 ### Important: Events During Vercel Outage
@@ -278,13 +272,7 @@ A Stream webhook endpoint may already exist from the Vercel deployment:
 ### Create New Webhook (Only If None Exists)
 1. Go to Cloudflare Dashboard → Stream → Notifications
 2. Add notification webhook: `https://evolutioncombatives.com/api/webhooks/cloudflare`
-3. Select events:
-   - `video.upload.complete`
-   - `video.processing.started`
-   - `video.processing.complete`
-   - `video.processing.failed`
-   - `video.ready`
-   - `video.deleted`
+3. Select the video processing events needed for the app
 4. Copy the signing secret → Set as `CLOUDFLARE_STREAM_WEBHOOK_SECRET`
 
 ---
@@ -398,39 +386,25 @@ pnpm deploy:production
 
 Run these checks after cutover:
 
-1. **Login Flow**
-   - [ ] Navigate to `https://evolutioncombatives.com`
-   - [ ] Redirects to `/login`
-   - [ ] Login with admin credentials
-   - [ ] Verify dashboard loads
+1. **Login and Dashboard**
+   - [ ] Navigate to `https://evolutioncombatives.com` and verify login works
+   - [ ] Dashboard loads after authentication
 
-2. **API Endpoints**
+2. **API Health**
    - [ ] `/api/health` returns 200
    - [ ] `/api/csrf-token` returns token
-   - [ ] Authenticated endpoints require session
 
 3. **Mobile API**
    - [ ] `/api/mobile/video/signed-url` accepts Bearer token
-   - [ ] `/api/mobile/subscriptions/create-checkout` accepts Bearer token
 
-4. **Webhooks**
-   - [ ] Test Stripe webhook delivery (use Stripe CLI or dashboard test)
-   - [ ] Test Cloudflare Stream webhook (upload a test video)
-   - [ ] Verify Stream webhook signature verification is working:
-     - Upload a test video and confirm 200 response in Worker logs
-     - Verify video status is updated in database
-     - (Optional) Send a request with invalid signature header and confirm 401 response
+4. **Webhook Verification**
+   - [ ] Upload a test video to Cloudflare Stream
+   - [ ] Verify webhook is received (check Worker logs for 200 response)
+   - [ ] Verify video status is updated in database
 
-5. **Security Headers**
-   - [ ] `X-Frame-Options: DENY`
-   - [ ] `Content-Security-Policy` present
-   - [ ] `Strict-Transport-Security` present
-   - [ ] `X-Content-Type-Options: nosniff`
-
-6. **Admin Functions**
+5. **Admin Functions**
    - [ ] Video upload works
    - [ ] User management works
-   - [ ] Q&A moderation works
 
 ---
 

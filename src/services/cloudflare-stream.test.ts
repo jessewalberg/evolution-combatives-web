@@ -170,8 +170,7 @@ describe('uploadFunctions', () => {
       )
     )
 
-    // Even if someone bypasses TypeScript and passes requireSignedURLs: false,
-    // the service should ignore it and send true
+    // The service always sends requireSignedURLs: true regardless of options
     await uploadFunctions.getUploadUrl({ requireSignedURLs: false } as never)
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
     expect(body.requireSignedURLs).toBe(true)

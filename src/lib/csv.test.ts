@@ -33,24 +33,24 @@ describe('escapeCsvField', () => {
         expect(escapeCsvField('"quoted"')).toBe('"""quoted"""')
     })
 
-    it('neutralizes formula injection with equals sign', () => {
+    it('prefixes equals sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('=SUM(A1)')).toBe("\"'=SUM(A1)\"")
         expect(escapeCsvField('=1+1')).toBe("\"'=1+1\"")
     })
 
-    it('neutralizes formula injection with plus sign', () => {
+    it('prefixes plus sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('+1234')).toBe("\"'+1234\"")
     })
 
-    it('neutralizes formula injection with minus sign', () => {
+    it('prefixes minus sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('-123')).toBe("\"'-123\"")
     })
 
-    it('neutralizes formula injection with at sign', () => {
+    it('prefixes at sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('@SUM(A1)')).toBe("\"'@SUM(A1)\"")
     })
 
-    it('neutralizes formula injection with tab', () => {
+    it('prefixes tab for spreadsheet compatibility', () => {
         expect(escapeCsvField('\t=cmd')).toBe("\"'\t=cmd\"")
     })
 
@@ -115,6 +115,43 @@ describe('toCsv', () => {
         // All cells quoted, formula prefix added
         expect(lines[1]).toBe("\"'=SUM(A1)\",\"normal\"")
         expect(lines[2]).toBe("\"'+123\",\"test, value\"")
+    })
+})
+
+describe('video export integration', () => {
+    it('properly escapes video titles with formula characters', () => {
+        const videoData = [
+            { title: '=HYPERLINK("external")', category: 'Training', status: 'ready' },
+            { title: '+Normal Title', category: 'Tutorial, Advanced', status: 'processing' },
+            { title: 'Regular Video', category: 'Basic "Course"', status: 'ready' }
+        ]
+        
+        const csv = toCsv(videoData, {
+            headers: ['Title', 'Category', 'Status'],
+            keys: ['title', 'category', 'status']
+        })
+        
+        const lines = csv.split('\n')
+        
+        expect(lines[0]).toBe('"Title","Category","Status"')
+        expect(lines[1]).toContain("'=HYPERLINK(\"\"external\"\")")
+        expect(lines[2]).toContain("'+Normal Title")
+        expect(lines[2]).toContain('Tutorial, Advanced')
+        expect(lines[3]).toContain('""Course""')
+    })
+
+    it('handles empty and null video fields', () => {
+        const videoData = [
+            { title: 'Video 1', category: '', instructor: null as unknown as string },
+        ]
+        
+        const csv = toCsv(videoData, {
+            headers: ['Title', 'Category', 'Instructor'],
+            keys: ['title', 'category', 'instructor']
+        })
+        
+        const lines = csv.split('\n')
+        expect(lines[1]).toBe('"Video 1","",""')
     })
 })
 

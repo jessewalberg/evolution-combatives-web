@@ -259,4 +259,33 @@ describe('POST /api/video-processing/sync-single', () => {
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('CF down')
   })
+
+  it('returns 400 when cloudflare video ID is invalid format', async () => {
+    authSuccess(mockAuth)
+    const { CloudflareStreamError } = await import('@/src/services/cloudflare-stream')
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: 'invalid-format',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+      })),
+    } as never)
+    mockCheckUploadStatus.mockRejectedValue(
+      new CloudflareStreamError('Invalid video ID format', 400)
+    )
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+  })
 })

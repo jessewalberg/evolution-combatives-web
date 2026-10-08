@@ -129,6 +129,26 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(supabase.update).not.toHaveBeenCalled()
   })
 
+  it('returns 401 for same-length wrong signature (timing-safe comparison)', async () => {
+    const payload = JSON.stringify(buildWebhookPayload())
+    const now = Math.floor(Date.now() / 1000)
+    // A different 64-char hex string (same length as valid sig)
+    const wrongSig = '0'.repeat(64)
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': `time=${now},sig1=${wrongSig}` },
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(401)
+    expect(body.error).toBe('Invalid signature')
+    expect(supabase.update).not.toHaveBeenCalled()
+    expect(supabase.from).not.toHaveBeenCalledWith('webhook_logs')
+  })
+
   it('returns 401 for timestamp older than 5 minutes', async () => {
     const payload = JSON.stringify(buildWebhookPayload())
     const oldTimestamp = Math.floor(Date.now() / 1000) - 400 // 6+ minutes ago
@@ -287,6 +307,32 @@ describe('POST /api/webhooks/cloudflare', () => {
       uid: VALID_VIDEO_UID,
       readyToStream: false,
       status: { state: 'some-future-state' },
+      meta: {},
+      created: '2022-06-30T17:53:12.512033Z',
+      modified: '2022-06-30T17:53:21.774299Z',
+    }
+    const payload = JSON.stringify(webhookPayload)
+    const signature = signPayload(payload)
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signature },
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.success).toBe(true)
+    expect(body.updated).toBe(false)
+    expect(supabase.update).not.toHaveBeenCalled()
+  })
+
+  it('makes NO database write when status field is missing entirely', async () => {
+    const webhookPayload = {
+      uid: VALID_VIDEO_UID,
+      readyToStream: true,
       meta: {},
       created: '2022-06-30T17:53:12.512033Z',
       modified: '2022-06-30T17:53:21.774299Z',

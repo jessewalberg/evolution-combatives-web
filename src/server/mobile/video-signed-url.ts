@@ -5,7 +5,7 @@ import {
     SUBSCRIPTION_TIER_HIERARCHY,
     type SubscriptionTier 
 } from '@/src/lib/shared/constants/subscriptionTiers'
-import { CloudflareStreamError } from '@/src/services/cloudflare-stream'
+import { CloudflareStreamError, isValidStreamVideoId } from '@/src/services/cloudflare-stream'
 
 function isValidTier(tier: unknown): tier is SubscriptionTier {
     return typeof tier === 'string' && tier in SUBSCRIPTION_TIER_HIERARCHY
@@ -46,6 +46,13 @@ export async function POST({ request }: { request: Request }) {
         if (!videoId) {
             return json(
                 { success: false, error: 'Video ID is required' },
+                { status: 400 }
+            )
+        }
+
+        if (!isValidStreamVideoId(videoId)) {
+            return json(
+                { success: false, error: 'Invalid video ID format' },
                 { status: 400 }
             )
         }

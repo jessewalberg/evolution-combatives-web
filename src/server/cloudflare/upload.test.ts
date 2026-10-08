@@ -266,4 +266,22 @@ describe('POST /api/cloudflare/upload', () => {
 
     expect(res.status).toBe(400)
   })
+
+  it('returns 400 for invalid video ID format in generateThumbnailUrl', async () => {
+    authSuccess(mockAuth)
+    const { CloudflareStreamError } = await import('@/src/services/cloudflare-stream')
+    mockGenerateThumbnailUrl.mockRejectedValue(
+      new CloudflareStreamError('Invalid video ID format', 400)
+    )
+
+    const res = await POST(
+      createNextRequest('/api/cloudflare/upload', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'generateThumbnailUrl', videoId: 'bad-id' }),
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+  })
 })

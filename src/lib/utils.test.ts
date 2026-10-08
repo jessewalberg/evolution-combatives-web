@@ -211,9 +211,18 @@ describe('getSafeRedirectUrl', () => {
     expect(getSafeRedirectUrl('other-site.com')).toBe('/dashboard')
   })
 
-  it('rejects URLs with encoded bypass attempts', () => {
+  it('rejects URLs with special encoded characters', () => {
     expect(getSafeRedirectUrl('/%2f%2fother-site.com')).toBe('/dashboard')
     expect(getSafeRedirectUrl('/%2Fother-site.com')).toBe('/dashboard')
+    // Encoded backslash (%5C)
+    expect(getSafeRedirectUrl('/%5Cother-site.com')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%5Cto%5Cfile')).toBe('/dashboard')
+    // Encoded control characters (%00 = null, %0a = newline, %09 = tab)
+    expect(getSafeRedirectUrl('/path%00hidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%0ahidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%09hidden')).toBe('/dashboard')
+    // Encoded whitespace (%20 = space)
+    expect(getSafeRedirectUrl('/path%20with%20space')).toBe('/dashboard')
   })
 
   it('rejects URLs with backslash', () => {

@@ -3,6 +3,8 @@ import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler } from './video-signed-url'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
+const VALID_VIDEO_ID = '6b9e68b07dfee8cc2d116e4c51d6a957'
+
 const mockSubscriptionSelect = vi.fn()
 const mockAdminVideoSelect = vi.fn()
 const mockValidateMobileAppAuth = vi.fn()
@@ -43,6 +45,7 @@ vi.mock('@/src/services/cloudflare-stream', () => {
       generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
     },
     CloudflareStreamError,
+    isValidStreamVideoId: (id: unknown) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id),
   }
 })
 
@@ -83,7 +86,7 @@ describe('POST /api/mobile/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
       error: null,
     })
     mockGetVideoDetails.mockResolvedValue({
@@ -129,10 +132,22 @@ describe('POST /api/mobile/video/signed-url', () => {
     expect((await res.json()).error).toBe('Video ID is required')
   })
 
-  it('returns 404 when video not in Cloudflare', async () => {
-    mockGetVideoDetails.mockRejectedValueOnce(new Error('missing'))
+  it('returns 400 for invalid video ID format before querying database', async () => {
+    const res = (await POST(mobileRequest({ videoId: 'not-valid-hex' })))!
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+    expect(mockAdminVideoSelect).not.toHaveBeenCalled()
+  })
 
-    const res = (await POST(mobileRequest({ videoId: 'missing' })))!
+  it('returns 404 when video not in Cloudflare', async () => {
+    const notInCloudflareId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1'
+    mockGetVideoDetails.mockRejectedValueOnce(new Error('Not Found'))
+    mockAdminVideoSelect.mockResolvedValueOnce({
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: notInCloudflareId, title: 'Test Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(mobileRequest({ videoId: notInCloudflareId })))!
     const body = await res.json()
 
     expect(res.status).toBe(404)
@@ -141,7 +156,7 @@ describe('POST /api/mobile/video/signed-url', () => {
 
   it('generates signed url using user actual tier', async () => {
     const res = (await POST(
-      mobileRequest({ videoId: 'cf-1', format: 'hls' })
+      mobileRequest({ videoId: VALID_VIDEO_ID, format: 'hls' })
     ))!
     const body = await res.json()
 
@@ -149,13 +164,13 @@ describe('POST /api/mobile/video/signed-url', () => {
     expect(body.success).toBe(true)
     expect(body.data).toMatchObject({
       signed_url: 'https://stream.example/video.m3u8?token=abc',
-      video_id: 'cf-1',
+      video_id: VALID_VIDEO_ID,
       duration: 120,
       thumbnail_url: 'https://thumb',
     })
     // Should use user's actual tier (tier2) not any client-provided value
     expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
-      'cf-1',
+      VALID_VIDEO_ID,
       'tier2',
       expect.objectContaining({ downloadable: false }),
       'hls'
@@ -168,11 +183,11 @@ describe('POST /api/mobile/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: 'cf-1', title: 'Premium Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: VALID_VIDEO_ID, title: 'Premium Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -180,11 +195,11 @@ describe('POST /api/mobile/video/signed-url', () => {
 
   it('returns 403 for unpublished videos', async () => {
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: 'cf-1', title: 'Draft Video', is_published: false },
+      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: VALID_VIDEO_ID, title: 'Draft Video', is_published: false },
       error: null,
     })
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Video not available')
@@ -196,11 +211,11 @@ describe('POST /api/mobile/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -212,11 +227,11 @@ describe('POST /api/mobile/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -228,11 +243,11 @@ describe('POST /api/mobile/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: 'cf-1', title: 'Free Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: VALID_VIDEO_ID, title: 'Free Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(200)
   })
 
@@ -242,11 +257,11 @@ describe('POST /api/mobile/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'garbage_invalid_tier', cloudflare_video_id: 'cf-1', title: 'Corrupted Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'garbage_invalid_tier', cloudflare_video_id: VALID_VIDEO_ID, title: 'Corrupted Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -257,11 +272,11 @@ describe('POST /api/mobile/video/signed-url', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
 
     const res = (await POST(
-      mobileRequest({ videoId: 'cf-1', format: 'mp4' })
+      mobileRequest({ videoId: VALID_VIDEO_ID, format: 'mp4' })
     ))!
     expect(res.status).toBe(200)
     expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
-      'cf-1',
+      VALID_VIDEO_ID,
       'tier2',
       expect.objectContaining({ downloadable: true }),
       'mp4'
@@ -272,7 +287,7 @@ describe('POST /api/mobile/video/signed-url', () => {
     mockGetVideoDetails.mockResolvedValueOnce({ status: 'ready', duration: 1, readyToStream: true })
     mockGenerateSignedUrl.mockRejectedValue(new Error('Not Found'))
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(404)
     expect((await res.json()).error).toBe('Video not found')
   })
@@ -280,7 +295,7 @@ describe('POST /api/mobile/video/signed-url', () => {
   it('returns 500 for generic generation errors', async () => {
     mockGenerateSignedUrl.mockRejectedValue(new Error('signing failed'))
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('Failed to generate signed video URL')
   })
@@ -288,7 +303,7 @@ describe('POST /api/mobile/video/signed-url', () => {
   it('returns 500 when auth throws', async () => {
     mockValidateMobileAppAuth.mockResolvedValue(makeAuthError(500, 'Authentication failed'))
 
-    const res = (await POST(mobileRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(mobileRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('Authentication failed')
   })

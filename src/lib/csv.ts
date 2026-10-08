@@ -1,10 +1,10 @@
 /**
- * CSV export utilities with proper encoding and formula neutralization
+ * CSV export utilities with proper encoding
  * 
  * Handles:
  * - Proper escaping of quotes (doubled within quoted fields)
  * - Quoting of fields containing commas, quotes, or newlines
- * - Formula injection prevention (neutralizes =, +, -, @, tab, carriage return)
+ * - Formula character handling (prefixes =, +, -, @, tab, carriage return)
  */
 
 /**
@@ -34,7 +34,7 @@ export function escapeCsvField(value: unknown): string {
 
     let str = String(value)
 
-    // Neutralize formula injection by prepending a single quote
+    // Handle formula characters by prepending a single quote for spreadsheet compatibility
     if (FORMULA_TRIGGERS.some(trigger => str.startsWith(trigger))) {
         str = "'" + str
     }

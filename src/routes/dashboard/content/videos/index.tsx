@@ -9,6 +9,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/src/lib/utils'
+import { downloadCsv } from '@/src/lib/csv'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/src/hooks/useAuth'
@@ -398,39 +399,18 @@ export function VideoLibraryPage() {
             return {
                 title: video.title,
                 category: category?.name || '',
-                instructor: '', // Instructor data not available in current schema
-                status: video.processing_status,
-                tier: video.tier_required,
+                instructor: '',
+                status: video.processing_status || '',
+                tier: video.tier_required || '',
                 uploadDate: video.created_at,
                 viewCount: video.view_count || 0
             }
         })
 
-        const headers = ['Title', 'Category', 'Instructor', 'Status', 'Tier', 'Upload Date', 'Views'] as const
-        const headerToKey = {
-            Title: 'title',
-            Category: 'category',
-            Instructor: 'instructor',
-            Status: 'status',
-            Tier: 'tier',
-            'Upload Date': 'uploadDate',
-            Views: 'viewCount',
-        } as const satisfies Record<(typeof headers)[number], keyof (typeof csvData)[number]>
-        const csvContent = [
-            headers.join(','),
-            ...csvData.map((row) => headers.map(header => {
-                const key = headerToKey[header]
-                return `"${row[key]}"`
-            }).join(','))
-        ].join('\n')
+        const headers = ['Title', 'Category', 'Instructor', 'Status', 'Tier', 'Upload Date', 'Views']
+        const keys: (keyof typeof csvData[0])[] = ['title', 'category', 'instructor', 'status', 'tier', 'uploadDate', 'viewCount']
 
-        const blob = new Blob([csvContent], { type: 'text/csv' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'video-library.csv'
-        a.click()
-        URL.revokeObjectURL(url)
+        downloadCsv(csvData, 'video-library', { headers, keys })
     }
 
     if (authLoading || !user || !profile?.admin_role) {
