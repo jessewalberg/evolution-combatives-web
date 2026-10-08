@@ -832,26 +832,6 @@ export const securityFunctions = {
     },
 
     /**
-     * Validate webhook signature (implement based on Cloudflare webhook setup)
-     */
-    validateWebhookSignature(
-        payload: string,
-        signature: string,
-        secret: string
-    ): boolean {
-        // TODO: Implement webhook signature validation
-        // This would typically use HMAC-SHA256 to verify the webhook came from Cloudflare
-        // For now, we'll just reference the parameters to avoid linting errors
-        if (payload && signature && secret) {
-            if (process.env.NODE_ENV === 'development') {
-                 
-                console.warn('Webhook signature validation not implemented yet')
-            }
-        }
-        return true
-    },
-
-    /**
      * Check if user has access to video based on subscription
      */
     async validateVideoAccess(

@@ -29,7 +29,7 @@ const FORMULA_TRIGGERS = ['=', '+', '-', '@', '\t', '\r']
  */
 export function escapeCsvField(value: unknown): string {
     if (value === null || value === undefined) {
-        return ''
+        return '""'
     }
 
     let str = String(value)
@@ -39,18 +39,9 @@ export function escapeCsvField(value: unknown): string {
         str = "'" + str
     }
 
-    // Check if quoting is needed
-    const needsQuoting = str.includes(',') || 
-                          str.includes('"') || 
-                          str.includes('\n') || 
-                          str.includes('\r')
-
-    if (needsQuoting) {
-        // Escape quotes by doubling them, then wrap in quotes
-        return '"' + str.replace(/"/g, '""') + '"'
-    }
-
-    return str
+    // Always quote cells for consistent parsing
+    // Escape internal quotes by doubling them
+    return '"' + str.replace(/"/g, '""') + '"'
 }
 
 /**

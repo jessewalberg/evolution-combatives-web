@@ -2,20 +2,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { escapeCsvField, toCsv, downloadCsv } from './csv'
 
 describe('escapeCsvField', () => {
-    it('returns empty string for null and undefined', () => {
-        expect(escapeCsvField(null)).toBe('')
-        expect(escapeCsvField(undefined)).toBe('')
+    it('returns empty quoted string for null and undefined', () => {
+        expect(escapeCsvField(null)).toBe('""')
+        expect(escapeCsvField(undefined)).toBe('""')
     })
 
-    it('converts non-string values to strings', () => {
-        expect(escapeCsvField(123)).toBe('123')
-        expect(escapeCsvField(true)).toBe('true')
-        expect(escapeCsvField(0)).toBe('0')
+    it('converts non-string values to quoted strings', () => {
+        expect(escapeCsvField(123)).toBe('"123"')
+        expect(escapeCsvField(true)).toBe('"true"')
+        expect(escapeCsvField(0)).toBe('"0"')
     })
 
-    it('returns simple values unchanged', () => {
-        expect(escapeCsvField('normal')).toBe('normal')
-        expect(escapeCsvField('hello world')).toBe('hello world')
+    it('quotes all values for consistent parsing', () => {
+        expect(escapeCsvField('normal')).toBe('"normal"')
+        expect(escapeCsvField('hello world')).toBe('"hello world"')
     })
 
     it('quotes fields containing commas', () => {
@@ -34,29 +34,27 @@ describe('escapeCsvField', () => {
     })
 
     it('neutralizes formula injection with equals sign', () => {
-        expect(escapeCsvField('=SUM(A1)')).toBe("'=SUM(A1)")
-        expect(escapeCsvField('=1+1')).toBe("'=1+1")
+        expect(escapeCsvField('=SUM(A1)')).toBe("\"'=SUM(A1)\"")
+        expect(escapeCsvField('=1+1')).toBe("\"'=1+1\"")
     })
 
     it('neutralizes formula injection with plus sign', () => {
-        expect(escapeCsvField('+1234')).toBe("'+1234")
+        expect(escapeCsvField('+1234')).toBe("\"'+1234\"")
     })
 
     it('neutralizes formula injection with minus sign', () => {
-        expect(escapeCsvField('-123')).toBe("'-123")
+        expect(escapeCsvField('-123')).toBe("\"'-123\"")
     })
 
     it('neutralizes formula injection with at sign', () => {
-        expect(escapeCsvField('@SUM(A1)')).toBe("'@SUM(A1)")
+        expect(escapeCsvField('@SUM(A1)')).toBe("\"'@SUM(A1)\"")
     })
 
     it('neutralizes formula injection with tab', () => {
-        // Tab starting field gets single-quote prefix for formula neutralization
-        expect(escapeCsvField('\t=cmd')).toBe("'\t=cmd")
+        expect(escapeCsvField('\t=cmd')).toBe("\"'\t=cmd\"")
     })
 
     it('handles combined escaping and neutralization', () => {
-        // Has comma and quotes so gets quoted; also has = so gets neutralized
         expect(escapeCsvField('=A1, "B2"')).toBe("\"'=A1, \"\"B2\"\"\"")
     })
 })
@@ -66,11 +64,11 @@ describe('toCsv', () => {
         expect(toCsv([])).toBe('')
     })
 
-    it('returns headers only for empty data with headers option', () => {
-        expect(toCsv([], { headers: ['Name', 'Email'] })).toBe('Name,Email')
+    it('returns quoted headers only for empty data with headers option', () => {
+        expect(toCsv([], { headers: ['Name', 'Email'] })).toBe('"Name","Email"')
     })
 
-    it('converts simple object array to CSV', () => {
+    it('converts simple object array to CSV with all cells quoted', () => {
         const data = [
             { name: 'John', email: 'john@example.com' },
             { name: 'Jane', email: 'jane@example.com' }
@@ -78,16 +76,16 @@ describe('toCsv', () => {
         const csv = toCsv(data)
         const lines = csv.split('\n')
         
-        expect(lines[0]).toBe('name,email')
-        expect(lines[1]).toBe('John,john@example.com')
-        expect(lines[2]).toBe('Jane,jane@example.com')
+        expect(lines[0]).toBe('"name","email"')
+        expect(lines[1]).toBe('"John","john@example.com"')
+        expect(lines[2]).toBe('"Jane","jane@example.com"')
     })
 
     it('uses custom headers', () => {
         const data = [{ name: 'John', email: 'john@example.com' }]
         const csv = toCsv(data, { headers: ['Full Name', 'Email Address'] })
         
-        expect(csv.split('\n')[0]).toBe('Full Name,Email Address')
+        expect(csv.split('\n')[0]).toBe('"Full Name","Email Address"')
     })
 
     it('uses custom keys to select and order columns', () => {
@@ -95,15 +93,15 @@ describe('toCsv', () => {
         const csv = toCsv(data, { keys: ['email', 'name'] })
         
         const lines = csv.split('\n')
-        expect(lines[0]).toBe('email,name')
-        expect(lines[1]).toBe('john@example.com,John')
+        expect(lines[0]).toBe('"email","name"')
+        expect(lines[1]).toBe('"john@example.com","John"')
     })
 
     it('excludes header row when includeHeader is false', () => {
         const data = [{ name: 'John' }]
         const csv = toCsv(data, { includeHeader: false })
         
-        expect(csv).toBe('John')
+        expect(csv).toBe('"John"')
     })
 
     it('properly escapes data with formula characters', () => {
@@ -114,10 +112,9 @@ describe('toCsv', () => {
         const csv = toCsv(data)
         const lines = csv.split('\n')
         
-        // Formula prefix added, no quoting needed (no comma/quote/newline in value)
-        expect(lines[1]).toBe("'=SUM(A1),normal")
-        // +123 gets prefix, test, value gets quoted due to comma
-        expect(lines[2]).toBe("'+123,\"test, value\"")
+        // All cells quoted, formula prefix added
+        expect(lines[1]).toBe("\"'=SUM(A1)\",\"normal\"")
+        expect(lines[2]).toBe("\"'+123\",\"test, value\"")
     })
 })
 

@@ -1,21 +1,23 @@
 /**
- * Evolution Combatives - Cloudflare Stream Webhook Handler
- * Professional webhook endpoint for video processing events
- * Designed for tactical training content management
- * 
- * @description Handles all Cloudflare Stream webhook events with database updates and admin notifications
- * @author Evolution Combatives
+ * Cloudflare Stream Webhook Handler
+ * Handles video processing notifications from Cloudflare Stream
  */
 
 import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
+import { isValidStreamVideoId } from '@/src/services/cloudflare-stream'
 
-// Cloudflare Stream webhook event types
-interface CloudflareStreamEvent {
-    eventId: string
-    eventTimestamp: string
-    eventType: 'video.upload.complete' | 'video.processing.started' | 'video.processing.complete' | 'video.processing.failed' | 'video.ready' | 'video.deleted'
-    uid: string // Video UID from Cloudflare
+// Cloudflare Stream webhook payload is the video object itself
+// See: https://developers.cloudflare.com/stream/manage-video-library/using-webhooks/
+interface CloudflareStreamWebhookPayload {
+    uid: string
+    readyToStream: boolean
+    status: {
+        state: 'queued' | 'inprogress' | 'ready' | 'error' | 'downloading' | 'pendingupload'
+        pctComplete?: string
+        errorReasonCode?: string
+        errorReasonText?: string
+    }
     meta?: Record<string, unknown>
     playback?: {
         hls?: string
@@ -28,17 +30,9 @@ interface CloudflareStreamEvent {
         width?: number
         height?: number
     }
-    status?: {
-        state: 'queued' | 'inprogress' | 'ready' | 'error'
-        pctComplete?: string
-        errorReasonCode?: string
-        errorReasonText?: string
-    }
     created?: string
     modified?: string
     size?: number
-    watermark?: Record<string, unknown>
-    nft?: unknown
 }
 
 // Database update retry configuration
@@ -93,13 +87,14 @@ async function verifyWebhookSignature(
             return false
         }
 
-        // Validate timestamp (reject requests older than MAX_TIMESTAMP_AGE_SECONDS)
+        // Validate timestamp (two-sided: reject old AND future requests)
         const timestamp = parseInt(time, 10)
         if (isNaN(timestamp)) {
             return false
         }
         const now = Math.floor(Date.now() / 1000)
-        if (now - timestamp > MAX_TIMESTAMP_AGE_SECONDS) {
+        const diff = now - timestamp
+        if (diff > MAX_TIMESTAMP_AGE_SECONDS || diff < -MAX_TIMESTAMP_AGE_SECONDS) {
             return false
         }
 
@@ -161,11 +156,83 @@ async function withRetry<T>(
     }
 }
 
+// Known states that we handle - unknown states are a no-op
+const KNOWN_STATES = new Set(['ready', 'inprogress', 'error', 'queued', 'downloading', 'pendingupload'])
+
+// Derive DB status from webhook payload
+// Returns null for unknown states (no-op)
+function deriveStatusFromPayload(payload: CloudflareStreamWebhookPayload): {
+    processingStatus: string
+    isPublished: boolean
+    metadata: Record<string, unknown>
+} | null {
+    const state = payload.status?.state
+    
+    // Unknown state is a no-op
+    if (!state || !KNOWN_STATES.has(state)) {
+        return null
+    }
+
+    const metadata: Record<string, unknown> = {}
+
+    // Derive status based on state and readyToStream
+    if (state === 'ready' && payload.readyToStream) {
+        // Extract video metadata for ready state
+        if (payload.duration) {
+            metadata.duration = Math.round(payload.duration)
+        }
+        if (payload.input?.width && payload.input?.height) {
+            metadata.resolution = `${payload.input.width}x${payload.input.height}`
+        }
+        if (payload.playback?.hls) {
+            metadata.hls_url = payload.playback.hls
+        }
+        if (payload.playback?.dash) {
+            metadata.dash_url = payload.playback.dash
+        }
+        if (payload.thumbnail) {
+            metadata.thumbnail_url = payload.thumbnail
+        }
+        if (payload.preview) {
+            metadata.preview_url = payload.preview
+        }
+        if (payload.size) {
+            metadata.file_size = payload.size
+        }
+        return { processingStatus: 'ready', isPublished: true, metadata }
+    }
+
+    if (state === 'error') {
+        metadata.error_code = payload.status?.errorReasonCode
+        metadata.error_message = payload.status?.errorReasonText
+        return { processingStatus: 'error', isPublished: false, metadata }
+    }
+
+    if (state === 'inprogress' || state === 'queued' || state === 'downloading' || state === 'pendingupload') {
+        return { processingStatus: 'processing', isPublished: false, metadata }
+    }
+
+    // Ready but not readyToStream yet - still processing
+    if (state === 'ready' && !payload.readyToStream) {
+        return { processingStatus: 'processing', isPublished: false, metadata }
+    }
+
+    return null
+}
+
 // Update video status in Supabase
+// Returns false if no update was made (unknown state)
 async function updateVideoStatus(
     videoUid: string,
-    event: CloudflareStreamEvent
-): Promise<void> {
+    payload: CloudflareStreamWebhookPayload
+): Promise<boolean> {
+    const derived = deriveStatusFromPayload(payload)
+    
+    // Unknown state is a no-op
+    if (!derived) {
+        return false
+    }
+
     const supabase = createAdminClient()
 
     // Find video by Cloudflare UID
@@ -179,67 +246,15 @@ async function updateVideoStatus(
         throw new Error(`Video with UID ${videoUid} not found in database: ${fetchError?.message}`)
     }
 
-    // Determine processing status and video metadata
-    let processingStatus: string
-    let isPublished = false
-    const metadata: Record<string, unknown> = {}
-
-    switch (event.eventType) {
-        case 'video.upload.complete':
-            processingStatus = 'processing'
-            break
-        case 'video.processing.started':
-            processingStatus = 'processing'
-            break
-        case 'video.processing.complete':
-        case 'video.ready':
-            processingStatus = 'ready'
-            isPublished = true
-
-            // Extract video metadata
-            if (event.duration) {
-                metadata.duration = Math.round(event.duration)
-            }
-            if (event.input?.width && event.input?.height) {
-                metadata.resolution = `${event.input.width}x${event.input.height}`
-            }
-            if (event.playback?.hls) {
-                metadata.hls_url = event.playback.hls
-            }
-            if (event.playback?.dash) {
-                metadata.dash_url = event.playback.dash
-            }
-            if (event.thumbnail) {
-                metadata.thumbnail_url = event.thumbnail
-            }
-            if (event.preview) {
-                metadata.preview_url = event.preview
-            }
-            if (event.size) {
-                metadata.file_size = event.size
-            }
-            break
-        case 'video.processing.failed':
-            processingStatus = 'error'
-            metadata.error_code = event.status?.errorReasonCode
-            metadata.error_message = event.status?.errorReasonText
-            break
-        case 'video.deleted':
-            processingStatus = 'deleted'
-            isPublished = false
-            break
-        default:
-            processingStatus = 'queued'
-    }
-
-    // Update video in database
+    // Build update data
     const updateData: Record<string, unknown> = {
-        processing_status: processingStatus,
-        is_published: isPublished,
+        processing_status: derived.processingStatus,
+        is_published: derived.isPublished,
         updated_at: new Date().toISOString()
     }
 
     // Add metadata fields if they exist
+    const { metadata } = derived
     if (metadata.duration) updateData.duration_seconds = metadata.duration
     if (metadata.resolution) updateData.resolution = metadata.resolution
     if (metadata.hls_url) updateData.hls_url = metadata.hls_url
@@ -259,33 +274,34 @@ async function updateVideoStatus(
         throw new Error(`Failed to update video ${video.id}: ${updateError.message}`)
     }
 
-    console.log(`Video ${video.title} (${video.id}) updated successfully:`, {
-        eventType: event.eventType,
-        processingStatus,
-        metadata
-    })
+    return true
 }
 
 // Send admin notifications for important events
 async function sendAdminNotification(
-    event: CloudflareStreamEvent,
-    videoTitle?: string
+    payload: CloudflareStreamWebhookPayload
 ): Promise<void> {
     const supabase = createAdminClient()
+    const state = payload.status?.state
 
-    // Only send notifications for completion and error events
-    if (!['video.ready', 'video.processing.failed'].includes(event.eventType)) {
+    // Only send notifications for ready and error states
+    if (state !== 'ready' && state !== 'error') {
         return
     }
 
-    const isError = event.eventType === 'video.processing.failed'
+    // For ready state, only notify if readyToStream is true
+    if (state === 'ready' && !payload.readyToStream) {
+        return
+    }
+
+    const isError = state === 'error'
     const notificationTitle = isError
         ? 'Video Processing Failed'
         : 'Video Processing Complete'
 
     const notificationMessage = isError
-        ? `Video "${videoTitle || event.uid}" failed to process: ${event.status?.errorReasonText || 'Unknown error'}`
-        : `Video "${videoTitle || event.uid}" is now ready for viewing`
+        ? `Video "${payload.uid}" failed to process: ${payload.status?.errorReasonText || 'Unknown error'}`
+        : `Video "${payload.uid}" is now ready for viewing`
 
     // Get admin users to notify
     const { data: admins, error: adminsError } = await supabase
@@ -298,7 +314,7 @@ async function sendAdminNotification(
         return
     }
 
-    // Create notification records (assuming you have a notifications table)
+    // Create notification records
     const notifications = admins?.map((admin: { id: string; email: string; admin_role: string }) => ({
         user_id: admin.id,
         title: notificationTitle,
@@ -306,9 +322,9 @@ async function sendAdminNotification(
         type: isError ? 'error' : 'success',
         category: 'video_processing',
         metadata: {
-            video_uid: event.uid,
-            event_type: event.eventType,
-            timestamp: event.eventTimestamp
+            video_uid: payload.uid,
+            state: state,
+            timestamp: new Date().toISOString()
         },
         created_at: new Date().toISOString()
     })) || []
@@ -320,8 +336,6 @@ async function sendAdminNotification(
 
         if (notificationError) {
             console.error('Failed to create admin notifications:', notificationError)
-        } else {
-            console.log(`Sent ${notifications.length} admin notifications for ${event.eventType}`)
         }
     }
 
@@ -333,9 +347,8 @@ async function sendAdminNotification(
             category: 'video_processing',
             message: notificationMessage,
             metadata: {
-                video_uid: event.uid,
-                event_type: event.eventType,
-                event_data: event
+                video_uid: payload.uid,
+                state: state
             },
             created_at: new Date().toISOString()
         })
@@ -347,7 +360,7 @@ async function sendAdminNotification(
 
 // Log webhook events for debugging and monitoring
 async function logWebhookEvent(
-    event: CloudflareStreamEvent,
+    payload: CloudflareStreamWebhookPayload,
     success: boolean,
     error?: string
 ): Promise<void> {
@@ -355,12 +368,11 @@ async function logWebhookEvent(
 
     const logEntry = {
         webhook_source: 'cloudflare_stream',
-        event_id: event.eventId,
-        event_type: event.eventType,
-        video_uid: event.uid,
+        video_uid: payload.uid,
+        state: payload.status?.state,
         success,
         error_message: error,
-        event_data: event,
+        event_data: payload,
         timestamp: new Date().toISOString()
     }
 
@@ -380,7 +392,7 @@ async function logWebhookEvent(
 // Main webhook handler
 export async function POST({ request }: { request: Request }) {
     let webhookPayload: string
-    let event: CloudflareStreamEvent
+    let payload: CloudflareStreamWebhookPayload
 
     try {
         // Get webhook payload
@@ -393,7 +405,7 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Verify webhook signature BEFORE parsing or logging body - fail closed if secret not configured
+        // Verify webhook signature BEFORE parsing or logging body
         const signature = request.headers.get('Webhook-Signature')
         const webhookSecret = process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
@@ -411,16 +423,16 @@ export async function POST({ request }: { request: Request }) {
         )
 
         if (!isValidSignature) {
-            console.warn('Webhook signature validation failed')
+            // Do not log body or insert into webhook_logs for invalid signatures
             return json(
                 { error: 'Invalid signature' },
                 { status: 401 }
             )
         }
 
-        // Signature verified - now safe to parse and log
+        // Signature verified - now safe to parse
         try {
-            event = JSON.parse(webhookPayload)
+            payload = JSON.parse(webhookPayload)
         } catch {
             return json(
                 { error: 'Invalid JSON payload' },
@@ -428,30 +440,40 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        console.log(`Processing webhook: ${event.eventType} for video ${event.uid}`)
+        // Validate uid format before any DB lookup
+        if (!payload.uid || !isValidStreamVideoId(payload.uid)) {
+            return json(
+                { error: 'Invalid video ID format' },
+                { status: 400 }
+            )
+        }
 
         // Process the webhook event with retry logic
-        await withRetry(
+        const updated = await withRetry(
             async () => {
-                // Update video status in database
-                await updateVideoStatus(event.uid, event)
+                // Update video status in database (returns false for unknown states)
+                const didUpdate = await updateVideoStatus(payload.uid, payload)
 
                 // Send admin notifications for important events
-                await sendAdminNotification(event)
+                if (didUpdate) {
+                    await sendAdminNotification(payload)
+                }
+
+                return didUpdate
             },
-            `Webhook processing for ${event.eventType}`,
+            `Webhook processing for ${payload.status?.state}`,
             0
         )
 
         // Log successful webhook processing
-        await logWebhookEvent(event, true)
+        await logWebhookEvent(payload, true)
 
         return json(
             {
                 success: true,
-                eventId: event.eventId,
-                eventType: event.eventType,
-                videoUid: event.uid
+                videoUid: payload.uid,
+                state: payload.status?.state,
+                updated
             },
             { status: 200 }
         )
@@ -460,8 +482,8 @@ export async function POST({ request }: { request: Request }) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
         // Log failed webhook processing (signature already verified at this point)
-        if (event!) {
-            await logWebhookEvent(event, false, errorMessage)
+        if (payload!) {
+            await logWebhookEvent(payload, false, errorMessage)
         }
 
         return json(

@@ -4,6 +4,10 @@ import { POST as POSTHandler } from './signed-url'
 
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
+// Valid 32-char lowercase hex video ID
+const VALID_VIDEO_ID = '6b9e68b07dfee8cc2d116e4c51d6a957'
+const ANOTHER_VALID_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1'
+
 const mockGetUser = vi.fn()
 const mockSubscriptionSelect = vi.fn()
 const mockAdminVideoSelect = vi.fn()
@@ -47,6 +51,7 @@ vi.mock('@/src/services/cloudflare-stream', () => {
       generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
     },
     CloudflareStreamError,
+    isValidStreamVideoId: (id: unknown) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id),
   }
 })
 
@@ -70,7 +75,7 @@ describe('POST /api/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
       error: null,
     })
     mockGetVideoDetails.mockResolvedValue({
@@ -115,17 +120,25 @@ describe('POST /api/video/signed-url', () => {
     expect((await res.json()).error).toBe('Video ID is required')
   })
 
+  it('returns 400 for invalid video ID format before DB lookup', async () => {
+    const res = (await POST(authRequest({ videoId: 'not-valid-hex' })))!
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+    // Verify no DB call was made
+    expect(mockAdminVideoSelect).not.toHaveBeenCalled()
+  })
+
   it('returns 404 when video missing in Cloudflare', async () => {
     mockGetVideoDetails.mockRejectedValueOnce(new Error('gone'))
 
-    const res = (await POST(authRequest({ videoId: 'missing' })))!
+    const res = (await POST(authRequest({ videoId: ANOTHER_VALID_ID })))!
     expect(res.status).toBe(404)
     expect((await res.json()).error).toBe('Video not found in Cloudflare Stream')
   })
 
   it('generates signed url using user actual tier (tier3 user)', async () => {
     const res = (await POST(
-      authRequest({ videoId: 'cf-1', format: 'mp4' })
+      authRequest({ videoId: VALID_VIDEO_ID, format: 'mp4' })
     ))!
     const body = await res.json()
 
@@ -134,7 +147,7 @@ describe('POST /api/video/signed-url', () => {
     expect(body.data.signed_url).toContain('token=')
     // Should use user's actual tier (tier3) not any client-provided value
     expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
-      'cf-1',
+      VALID_VIDEO_ID,
       'tier3',
       expect.objectContaining({ downloadable: true }),
       'mp4'
@@ -147,11 +160,11 @@ describe('POST /api/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: 'cf-1', title: 'Premium Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: VALID_VIDEO_ID, title: 'Premium Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -159,11 +172,11 @@ describe('POST /api/video/signed-url', () => {
 
   it('returns 403 for unpublished videos', async () => {
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: 'cf-1', title: 'Draft Video', is_published: false },
+      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: VALID_VIDEO_ID, title: 'Draft Video', is_published: false },
       error: null,
     })
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Video not available')
@@ -175,11 +188,11 @@ describe('POST /api/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -191,11 +204,11 @@ describe('POST /api/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: 'cf-1', title: 'Test Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -207,11 +220,11 @@ describe('POST /api/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: 'cf-1', title: 'Free Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: VALID_VIDEO_ID, title: 'Free Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(200)
   })
 
@@ -221,11 +234,11 @@ describe('POST /api/video/signed-url', () => {
       error: null,
     })
     mockAdminVideoSelect.mockResolvedValue({
-      data: { id: 'vid-1', tier_required: 'garbage_invalid_tier', cloudflare_video_id: 'cf-1', title: 'Corrupted Video', is_published: true },
+      data: { id: 'vid-1', tier_required: 'garbage_invalid_tier', cloudflare_video_id: VALID_VIDEO_ID, title: 'Corrupted Video', is_published: true },
       error: null,
     })
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe('Subscription tier too low')
@@ -235,21 +248,21 @@ describe('POST /api/video/signed-url', () => {
   it('tolerates HEAD probe failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(200)
   })
 
   it('returns 404 for Not Found from generateSignedUrl', async () => {
     mockGenerateSignedUrl.mockRejectedValue(new Error('Not Found'))
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(404)
   })
 
   it('returns 500 for generic errors', async () => {
     mockGenerateSignedUrl.mockRejectedValue(new Error('boom'))
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('Failed to generate signed video URL')
   })
@@ -257,7 +270,7 @@ describe('POST /api/video/signed-url', () => {
   it('returns 500 when auth throws', async () => {
     mockGetUser.mockRejectedValue(new Error('auth crash'))
 
-    const res = (await POST(authRequest({ videoId: 'cf-1' })))!
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('Authentication failed')
   })

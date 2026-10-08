@@ -387,8 +387,8 @@ export function generateInitials(
  * @example
  * ```tsx
  * getSafeRedirectUrl('/dashboard/users') // '/dashboard/users'
- * getSafeRedirectUrl('https://evil.com') // '/dashboard'
- * getSafeRedirectUrl('//evil.com') // '/dashboard'
+ * getSafeRedirectUrl('https://other-site.com') // '/dashboard'
+ * getSafeRedirectUrl('//other-site.com') // '/dashboard'
  * getSafeRedirectUrl('/login', '/home') // '/login'
  * getSafeRedirectUrl(undefined) // '/dashboard'
  * ```
@@ -405,6 +405,22 @@ export function getSafeRedirectUrl(
 
     // Reject empty strings
     if (!trimmed) {
+        return fallback
+    }
+
+    // Reject backslash - browsers interpret \ as / in URLs
+    if (trimmed.includes('\\')) {
+        return fallback
+    }
+
+    // Reject control characters (ASCII 0-31 and 127)
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(trimmed)) {
+        return fallback
+    }
+
+    // Reject embedded whitespace (spaces, tabs, newlines inside the URL)
+    if (/\s/.test(trimmed)) {
         return fallback
     }
 

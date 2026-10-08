@@ -159,10 +159,30 @@ describe('uploadFunctions', () => {
     expect(body.requireSignedURLs).toBe(true)
   })
 
+  it('getUploadUrl ignores requireSignedURLs option and always sends true', async () => {
+    mockFetch.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          success: true,
+          result: { uid: 'vid-forced', uploadURL: 'https://upload.example/f' },
+          errors: [],
+        })
+      )
+    )
+
+    // Even if someone bypasses TypeScript and passes requireSignedURLs: false,
+    // the service should ignore it and send true
+    await uploadFunctions.getUploadUrl({ requireSignedURLs: false } as never)
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
+    expect(body.requireSignedURLs).toBe(true)
+  })
+
   it('getUploadUrl does not log token or upload URL via any console method', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
 
     mockFetch.mockResolvedValue(
       textResponse(
@@ -177,7 +197,7 @@ describe('uploadFunctions', () => {
     await uploadFunctions.getUploadUrl({})
 
     const sensitivePatterns = ['secret-path', 'Bearer', process.env.CLOUDFLARE_API_TOKEN].filter(Boolean)
-    for (const spy of [logSpy, warnSpy, errorSpy]) {
+    for (const spy of [logSpy, warnSpy, errorSpy, infoSpy, debugSpy]) {
       for (const call of spy.mock.calls) {
         const message = JSON.stringify(call)
         for (const pattern of sensitivePatterns) {
@@ -189,6 +209,8 @@ describe('uploadFunctions', () => {
     logSpy.mockRestore()
     warnSpy.mockRestore()
     errorSpy.mockRestore()
+    infoSpy.mockRestore()
+    debugSpy.mockRestore()
   })
 
   it('getUploadUrl wraps parse and API failures', async () => {
@@ -451,6 +473,8 @@ describe('videoManagement', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
 
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
@@ -459,7 +483,7 @@ describe('videoManagement', () => {
     await videoManagement.generateSignedUrl(VALID_VIDEO_ID, 'tier2')
 
     const sensitivePatterns = [signingKeyId, signingKey, 'generated-jwt-token', process.env.CLOUDFLARE_API_TOKEN].filter(Boolean)
-    for (const spy of [logSpy, warnSpy, errorSpy]) {
+    for (const spy of [logSpy, warnSpy, errorSpy, infoSpy, debugSpy]) {
       for (const call of spy.mock.calls) {
         const message = JSON.stringify(call)
         for (const pattern of sensitivePatterns) {
@@ -471,6 +495,8 @@ describe('videoManagement', () => {
     logSpy.mockRestore()
     warnSpy.mockRestore()
     errorSpy.mockRestore()
+    infoSpy.mockRestore()
+    debugSpy.mockRestore()
   })
 
   it('generateSignedUrl uses token API when signing keys present', async () => {
@@ -963,19 +989,6 @@ describe('securityFunctions', () => {
     expect(await securityFunctions.validateVideoAccess('tier3', 'tier3')).toBe(true)
     expect(await securityFunctions.validateVideoAccess('none', 'none')).toBe(true)
     expect(await securityFunctions.validateVideoAccess(null, 'tier1')).toBe(false)
-  })
-
-  it('validateWebhookSignature returns true (stub) for all arg combinations', () => {
-    expect(securityFunctions.validateWebhookSignature('a', 'b', 'c')).toBe(true)
-    expect(securityFunctions.validateWebhookSignature('', 'b', 'c')).toBe(true)
-    expect(securityFunctions.validateWebhookSignature('a', '', 'c')).toBe(true)
-
-    vi.stubEnv('NODE_ENV', 'development')
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(securityFunctions.validateWebhookSignature('payload', 'sig', 'secret')).toBe(true)
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not implemented'))
-    warnSpy.mockRestore()
-    vi.unstubAllEnvs()
   })
 
   it('generateAdminPreviewUrl fails closed without signing keys', async () => {

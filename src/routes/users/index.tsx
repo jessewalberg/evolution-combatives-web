@@ -20,6 +20,7 @@ import { Spinner } from '@/src/components/ui/loading'
 import { UserTable } from '@/src/components/user/user-table'
 import { createClientComponentClient } from '@/src/lib/supabase-browser'
 import { queryKeys } from '@/src/lib/query-client'
+import { downloadCsv } from '@/src/lib/csv'
 import type { Profile } from 'shared/types/database'
 
 // Icons
@@ -534,32 +535,20 @@ export function UsersPage() {
             email: user.email,
             firstName: user.firstName,
             lastName: user.lastName,
-            subscriptionTier: user.subscriptionTier || 'None',
+            subscriptionTier: user.subscriptionTier ?? 'None',
             status: user.status,
             joinDate: user.joinDate,
             lastActive: user.lastActive,
             totalProgress: `${user.totalProgress.toFixed(1)}%`,
             completionRate: `${user.completionRate.toFixed(1)}%`,
-            department: user.department || '',
-            location: user.location || ''
+            department: user.department ?? '',
+            location: user.location ?? ''
         }))
 
         const headers = ['Email', 'First Name', 'Last Name', 'Subscription', 'Status', 'Join Date', 'Last Active', 'Progress', 'Completion Rate', 'Department', 'Location']
-        const csvContent = [
-            headers.join(','),
-            ...csvData.map(row => headers.map(header => {
-                const key = header.toLowerCase().replace(' ', '') as keyof typeof row
-                return `"${row[key]}"`
-            }).join(','))
-        ].join('\n')
+        const keys: (keyof typeof csvData[0])[] = ['email', 'firstName', 'lastName', 'subscriptionTier', 'status', 'joinDate', 'lastActive', 'totalProgress', 'completionRate', 'department', 'location']
 
-        const blob = new Blob([csvContent], { type: 'text/csv' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `users-export-${new Date().toISOString().split('T')[0]}.csv`
-        a.click()
-        URL.revokeObjectURL(url)
+        downloadCsv(csvData, `users-export-${new Date().toISOString().split('T')[0]}`, { headers, keys })
 
         setBulkActionLoading(false)
         setSelectedUsers(new Set())

@@ -5,6 +5,8 @@ import { POST as POSTHandler } from './cloudflare'
 const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
 
 const WEBHOOK_SECRET = 'test-stream-webhook-secret'
+// Valid 32-char lowercase hex video ID (from Cloudflare docs sample)
+const VALID_VIDEO_UID = '6b9e68b07dfee8cc2d116e4c51d6a957'
 
 vi.mock('@/src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
@@ -22,17 +24,39 @@ function signPayload(payload: string, secret = WEBHOOK_SECRET, timestamp?: numbe
   return `time=${time},sig1=${sig}`
 }
 
-function buildEvent(overrides: Record<string, unknown> = {}) {
+// Build payload matching Cloudflare Stream webhook format from the docs
+// See: https://developers.cloudflare.com/stream/manage-video-library/using-webhooks/
+function buildWebhookPayload(overrides: Partial<{
+  uid: string
+  readyToStream: boolean
+  status: { state: string; pctComplete?: string; errorReasonCode?: string; errorReasonText?: string }
+  duration: number
+  input: { width: number; height: number }
+  playback: { hls: string; dash: string }
+  thumbnail: string
+  preview: string
+  size: number
+  meta: Record<string, unknown>
+  created: string
+  modified: string
+}> = {}) {
   return {
-    eventId: 'evt-1',
-    eventTimestamp: new Date().toISOString(),
-    eventType: 'video.ready',
-    uid: 'cf-video-1',
+    uid: VALID_VIDEO_UID,
+    readyToStream: true,
+    status: {
+      state: 'ready',
+      pctComplete: '100.000000',
+      errorReasonCode: '',
+      errorReasonText: ''
+    },
+    meta: { filename: 'test.mp4', name: 'test.mp4' },
+    created: '2022-06-30T17:53:12.512033Z',
+    modified: '2022-06-30T17:53:21.774299Z',
     duration: 120,
     input: { width: 1920, height: 1080 },
-    playback: { hls: 'https://hls', dash: 'https://dash' },
-    thumbnail: 'https://thumb',
-    preview: 'https://preview',
+    playback: { hls: 'https://example.invalid/manifest/video.m3u8', dash: 'https://example.invalid/manifest/video.mpd' },
+    thumbnail: 'https://example.invalid/thumbnails/thumbnail.jpg',
+    preview: 'https://example.invalid/watch',
     size: 1024,
     ...overrides,
   }
@@ -43,7 +67,7 @@ function buildSupabase(videoFound = true) {
   const update = vi.fn().mockReturnValue({ eq: updateEq })
   const videoSingle = vi.fn().mockResolvedValue({
     data: videoFound
-      ? { id: 'db-video-1', title: 'Test Video', cloudflare_video_id: 'cf-video-1' }
+      ? { id: 'db-video-1', title: 'Test Video', cloudflare_video_id: VALID_VIDEO_UID }
       : null,
     error: videoFound ? null : { message: 'not found' },
   })
@@ -89,7 +113,7 @@ describe('POST /api/webhooks/cloudflare', () => {
   })
 
   it('returns 401 for invalid signature', async () => {
-    const payload = JSON.stringify(buildEvent())
+    const payload = JSON.stringify(buildWebhookPayload())
     const now = Math.floor(Date.now() / 1000)
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -106,7 +130,7 @@ describe('POST /api/webhooks/cloudflare', () => {
   })
 
   it('returns 401 for timestamp older than 5 minutes', async () => {
-    const payload = JSON.stringify(buildEvent())
+    const payload = JSON.stringify(buildWebhookPayload())
     const oldTimestamp = Math.floor(Date.now() / 1000) - 400 // 6+ minutes ago
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -118,12 +142,40 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(401)
   })
 
-  it('processes video.ready by writing status, publish flag, and stream metadata', async () => {
-    const event = buildEvent({ eventType: 'video.ready' })
-    const payload = JSON.stringify(event)
+  it('returns 401 for timestamp more than 5 minutes in the future', async () => {
+    const payload = JSON.stringify(buildWebhookPayload())
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 400 // 6+ minutes in future
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signPayload(payload, WEBHOOK_SECRET, futureTimestamp) },
+      })
+    )
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 when signature header missing', async () => {
+    const payload = JSON.stringify(buildWebhookPayload())
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+      })
+    )
+    expect(res.status).toBe(401)
+  })
+
+  it('processes ready state by writing status, publish flag, and stream metadata', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'ready', pctComplete: '100.000000', errorReasonCode: '', errorReasonText: '' },
+      readyToStream: true,
+    })
+    const payload = JSON.stringify(webhookPayload)
     const signature = signPayload(payload)
 
-        const res = await POST(
+    const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
@@ -135,9 +187,9 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(200)
     expect(body).toMatchObject({
       success: true,
-      eventId: 'evt-1',
-      eventType: 'video.ready',
-      videoUid: 'cf-video-1',
+      videoUid: VALID_VIDEO_UID,
+      state: 'ready',
+      updated: true,
     })
     expect(supabase.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -145,25 +197,52 @@ describe('POST /api/webhooks/cloudflare', () => {
         is_published: true,
         duration_seconds: 120,
         resolution: '1920x1080',
-        hls_url: 'https://hls',
-        dash_url: 'https://dash',
-        thumbnail_url: 'https://thumb',
-        preview_url: 'https://preview',
+        hls_url: 'https://example.invalid/manifest/video.m3u8',
+        dash_url: 'https://example.invalid/manifest/video.mpd',
+        thumbnail_url: 'https://example.invalid/thumbnails/thumbnail.jpg',
+        preview_url: 'https://example.invalid/watch',
         file_size: 1024,
       })
     )
     expect(supabase.updateEq).toHaveBeenCalledWith('id', 'db-video-1')
   })
 
-  it('processes video.processing.failed by writing error status and reason', async () => {
-    const event = buildEvent({
-      eventType: 'video.processing.failed',
-      status: { state: 'error', errorReasonCode: 'E001', errorReasonText: 'Transcode failed' },
+  it('processes inprogress state by writing processing status and unpublished', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'inprogress', pctComplete: '50.000000', errorReasonCode: '', errorReasonText: '' },
+      readyToStream: false,
     })
-    const payload = JSON.stringify(event)
+    const payload = JSON.stringify(webhookPayload)
     const signature = signPayload(payload)
 
-        const res = await POST(
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signature },
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.updated).toBe(true)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processing_status: 'processing',
+        is_published: false,
+      })
+    )
+  })
+
+  it('processes error state by writing error status and reason', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'error', errorReasonCode: 'ERR_TRANSCODE', errorReasonText: 'Transcode failed' },
+      readyToStream: false,
+    })
+    const payload = JSON.stringify(webhookPayload)
+    const signature = signPayload(payload)
+
+    const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
@@ -176,10 +255,77 @@ describe('POST /api/webhooks/cloudflare', () => {
       expect.objectContaining({
         processing_status: 'error',
         is_published: false,
-        error_code: 'E001',
+        error_code: 'ERR_TRANSCODE',
         error_message: 'Transcode failed',
       })
     )
+  })
+
+  it('processes queued state by writing processing status', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'queued', pctComplete: '0.000000', errorReasonCode: '', errorReasonText: '' },
+      readyToStream: false,
+    })
+    const payload = JSON.stringify(webhookPayload)
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signPayload(payload) },
+      })
+    )
+
+    expect(res.status).toBe(200)
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'processing', is_published: false })
+    )
+  })
+
+  it('makes NO database write for unknown state (no-op)', async () => {
+    const webhookPayload = {
+      uid: VALID_VIDEO_UID,
+      readyToStream: false,
+      status: { state: 'some-future-state' },
+      meta: {},
+      created: '2022-06-30T17:53:12.512033Z',
+      modified: '2022-06-30T17:53:21.774299Z',
+    }
+    const payload = JSON.stringify(webhookPayload)
+    const signature = signPayload(payload)
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signature },
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.success).toBe(true)
+    expect(body.updated).toBe(false)
+    expect(supabase.update).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 for invalid uid format before database lookup', async () => {
+    const webhookPayload = buildWebhookPayload({ uid: 'not-valid-hex' })
+    const payload = JSON.stringify(webhookPayload)
+    const signature = signPayload(payload)
+
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signature },
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('Invalid video ID format')
+    expect(supabase.from).not.toHaveBeenCalledWith('videos')
   })
 
   // Real timers: the handler awaits WebCrypto between retries, which races
@@ -187,8 +333,8 @@ describe('POST /api/webhooks/cloudflare', () => {
   it('returns 500 when video not found in database', { timeout: 30_000 }, async () => {
     supabase = buildSupabase(false)
     mockCreateAdminClient.mockReturnValue(supabase as never)
-    const event = buildEvent()
-    const payload = JSON.stringify(event)
+    const webhookPayload = buildWebhookPayload()
+    const payload = JSON.stringify(webhookPayload)
     const signature = signPayload(payload)
 
     const resPromise = POST(
@@ -207,100 +353,28 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(supabase.update).not.toHaveBeenCalled()
   })
 
-  it('returns 401 when signature header missing', async () => {
-        const payload = JSON.stringify(buildEvent())
+  it('processes ready but not readyToStream as processing state', async () => {
+    const webhookPayload = buildWebhookPayload({
+      status: { state: 'ready', pctComplete: '100.000000', errorReasonCode: '', errorReasonText: '' },
+      readyToStream: false,
+    })
+    const payload = JSON.stringify(webhookPayload)
+    const signature = signPayload(payload)
 
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
+        headers: { 'Webhook-Signature': signature },
       })
     )
-    expect(res.status).toBe(401)
-  })
 
-  it('processes video.upload.complete by marking status processing and unpublished', async () => {
-    const event = buildEvent({ eventType: 'video.upload.complete' })
-    const payload = JSON.stringify(event)
-        const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-        headers: { 'Webhook-Signature': signPayload(payload) },
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'processing', is_published: false })
-    )
-  })
-
-  it('processes video.processing.started by marking status processing and unpublished', async () => {
-    const event = buildEvent({ eventType: 'video.processing.started' })
-    const payload = JSON.stringify(event)
-        const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-        headers: { 'Webhook-Signature': signPayload(payload) },
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'processing', is_published: false })
-    )
-  })
-
-  it('processes video.processing.complete by writing ready status and metadata', async () => {
-    const event = buildEvent({ eventType: 'video.processing.complete' })
-    const payload = JSON.stringify(event)
-        const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-        headers: { 'Webhook-Signature': signPayload(payload) },
-      })
-    )
     expect(res.status).toBe(200)
     expect(supabase.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        processing_status: 'ready',
-        is_published: true,
-        duration_seconds: 120,
-        resolution: '1920x1080',
+        processing_status: 'processing',
+        is_published: false,
       })
-    )
-  })
-
-  it('processes video.deleted by marking status deleted and unpublished', async () => {
-    const event = buildEvent({ eventType: 'video.deleted' })
-    const payload = JSON.stringify(event)
-        const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-        headers: { 'Webhook-Signature': signPayload(payload) },
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'deleted', is_published: false })
-    )
-  })
-
-  it('handles unknown event types via default branch, writing queued status', async () => {
-    const event = buildEvent({ eventType: 'video.unknown' as never })
-    const payload = JSON.stringify(event)
-        const res = await POST(
-      createNextRequest('/api/webhooks/cloudflare', {
-        method: 'POST',
-        body: payload,
-        headers: { 'Webhook-Signature': signPayload(payload) },
-      })
-    )
-    expect(res.status).toBe(200)
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: 'queued', is_published: false })
     )
   })
 })
@@ -326,7 +400,7 @@ describe('POST /api/webhooks/cloudflare payload validation', () => {
   })
 
   it('returns 400 for empty payload', async () => {
-        const res = await POST(
+    const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: '',
@@ -360,7 +434,7 @@ describe('POST /api/webhooks/cloudflare secret configuration', () => {
   it('returns 503 when webhook secret is not configured', async () => {
     delete process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
-    const payload = JSON.stringify(buildEvent())
+    const payload = JSON.stringify(buildWebhookPayload())
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
