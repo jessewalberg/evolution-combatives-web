@@ -60,15 +60,13 @@ export async function POST({ request }: { request: Request }) {
         const updateData: {
             updated_at: string
             processing_status?: 'ready' | 'error'
-            is_published?: boolean
         } = {
             updated_at: new Date().toISOString()
         }
 
-        // Update database if status changed
+        // Update database if status changed (publishing is an admin action)
         if (cloudflareStatus.status === 'ready') {
             updateData.processing_status = 'ready'
-            updateData.is_published = true
             needsUpdate = true
         } else if (cloudflareStatus.status === 'error') {
             updateData.processing_status = 'error'

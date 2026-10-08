@@ -158,4 +158,75 @@ describe('POST /api/video-processing/sync-all', () => {
     const res = await POST()
     expect(res.status).toBe(500)
   })
+
+  it('sets processing_status ready without is_published when Stream reports ready', async () => {
+    authSuccess(mockAuth)
+    const updateMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            order: vi.fn().mockResolvedValue({
+              data: [
+                {
+                  id: 'v1',
+                  cloudflare_video_id: 'cf-ready',
+                  title: 'Draft Video',
+                  processing_status: 'processing',
+                },
+              ],
+              error: null,
+            }),
+          }),
+        }),
+        update: updateMock,
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'ready' })
+
+    const res = await POST()
+    expect(res.status).toBe(200)
+
+    const updateArg = updateMock.mock.calls[0][0]
+    expect(updateArg.processing_status).toBe('ready')
+    expect(updateArg).not.toHaveProperty('is_published')
+  })
+
+  it('sets processing_status ready without is_published for previously unpublished video', async () => {
+    authSuccess(mockAuth)
+    const updateMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            order: vi.fn().mockResolvedValue({
+              data: [
+                {
+                  id: 'v1',
+                  cloudflare_video_id: 'cf-ready',
+                  title: 'Unpublished Video',
+                  processing_status: 'processing',
+                  is_published: false,
+                },
+              ],
+              error: null,
+            }),
+          }),
+        }),
+        update: updateMock,
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'ready' })
+
+    const res = await POST()
+    expect(res.status).toBe(200)
+
+    const updateArg = updateMock.mock.calls[0][0]
+    expect(updateArg.processing_status).toBe('ready')
+    expect(updateArg).not.toHaveProperty('is_published')
+  })
 })

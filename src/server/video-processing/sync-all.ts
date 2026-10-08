@@ -69,16 +69,15 @@ export async function POST() {
                 const updateData: {
                     updated_at: string
                     processing_status?: 'ready' | 'error'
-                    is_published?: boolean
                     duration_seconds?: number
                 } = {
                     updated_at: new Date().toISOString()
                 }
 
                 // cloudflareStreamService returns UploadProgress directly
+                // Publishing is an admin action; sync only updates processing_status
                 if (cloudflareStatus.status === 'ready') {
                     updateData.processing_status = 'ready'
-                    updateData.is_published = true
                     needsUpdate = true
                 } else if (cloudflareStatus.status === 'error') {
                     updateData.processing_status = 'error'

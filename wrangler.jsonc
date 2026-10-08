@@ -23,8 +23,8 @@
 // Per Wrangler v4 env inheritance, `account_id`, `compatibility_date`,
 // `compatibility_flags`, `main`, `workers_dev`, and `routes` flow down. `vars`
 // and `observability` do NOT inherit and must be repeated per env block.
-// Staging and preview set `routes: []` to avoid inheriting production's
-// custom-domain routes.
+// Custom domains are attached in a separate cutover change after the first
+// production deploy. Staging and preview set `routes: []` explicitly.
 //
 // With this compatibility date + nodejs_compat, Workers populates
 // `process.env` from vars/secrets, so server code can keep reading
@@ -39,13 +39,9 @@
     "compatibility_date": "2026-08-01",
     "compatibility_flags": ["nodejs_compat"],
     "main": "@tanstack/react-start/server-entry",
-    // Production serves the live domain via custom domains; no workers.dev
-    // route (staging/preview re-enable workers_dev for themselves).
+    // Production has no workers.dev route (staging/preview re-enable workers_dev
+    // for themselves). Custom domains are attached in a separate cutover change.
     "workers_dev": false,
-    "routes": [
-        { "pattern": "evolutioncombatives.com", "custom_domain": true },
-        { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
-    ],
     "observability": {
         "enabled": true,
         "head_sampling_rate": 1,
@@ -86,6 +82,7 @@
         "staging": {
             "name": "evolution-combatives-admin-staging",
             "workers_dev": true,
+            "preview_urls": false,
             "routes": [],
             "observability": {
                 "enabled": true,

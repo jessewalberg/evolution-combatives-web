@@ -18,7 +18,7 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 
 - **Apex**: `evolutioncombatives.com`
 - **WWW**: `www.evolutioncombatives.com`
-- Both are configured as custom domain routes in `wrangler.jsonc`
+- Custom domains are attached in a separate cutover change after the first production deploy (see Cutover section below)
 
 ---
 
@@ -48,20 +48,28 @@ Staging and preview environments already have test-mode values configured.
 
 ### 1. Cloudflare Account Configuration
 
-#### Required: Cloudflare API Token
-Create an API token with the following scopes:
-- **Account**: Workers Scripts (Edit)
-- **Zone**: Workers Routes (Edit)
+#### Required: Two Account-Owned API Tokens (Per-Worker)
+Create two account-owned API tokens, each limited to one Worker:
 
-**Where to get it**: Cloudflare Dashboard → My Profile → API Tokens → Create Token
+**Preview/Staging Token** (for `evolution-combatives-admin-preview`):
+1. Cloudflare Dashboard → My Profile → API Tokens → Create Token
+2. Use **Custom token** template
+3. Permissions: **Account** → **Workers Scripts** → **Edit**
+4. Account Resources: **Include** → Select the account
+5. Under "Specified Workers": Select `evolution-combatives-admin-preview` only
+6. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Preview** environment
 
-**Where to store it**:
-- GitHub Environment secret: `CLOUDFLARE_API_TOKEN`
-- For local deploys: `wrangler secret put CLOUDFLARE_API_TOKEN`
+**Production Token** (for `evolution-combatives-admin`):
+1. Create a separate token following the same steps
+2. Under "Specified Workers": Select `evolution-combatives-admin` only
+3. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Production** environment
+
+**Note**: These tokens have Workers > Specified Workers > Editor scope and cannot attach custom domains. Custom domain attachment at cutover requires a separate token with zone access (see Cutover section).
 
 #### Account ID
 - **Value**: `6b13f76a2d42fd29437154c35fa8a0c9` (already configured)
 - **Where it's used**: `wrangler.jsonc` top-level `account_id`
+- Store as `CLOUDFLARE_ACCOUNT_ID` in both **Preview** and **Production** GitHub environments
 
 #### Worker Names (already configured)
 - **Production**: `evolution-combatives-admin`
@@ -71,14 +79,6 @@ Create an API token with the following scopes:
 ---
 
 ## 2. GitHub Secrets
-
-### Repository-Level Secrets (Already Configured)
-| Secret Name | Where to Get Value | Purpose |
-|-------------|-------------------|---------|
-| `CF_ACCESS_CLIENT_ID` | Zero Trust → Service Tokens | CI access to Access-protected staging/preview URLs |
-| `CF_ACCESS_CLIENT_SECRET` | Zero Trust → Service Tokens | CI access to Access-protected staging/preview URLs |
-
-These are repo-level secrets (not environment secrets) because both CI jobs and local Playwright runs may need them.
 
 ### GitHub Environments
 Create two GitHub Environments: `production` and `preview`
@@ -93,14 +93,41 @@ Create two GitHub Environments: `production` and `preview`
 ### Production Environment Secrets
 | Secret Name | Where to Get Value | Purpose |
 |-------------|-------------------|---------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API Tokens page | Deploy Workers |
+| `CLOUDFLARE_API_TOKEN` | Account-owned token for `evolution-combatives-admin` (see Section 1) | Deploy production Worker |
 | `CLOUDFLARE_ACCOUNT_ID` | `6b13f76a2d42fd29437154c35fa8a0c9` | Worker deployment |
 
 ### Preview Environment Secrets
+The Preview environment is used by both the preview deploy workflow and E2E tests.
+
+**Deploy secrets:**
 | Secret Name | Where to Get Value | Purpose |
 |-------------|-------------------|---------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API Tokens page | Deploy preview Workers |
+| `CLOUDFLARE_API_TOKEN` | Account-owned token for `evolution-combatives-admin-preview` (see Section 1) | Deploy preview Worker |
 | `CLOUDFLARE_ACCOUNT_ID` | `6b13f76a2d42fd29437154c35fa8a0c9` | Worker deployment |
+
+**E2E test secrets (test-mode values only):**
+| Secret Name | Where to Get Value | Purpose |
+|-------------|-------------------|---------|
+| `VITE_SUPABASE_URL` | Non-production Supabase project URL | E2E test database |
+| `VITE_SUPABASE_ANON_KEY` | Non-production Supabase anon key | E2E test auth |
+| `SUPABASE_SERVICE_ROLE_KEY` | Non-production Supabase service role key | E2E test cleanup |
+| `STRIPE_SECRET_KEY` | Stripe test-mode secret key | E2E test payments |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe test-mode publishable key | E2E test payments |
+| `STRIPE_BEGINNER_PRICE_ID` | Stripe test-mode price ID | E2E test tier |
+| `STRIPE_INTERMEDIATE_PRICE_ID` | Stripe test-mode price ID | E2E test tier |
+| `STRIPE_ADVANCED_PRICE_ID` | Stripe test-mode price ID | E2E test tier |
+| `CLOUDFLARE_CUSTOMER_SUBDOMAIN` | Non-production Stream subdomain | E2E test video |
+| `VITE_MOBILE_APP_SCHEME` | `evolutioncombatives` | E2E test deep links |
+| `VITE_POSTHOG_KEY` | PostHog project key | E2E test analytics |
+| `VITE_POSTHOG_HOST` | PostHog host URL | E2E test analytics |
+| `VITE_APP_URL` | Preview Worker URL | E2E test base URL |
+| `VITE_ADMIN_URL` | Preview Worker URL | E2E test admin URL |
+| `E2E_ADMIN_EMAIL` | E2E test admin user email | E2E test login |
+| `E2E_ADMIN_PASSWORD` | E2E test admin user password | E2E test login |
+| `CF_ACCESS_CLIENT_ID` | Zero Trust → Service Tokens | E2E access to Access-protected URLs |
+| `CF_ACCESS_CLIENT_SECRET` | Zero Trust → Service Tokens | E2E access to Access-protected URLs |
+
+**Note**: Delete any repo-level `CLOUDFLARE_API_TOKEN` secret after migrating to per-environment tokens
 
 ---
 
@@ -198,28 +225,58 @@ The wildcard with hyphen covers all PR preview version URLs (e.g., `<id>-evoluti
 
 ---
 
-## 6. Post-Deploy Verification (Before DNS Cutover)
+## 6. First Production Deploy (Worker Only)
 
-After deploying to production but BEFORE updating DNS:
+The first approved production deploy creates or updates the Worker without attaching custom domains:
 
-- [ ] Stream signing already enforced; confirm signed playback works on web and mobile after deploy.
+1. Merge the PR (squash merge)
+2. The deploy workflow runs and requires Production environment reviewer approval
+3. After approval, the Worker is deployed to `evolution-combatives-admin`
+4. The Worker has no routes and no `workers.dev` URL (`workers_dev: false`)
+5. Verify the Worker exists in Cloudflare Dashboard → Workers & Pages
+
+At this point, production traffic continues to flow to the existing deployment (Vercel). The Worker is deployed but not receiving traffic.
 
 ---
 
-## 7. DNS Cutover
+## 7. Domain Cutover (Separate Change)
+
+Cutover is a separate small PR that attaches custom domains to the production Worker.
+
+### Cutover PR Contents
+
+Add this to `wrangler.jsonc` top-level (not inside an env block):
+
+```jsonc
+"routes": [
+    { "pattern": "evolutioncombatives.com", "custom_domain": true },
+    { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
+]
+```
+
+### Before Approving the Cutover Deploy
+
+1. **Check zone DNS records** (read-only): In Cloudflare Dashboard → DNS, verify the apex and www records. Custom domain attachment may modify them.
+2. **Verify production Worker secrets are set**: All secrets from Section 3 must be configured on the production Worker.
+3. **Confirm mobile playback**: Test signed URL playback against the production Worker (via its internal routes) before cutover.
+
+### Cutover Token Requirements
+
+The cutover deploy requires a token that can attach custom domains. The per-Worker token from Section 1 (Workers > Specified Workers > Editor) cannot attach custom domains. For cutover:
+
+1. Create a temporary token with **Zone** → **Workers Routes** → **Edit** for the `evolutioncombatives.com` zone
+2. Use this token for the cutover deploy only
+3. After cutover succeeds, the per-Worker token is sufficient for subsequent deploys
 
 ### Current DNS (Vercel)
 The domain `evolutioncombatives.com` currently points to Vercel.
 
-### New DNS (Cloudflare Workers)
+### After Cutover
 
-**Option A: Cloudflare-managed DNS (Recommended)**
-If the domain is on Cloudflare DNS:
-1. Go to Cloudflare Dashboard → DNS
-2. Update or remove CNAME/A records pointing to Vercel
-3. The Worker's custom domain routes handle traffic automatically
+**Cloudflare-managed DNS:**
+If the domain is on Cloudflare DNS, custom domain attachment handles the DNS automatically.
 
-**Option B: External DNS**
+**External DNS:**
 If DNS is managed elsewhere:
 1. Create CNAME records:
    - `evolutioncombatives.com` → `evolution-combatives-admin.jesse-6b1.workers.dev`
