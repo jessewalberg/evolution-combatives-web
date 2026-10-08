@@ -6,16 +6,7 @@
  * @author Evolution Combatives
  */
 
-function escapePostgrestFilter(input: string): string {
-    return input
-        .replace(/\\/g, '\\\\')
-        .replace(/%/g, '\\%')
-        .replace(/_/g, '\\_')
-        .replace(/,/g, '\\,')
-        .replace(/\./g, '\\.')
-        .replace(/\(/g, '\\(')
-        .replace(/\)/g, '\\)')
-}
+import { buildOrIlikeFilter } from '../../../lib/postgrest-escape'
 
 import type {
     TypedSupabaseClient,
@@ -101,8 +92,7 @@ export class DatabaseService {
                     query = query.eq('status', 'published')
                 }
                 if (filters?.search) {
-                    const safeSearch = escapePostgrestFilter(filters.search)
-                    query = query.or(`title.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
+                    query = query.or(buildOrIlikeFilter(['title', 'description'], filters.search))
                 }
 
                 // Apply sorting
