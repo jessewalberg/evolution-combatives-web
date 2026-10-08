@@ -51,20 +51,20 @@ Staging and preview environments already have test-mode values configured.
 #### Required: Two Account-Owned API Tokens (Per-Worker)
 Create two account-owned API tokens, each limited to one Worker:
 
-**Preview/Staging Token** (for `evolution-combatives-admin-preview`):
-1. Cloudflare Dashboard → My Profile → API Tokens → Create Token
+**Preview Token** (for `evolution-combatives-admin-preview`):
+1. Cloudflare Dashboard → Manage Account → Account API Tokens → Create Token
 2. Use **Custom token** template
-3. Permissions: **Account** → **Workers Scripts** → **Edit**
-4. Account Resources: **Include** → Select the account
-5. Under "Specified Workers": Select `evolution-combatives-admin-preview` only
-6. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Preview** environment
+3. Permissions: **Workers** with scope **Specified Workers** limited to `evolution-combatives-admin-preview`, role **Editor**
+4. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Preview** environment
+5. Store `CLOUDFLARE_ACCOUNT_ID` (`6b13f76a2d42fd29437154c35fa8a0c9`) in the **Preview** environment
 
 **Production Token** (for `evolution-combatives-admin`):
-1. Create a separate token following the same steps
-2. Under "Specified Workers": Select `evolution-combatives-admin` only
+1. Create a separate account-owned token following the same steps
+2. Scope **Specified Workers** limited to `evolution-combatives-admin`, role **Editor**
 3. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Production** environment
+4. Store `CLOUDFLARE_ACCOUNT_ID` in the **Production** environment
 
-**Note**: These tokens have Workers > Specified Workers > Editor scope and cannot attach custom domains. Custom domain attachment at cutover requires a separate token with zone access (see Cutover section).
+**Note**: These tokens have Workers > Specified Workers > Editor scope and cannot attach custom domains. Custom domain attachment at cutover requires a separate token (see Cutover section). If a deploy fails on an account-level lookup, add **Workers** → **All Workers** → **Metadata Read-Only** to the token rather than widening Editor scope.
 
 #### Account ID
 - **Value**: `6b13f76a2d42fd29437154c35fa8a0c9` (already configured)
@@ -127,7 +127,14 @@ The Preview environment is used by both the preview deploy workflow and E2E test
 | `CF_ACCESS_CLIENT_ID` | Zero Trust → Service Tokens | E2E access to Access-protected URLs |
 | `CF_ACCESS_CLIENT_SECRET` | Zero Trust → Service Tokens | E2E access to Access-protected URLs |
 
-**Note**: Delete any repo-level `CLOUDFLARE_API_TOKEN` secret after migrating to per-environment tokens
+**Note**: After confirming one PR's preview upload and E2E run succeeds with the Preview environment secrets, delete these repo-level secrets:
+- `CLOUDFLARE_API_TOKEN`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `CLOUDFLARE_STREAM_SIGNING_KEY`
+- `CLOUDFLARE_STREAM_SIGNING_KEY_ID`
+- `CLOUDFLARE_STREAM_WEBHOOK_SECRET`
 
 ---
 
@@ -258,15 +265,19 @@ Add this to `wrangler.jsonc` top-level (not inside an env block):
 
 1. **Check zone DNS records** (read-only): In Cloudflare Dashboard → DNS, verify the apex and www records. Custom domain attachment may modify them.
 2. **Verify production Worker secrets are set**: All secrets from Section 3 must be configured on the production Worker.
-3. **Confirm mobile playback**: Test signed URL playback against the production Worker (via its internal routes) before cutover.
+3. **Confirm mobile playback against staging**: Complete the staging mobile playback test from Section 4 before cutover. The production Worker has no routes, no `workers.dev` address, and no preview URLs before cutover.
+4. **Plan post-cutover verification**: After cutover, run the Post-Cutover Smoke Test at the end of this document.
 
 ### Cutover Token Requirements
 
-The cutover deploy requires a token that can attach custom domains. The per-Worker token from Section 1 (Workers > Specified Workers > Editor) cannot attach custom domains. For cutover:
+The cutover deploy requires a token that can both deploy the Worker and attach custom domains. The per-Worker token from Section 1 cannot attach custom domains. For cutover:
 
-1. Create a temporary token with **Zone** → **Workers Routes** → **Edit** for the `evolutioncombatives.com` zone
-2. Use this token for the cutover deploy only
-3. After cutover succeeds, the per-Worker token is sufficient for subsequent deploys
+1. Create a temporary account-owned token via Manage Account → Account API Tokens with:
+   - **Workers** → **All Workers** → **Editor**
+   - **Zone** → **Workers Routes** → **Edit** limited to the `evolutioncombatives.com` zone
+2. Store this token as `CLOUDFLARE_API_TOKEN` in the **Production** GitHub environment for the cutover deploy only
+3. After cutover succeeds, restore the per-Worker production token from Section 1 in the Production environment
+4. Delete the temporary cutover token from the Cloudflare account
 
 ### Current DNS (Vercel)
 The domain `evolutioncombatives.com` currently points to Vercel.
@@ -362,7 +373,7 @@ Staging and preview Workers are protected by Cloudflare Access. This was configu
 
 | Application | Hostname | Purpose |
 |-------------|----------|---------|
-| Staging | `evolution-combatives-admin-staging.jesse-6b1.workers.dev` | Staging Worker |
+| Staging | `*evolution-combatives-admin-staging.jesse-6b1.workers.dev` | Staging Worker + all version URLs |
 | Preview | `*evolution-combatives-admin-preview.jesse-6b1.workers.dev` | Preview Worker + all version/preview URLs |
 
 **Allowed Users**:
@@ -373,7 +384,7 @@ Staging and preview Workers are protected by Cloudflare Access. This was configu
 - Name: `evolution-combatives-ci`
 - Expires: 2027-10-08
 - Policy: `non_identity` (both applications)
-- Stored as repo-level GitHub secrets: `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`
+- Stored as **Preview** environment secrets: `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` (see Section 2)
 
 ### Known Limitation (Accepted)
 
