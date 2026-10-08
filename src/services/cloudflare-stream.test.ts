@@ -160,8 +160,9 @@ describe('uploadFunctions', () => {
     expect(body.requireSignedURLs).toBe(true)
   })
 
-  it('getUploadUrl does not log token or upload URL', async () => {
+  it('getUploadUrl does not log token or upload URL via any console method', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     mockFetch.mockResolvedValue(
@@ -176,13 +177,18 @@ describe('uploadFunctions', () => {
 
     await uploadFunctions.getUploadUrl({})
 
-    for (const call of logSpy.mock.calls) {
-      const message = JSON.stringify(call)
-      expect(message).not.toContain('secret-path')
-      expect(message).not.toContain('Bearer')
+    const sensitivePatterns = ['secret-path', 'Bearer', process.env.CLOUDFLARE_API_TOKEN].filter(Boolean)
+    for (const spy of [logSpy, warnSpy, errorSpy]) {
+      for (const call of spy.mock.calls) {
+        const message = JSON.stringify(call)
+        for (const pattern of sensitivePatterns) {
+          expect(message).not.toContain(pattern)
+        }
+      }
     }
 
     logSpy.mockRestore()
+    warnSpy.mockRestore()
     errorSpy.mockRestore()
   })
 
@@ -435,6 +441,37 @@ describe('videoManagement', () => {
     await expect(videoManagement.generateSignedUrl('abcdef01234567890abcdef012345678', 'tier1')).rejects.toThrow(
       /Video signing keys not configured/
     )
+  })
+
+  it('generateSignedUrl does not log signing keys or tokens via any console method', async () => {
+    const signingKeyId = 'super-secret-key-id'
+    const signingKey = 'super-secret-signing-key-value'
+    process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID = signingKeyId
+    process.env.CLOUDFLARE_STREAM_SIGNING_KEY = signingKey
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: { token: 'generated-jwt-token' } }))
+
+    await videoManagement.generateSignedUrl(VALID_VIDEO_ID, 'tier2')
+
+    const sensitivePatterns = [signingKeyId, signingKey, 'generated-jwt-token', process.env.CLOUDFLARE_API_TOKEN].filter(Boolean)
+    for (const spy of [logSpy, warnSpy, errorSpy]) {
+      for (const call of spy.mock.calls) {
+        const message = JSON.stringify(call)
+        for (const pattern of sensitivePatterns) {
+          expect(message).not.toContain(pattern)
+        }
+      }
+    }
+
+    logSpy.mockRestore()
+    warnSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
   it('generateSignedUrl uses token API when signing keys present', async () => {
