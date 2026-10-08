@@ -97,11 +97,20 @@ test.describe('Subscription deep-link flow', () => {
   }) => {
     // Log in as the test user to establish session
     await page.goto('/login')
-    await page.getByLabel(/email address/i).fill(email!)
-    await page.getByLabel(/^password$/i).fill(password!)
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-    // Wait for redirect after login (may go to dashboard or back to intended page)
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15_000 })
+    // Wait for hydration to complete - look for the form to be interactive
+    await page.waitForLoadState('networkidle')
+    const emailInput = page.getByLabel(/email address/i)
+    await expect(emailInput).toBeVisible({ timeout: 30_000 })
+    await expect(emailInput).toBeEditable({ timeout: 5_000 })
+    await emailInput.fill(email!)
+    const passwordInput = page.getByLabel(/^password$/i)
+    await expect(passwordInput).toBeEditable({ timeout: 5_000 })
+    await passwordInput.fill(password!)
+    const signInButton = page.getByRole('button', { name: /^sign in$/i })
+    await expect(signInButton).toBeEnabled({ timeout: 5_000 })
+    await signInButton.click()
+    // Wait for redirect after login
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30_000 })
 
     // Navigate to subscribe page
     await page.goto(
@@ -171,10 +180,20 @@ test.describe('Subscription deep-link flow', () => {
   }) => {
     // Log in as the test user to establish session
     await page.goto('/login')
-    await page.getByLabel(/email address/i).fill(email!)
-    await page.getByLabel(/^password$/i).fill(password!)
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15_000 })
+    // Wait for hydration to complete - look for the form to be interactive
+    await page.waitForLoadState('networkidle')
+    const emailInput = page.getByLabel(/email address/i)
+    await expect(emailInput).toBeVisible({ timeout: 30_000 })
+    await expect(emailInput).toBeEditable({ timeout: 5_000 })
+    await emailInput.fill(email!)
+    const passwordInput = page.getByLabel(/^password$/i)
+    await expect(passwordInput).toBeEditable({ timeout: 5_000 })
+    await passwordInput.fill(password!)
+    const signInButton = page.getByRole('button', { name: /^sign in$/i })
+    await expect(signInButton).toBeEnabled({ timeout: 5_000 })
+    await signInButton.click()
+    // Wait for redirect after login
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30_000 })
 
     await page.goto(
       `/subscribe?userId=${userId}&email=${encodeURIComponent(email!)}&tier=tier1`
