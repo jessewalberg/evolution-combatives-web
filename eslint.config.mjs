@@ -35,6 +35,7 @@ export default defineConfig([
         '.wrangler/**',
         '.claude/**',
         '.conductor/**',
+        '.cursor/**',
         'coverage/**',
         'playwright-report/**',
         'test-results/**',

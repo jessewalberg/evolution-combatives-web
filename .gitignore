@@ -96,3 +96,4 @@ src/routeTree.gen.ts
 .wrangler/
 dist/
 .vercel
+artifacts/
