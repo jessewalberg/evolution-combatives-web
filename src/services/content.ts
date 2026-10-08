@@ -12,6 +12,7 @@ import {
 import { escapeLikePattern, buildOrIlikeFilter } from '../lib/postgrest-escape'
 import {
     VIDEO_ALLOWED_UPDATE_FIELDS,
+    VIDEO_ALLOWED_BULK_STATUS_FIELDS,
     filterAllowedFields,
 } from '../lib/video-field-allowlists'
 import { createClientComponentClient } from '../lib/supabase-browser'
@@ -827,12 +828,17 @@ export const adminFeatures = {
             errors: []
         }
 
+        const filteredUpdates = filterAllowedFields(
+            updates as Record<string, unknown>,
+            VIDEO_ALLOWED_BULK_STATUS_FIELDS
+        )
+
         for (const videoId of videoIds) {
             try {
                 const { error } = await supabase
                     .from('videos')
                     .update({
-                        ...updates,
+                        ...filteredUpdates,
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', videoId)
