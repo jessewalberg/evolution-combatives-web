@@ -7,51 +7,48 @@
  */
 
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
-import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers';
+import { SUBSCRIPTION_PRICING, type SubscriptionTier } from '@/src/lib/shared/constants/subscriptionTiers';
 import { createAdminClient } from '@/src/lib/supabase';
+import { validateMobileAppAuth } from '@/src/lib/mobile-auth';
 import { json } from '@/src/lib/http';
 import { z } from 'zod';
 
 // Request validation schema
 const CreateCheckoutSchema = z.object({
     tier: z.enum(['none', 'tier1', 'tier2', 'tier3']),
-    userId: z.string().uuid(),
-    userEmail: z.string().email(),
     successUrl: z.string().url().optional(),
     cancelUrl: z.string().url().optional(),
 });
 
-export async function POST({ request }: { request: Request }) {
-    let tier, userId, userEmail;
+export async function POST({ request }: { request: Request }): Promise<Response> {
+    // Validate mobile auth - user can only create checkout for themselves
+    // User identity is derived from the authenticated token, not from request body
+    const authResult = await validateMobileAppAuth(request, 'Checkout API');
+    if ('error' in authResult) {
+        return authResult.error;
+    }
+    
+    const { user: authUser } = authResult;
+    const userId = authUser.id;
+    const userEmail = authUser.email;
+    
+    if (!userEmail) {
+        return json(
+            { error: 'User email not found in session' },
+            { status: 400 }
+        );
+    }
+    
+    let tier: SubscriptionTier | undefined;
+    
     try {
         const body = await request.json();
         const validatedData = CreateCheckoutSchema.parse(body);
 
-        ({ tier, userId, userEmail } = validatedData);
+        tier = validatedData.tier;
         const { successUrl, cancelUrl } = validatedData;
 
-        // Verify user exists and is authenticated
         const supabase = createAdminClient();
-        const { data: user, error: userError } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .eq('id', userId)
-            .single();
-
-        if (userError || !user) {
-            return json(
-                { error: 'User not found or not authenticated' },
-                { status: 401 }
-            );
-        }
-
-        // Verify email matches
-        if (user.email !== userEmail) {
-            return json(
-                { error: 'Email mismatch' },
-                { status: 400 }
-            );
-        }
 
         // Check if user already has an active subscription
         const { data: existingSubscription } = await supabase

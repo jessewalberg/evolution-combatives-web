@@ -4,11 +4,15 @@
  * Shared by /api/mobile/* server routes.
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type User, type SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseConfig } from './supabase'
 import { json } from './http'
 
-export async function validateMobileAppAuth(request: Request, label = 'Mobile API') {
+type MobileAuthSuccess = { user: User; supabase: SupabaseClient }
+type MobileAuthError = { error: Response }
+export type MobileAuthResult = MobileAuthSuccess | MobileAuthError
+
+export async function validateMobileAppAuth(request: Request, label = 'Mobile API'): Promise<MobileAuthResult> {
     try {
         const authHeader = request.headers.get('Authorization')
         const mobileClient = request.headers.get('X-Mobile-Client')

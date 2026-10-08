@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler, GET } from './create-checkout'
-const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
+const POST = (request: Request): Promise<Response> => POSTHandler({ request } as never)
+
+const mockValidateMobileAppAuth = vi.fn()
 
 vi.mock('@/src/lib/stripe', () => ({
   createCheckoutSession: vi.fn(),
@@ -10,6 +12,10 @@ vi.mock('@/src/lib/stripe', () => ({
 
 vi.mock('@/src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
+}))
+
+vi.mock('@/src/lib/mobile-auth', () => ({
+  validateMobileAppAuth: (...args: unknown[]) => mockValidateMobileAppAuth(...args),
 }))
 
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
@@ -22,15 +28,25 @@ const mockCreateAdminClient = vi.mocked(createAdminClient)
 const validUserId = '11111111-1111-4111-8111-111111111111'
 const validEmail = 'user@example.com'
 
+function makeAuthSuccess(userId: string, email: string) {
+  return {
+    user: { id: userId, email },
+    supabase: {},
+  }
+}
+
+function makeAuthError(status: number, errorMsg: string) {
+  return {
+    error: new Response(JSON.stringify({ error: errorMsg }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  }
+}
+
 function buildSupabase(options: {
-  user?: { id: string; email: string } | null
-  userError?: boolean
   existingSubscription?: { id: string; status: string; tier: string } | null
 }) {
-  const profilesSingle = vi.fn().mockResolvedValue({
-    data: options.user ?? null,
-    error: options.userError ? { message: 'not found' } : null,
-  })
   const subscriptionsSingle = vi.fn().mockResolvedValue({
     data: options.existingSubscription ?? null,
     error: null,
@@ -38,13 +54,6 @@ function buildSupabase(options: {
 
   return {
     from: vi.fn((table: string) => {
-      if (table === 'profiles') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({ single: profilesSingle }),
-          }),
-        }
-      }
       if (table === 'subscriptions') {
         return {
           select: vi.fn().mockReturnValue({
@@ -70,19 +79,36 @@ describe('GET /api/subscriptions/create-checkout', () => {
 describe('POST /api/subscriptions/create-checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockValidateMobileAppAuth.mockResolvedValue(makeAuthSuccess(validUserId, validEmail))
     mockGetOrCreateCustomer.mockResolvedValue({ id: 'cus_123' } as never)
     mockCreateCheckoutSession.mockResolvedValue({
       id: 'cs_123',
       url: 'https://checkout.stripe.com/session',
       customer_details: { email: validEmail },
     } as never)
+    mockCreateAdminClient.mockReturnValue(buildSupabase({}) as never)
+  })
+
+  it('returns 401 when not authenticated', async () => {
+    mockValidateMobileAppAuth.mockResolvedValue(makeAuthError(401, 'Authentication required'))
+
+    const res = await POST(
+      createNextRequest('/api/subscriptions/create-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ tier: 'tier1' }),
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(401)
+    expect(body.error).toBe('Authentication required')
   })
 
   it('returns 400 for invalid request data', async () => {
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'invalid', userId: 'bad', userEmail: 'not-email' }),
+        body: JSON.stringify({ tier: 'invalid' }),
       })
     )
     const body = await res.json()
@@ -92,44 +118,9 @@ describe('POST /api/subscriptions/create-checkout', () => {
     expect(body.details).toBeDefined()
   })
 
-  it('returns 401 when user not found', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: null, userError: true }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/subscriptions/create-checkout', {
-        method: 'POST',
-        body: JSON.stringify({ tier: 'tier1', userId: validUserId, userEmail: validEmail }),
-      })
-    )
-    const body = await res.json()
-
-    expect(res.status).toBe(401)
-    expect(body.error).toBe('User not found or not authenticated')
-  })
-
-  it('returns 400 on email mismatch', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: { id: validUserId, email: 'other@example.com' } }) as never
-    )
-
-    const res = await POST(
-      createNextRequest('/api/subscriptions/create-checkout', {
-        method: 'POST',
-        body: JSON.stringify({ tier: 'tier1', userId: validUserId, userEmail: validEmail }),
-      })
-    )
-    const body = await res.json()
-
-    expect(res.status).toBe(400)
-    expect(body.error).toBe('Email mismatch')
-  })
-
   it('returns 400 when user already has active subscription', async () => {
     mockCreateAdminClient.mockReturnValue(
       buildSupabase({
-        user: { id: validUserId, email: validEmail },
         existingSubscription: { id: 'sub1', status: 'active', tier: 'tier1' },
       }) as never
     )
@@ -137,7 +128,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier2', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'tier2' }),
       })
     )
     const body = await res.json()
@@ -148,14 +139,10 @@ describe('POST /api/subscriptions/create-checkout', () => {
   })
 
   it('returns 500 when priceId missing for none tier', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
-    )
-
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'none', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'none' }),
       })
     )
     const body = await res.json()
@@ -165,14 +152,10 @@ describe('POST /api/subscriptions/create-checkout', () => {
   })
 
   it('creates checkout session on success', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      buildSupabase({ user: { id: validUserId, email: validEmail } }) as never
-    )
-
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier1', userId: validUserId, userEmail: validEmail }),
+        body: JSON.stringify({ tier: 'tier1' }),
       })
     )
     const body = await res.json()
@@ -193,5 +176,19 @@ describe('POST /api/subscriptions/create-checkout', () => {
         tier: 'tier1',
       })
     )
+  })
+
+  it('user can only create checkout for themselves', async () => {
+    // The endpoint now uses session auth - users can only checkout for themselves
+    // This is enforced by using session user ID, not accepting userId in body
+    const res = await POST(
+      createNextRequest('/api/subscriptions/create-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ tier: 'tier1' }),
+      })
+    )
+    
+    expect(res.status).toBe(200)
+    expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
   })
 })
