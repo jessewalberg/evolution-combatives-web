@@ -168,6 +168,8 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
    - Verify the URL includes a `token=` parameter
    - Verify the video plays in a browser
 
+5. **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
+
 ---
 
 ## 5. Supabase Auth Configuration
@@ -427,17 +429,20 @@ Run these checks after cutover:
    - [ ] Verify video plays in browser
    - [ ] Verify unsigned URL is rejected (403)
 
-5. **Webhooks**
+5. **Cloudflare Stream Settings**
+   - [ ] Confirm Cloudflare Stream playback settings for paid videos match the signed-URL flow (Jesse to approve the exact change).
+
+6. **Webhooks**
    - [ ] Test Stripe webhook delivery (use Stripe CLI or dashboard test)
    - [ ] Test Cloudflare Stream webhook (upload a test video)
 
-6. **Security Headers**
+7. **Security Headers**
    - [ ] `X-Frame-Options: DENY`
    - [ ] `Content-Security-Policy` present
    - [ ] `Strict-Transport-Security` present
    - [ ] `X-Content-Type-Options: nosniff`
 
-7. **Admin Functions**
+8. **Admin Functions**
    - [ ] Video upload works
    - [ ] User management works
    - [ ] Q&A moderation works
