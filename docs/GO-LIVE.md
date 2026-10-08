@@ -416,6 +416,10 @@ Run these checks after cutover:
 4. **Webhooks**
    - [ ] Test Stripe webhook delivery (use Stripe CLI or dashboard test)
    - [ ] Test Cloudflare Stream webhook (upload a test video)
+   - [ ] Verify Stream webhook signature verification is working:
+     - Upload a test video and confirm 200 response in Worker logs
+     - Verify video status is updated in database
+     - (Optional) Send a request with invalid signature header and confirm 401 response
 
 5. **Security Headers**
    - [ ] `X-Frame-Options: DENY`
