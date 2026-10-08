@@ -14,9 +14,12 @@ import { createAdminClient } from '@/src/lib/supabase'
 
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 
-function signPayload(payload: string, secret = WEBHOOK_SECRET) {
-  const digest = crypto.createHmac('sha256', secret).update(payload).digest('hex')
-  return `sha256=${digest}`
+// Generate signature in Cloudflare Stream format: time=<unix_ts>,sig1=<hex>
+function signPayload(payload: string, secret = WEBHOOK_SECRET, timestamp?: number) {
+  const time = timestamp ?? Math.floor(Date.now() / 1000)
+  const sourceString = `${time}.${payload}`
+  const sig = crypto.createHmac('sha256', secret).update(sourceString).digest('hex')
+  return `time=${time},sig1=${sig}`
 }
 
 function buildEvent(overrides: Record<string, unknown> = {}) {
@@ -87,11 +90,12 @@ describe('POST /api/webhooks/cloudflare', () => {
 
   it('returns 401 for invalid signature', async () => {
     const payload = JSON.stringify(buildEvent())
+    const now = Math.floor(Date.now() / 1000)
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': 'sha256=invalid' },
+        headers: { 'Webhook-Signature': `time=${now},sig1=invalid` },
       })
     )
     const body = await res.json()
@@ -99,6 +103,19 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(401)
     expect(body.error).toBe('Invalid signature')
     expect(supabase.update).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 for timestamp older than 5 minutes', async () => {
+    const payload = JSON.stringify(buildEvent())
+    const oldTimestamp = Math.floor(Date.now() / 1000) - 400 // 6+ minutes ago
+    const res = await POST(
+      createNextRequest('/api/webhooks/cloudflare', {
+        method: 'POST',
+        body: payload,
+        headers: { 'Webhook-Signature': signPayload(payload, WEBHOOK_SECRET, oldTimestamp) },
+      })
+    )
+    expect(res.status).toBe(401)
   })
 
   it('processes video.ready by writing status, publish flag, and stream metadata', async () => {
@@ -110,7 +127,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signature },
+        headers: { 'Webhook-Signature': signature },
       })
     )
     const body = await res.json()
@@ -150,7 +167,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signature },
+        headers: { 'Webhook-Signature': signature },
       })
     )
 
@@ -178,7 +195,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signature },
+        headers: { 'Webhook-Signature': signature },
       })
     )
     const res = await resPromise
@@ -209,7 +226,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signPayload(payload) },
+        headers: { 'Webhook-Signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -225,7 +242,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signPayload(payload) },
+        headers: { 'Webhook-Signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -241,7 +258,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signPayload(payload) },
+        headers: { 'Webhook-Signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -262,7 +279,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signPayload(payload) },
+        headers: { 'Webhook-Signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -278,7 +295,7 @@ describe('POST /api/webhooks/cloudflare', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': signPayload(payload) },
+        headers: { 'Webhook-Signature': signPayload(payload) },
       })
     )
     expect(res.status).toBe(200)
@@ -326,7 +343,7 @@ describe('POST /api/webhooks/cloudflare payload validation', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: invalidPayload,
-        headers: { 'x-signature': signPayload(invalidPayload) },
+        headers: { 'Webhook-Signature': signPayload(invalidPayload) },
       })
     )
     expect(res.status).toBe(400)
@@ -348,7 +365,7 @@ describe('POST /api/webhooks/cloudflare secret configuration', () => {
       createNextRequest('/api/webhooks/cloudflare', {
         method: 'POST',
         body: payload,
-        headers: { 'x-signature': 'sha256=any' },
+        headers: { 'Webhook-Signature': 'time=1234567890,sig1=any' },
       })
     )
     const body = await res.json()

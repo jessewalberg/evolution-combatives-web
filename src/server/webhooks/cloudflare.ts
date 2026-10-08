@@ -49,20 +49,64 @@ const RETRY_CONFIG = {
     backoffMultiplier: 2
 }
 
-// Webhook signature verification (WebCrypto — runs on Cloudflare Workers)
+// Maximum age for webhook requests (5 minutes)
+const MAX_TIMESTAMP_AGE_SECONDS = 300
+
+// Constant-time comparison that works in both Node.js and Cloudflare Workers.
+// When lengths differ, we still do a full comparison against expected to avoid
+// leaking the expected signature's length through timing.
+function timingSafeEqual(expected: Uint8Array, received: Uint8Array): boolean {
+    const lengthsMatch = expected.byteLength === received.byteLength
+    const compareTarget = lengthsMatch ? received : expected
+    let diff = 0
+    for (let i = 0; i < expected.byteLength; i++) {
+        diff |= expected[i] ^ compareTarget[i]
+    }
+    return lengthsMatch && diff === 0
+}
+
+// Webhook signature verification per Cloudflare Stream docs
+// Header format: Webhook-Signature: time=<unix_ts>,sig1=<hex_signature>
+// Signature source: "<time>.<body>"
 async function verifyWebhookSignature(
     payload: string,
-    signature: string | null,
+    signatureHeader: string | null,
     secret: string
 ): Promise<boolean> {
-    if (!signature || !secret) {
-        console.warn('Missing webhook signature or secret')
+    if (!signatureHeader || !secret) {
         return false
     }
 
     try {
-        // Cloudflare Stream uses HMAC-SHA256
+        // Parse "time=<unix_ts>,sig1=<hex_signature>"
+        const parts = Object.fromEntries(
+            signatureHeader.split(',').map(part => {
+                const [key, value] = part.split('=')
+                return [key, value]
+            })
+        )
+
+        const time = parts['time']
+        const receivedSig = parts['sig1']
+
+        if (!time || !receivedSig) {
+            return false
+        }
+
+        // Validate timestamp (reject requests older than MAX_TIMESTAMP_AGE_SECONDS)
+        const timestamp = parseInt(time, 10)
+        if (isNaN(timestamp)) {
+            return false
+        }
+        const now = Math.floor(Date.now() / 1000)
+        if (now - timestamp > MAX_TIMESTAMP_AGE_SECONDS) {
+            return false
+        }
+
+        // Build source string: "<time>.<body>"
+        const sourceString = `${time}.${payload}`
         const encoder = new TextEncoder()
+
         const key = await crypto.subtle.importKey(
             'raw',
             encoder.encode(secret),
@@ -70,23 +114,23 @@ async function verifyWebhookSignature(
             false,
             ['sign']
         )
-        const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
-        const expectedSignature = Array.from(new Uint8Array(mac))
-            .map(byte => byte.toString(16).padStart(2, '0'))
+
+        const signature = await crypto.subtle.sign(
+            'HMAC',
+            key,
+            encoder.encode(sourceString)
+        )
+
+        const expectedSig = Array.from(new Uint8Array(signature))
+            .map(b => b.toString(16).padStart(2, '0'))
             .join('')
 
-        // Compare signatures using constant-time comparison
-        const provided = signature.replace('sha256=', '')
-        if (provided.length !== expectedSignature.length) {
-            return false
-        }
-        let diff = 0
-        for (let i = 0; i < expectedSignature.length; i++) {
-            diff |= provided.charCodeAt(i) ^ expectedSignature.charCodeAt(i)
-        }
-        return diff === 0
-    } catch (error) {
-        console.error('Webhook signature verification failed:', error)
+        // Use timing-safe comparison
+        const expectedBytes = encoder.encode(expectedSig)
+        const receivedBytes = encoder.encode(receivedSig)
+
+        return timingSafeEqual(expectedBytes, receivedBytes)
+    } catch {
         return false
     }
 }
@@ -350,7 +394,7 @@ export async function POST({ request }: { request: Request }) {
         }
 
         // Verify webhook signature BEFORE parsing or logging body - fail closed if secret not configured
-        const signature = request.headers.get('x-signature')
+        const signature = request.headers.get('Webhook-Signature')
         const webhookSecret = process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
         if (!webhookSecret) {
