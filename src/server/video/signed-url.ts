@@ -142,7 +142,8 @@ export async function POST({ request }: { request: Request }) {
         }
 
         const dbRequiredTier = video.tier_required
-        const requiredTier: SubscriptionTier = isValidTier(dbRequiredTier) ? dbRequiredTier : 'none'
+        // Invalid/unknown tier_required treated as denied (highest tier), not free
+        const requiredTier: SubscriptionTier = isValidTier(dbRequiredTier) ? dbRequiredTier : 'tier3'
 
         // Authorization check: verify user's subscription tier >= video's required tier
         if (SUBSCRIPTION_TIER_HIERARCHY[userTier] < SUBSCRIPTION_TIER_HIERARCHY[requiredTier]) {
@@ -197,26 +198,12 @@ export async function POST({ request }: { request: Request }) {
             format as 'hls' | 'mp4'
         )
 
-        console.log('🎥 Generated signed URL:', {
-            url: signedUrl,
-            urlLength: signedUrl.length,
-            hasToken: signedUrl.includes('token='),
-            tokenPreview: signedUrl.split('token=')[1]?.substring(0, 50) + '...'
-        });
-
-        // Test the signed URL by fetching it
-        try {
-            console.log('🧪 Testing signed URL accessibility...');
-            const testResponse = await fetch(signedUrl, { method: 'HEAD' });
-            console.log('🧪 URL test result:', {
-                status: testResponse.status,
-                statusText: testResponse.statusText,
-                contentType: testResponse.headers.get('content-type'),
-                accessible: testResponse.ok
-            });
-        } catch (testError) {
-            console.error('🧪 URL test failed:', testError);
-        }
+        console.log('🎥 Generated signed URL for video:', {
+            videoId,
+            userId: user.id,
+            format,
+            hasToken: signedUrl.includes('token=')
+        })
 
         // Get video metadata for additional info
         const videoDetails = await videoManagement.getVideoDetails(videoId)
