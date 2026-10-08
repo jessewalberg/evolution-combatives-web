@@ -1,6 +1,10 @@
 import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
+import {
+    VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS,
+    filterAllowedFields,
+} from '@/src/lib/video-field-allowlists'
 
 export async function POST({ request }: { request: Request }) {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -45,10 +49,15 @@ export async function POST({ request }: { request: Request }) {
         console.log(`Updating video ${video.title} (${video.id}) status from ${video.processing_status} to ${updateData.processing_status}`)
 
         // Update video status
+        const filteredUpdateData = filterAllowedFields(
+            updateData as Record<string, unknown>,
+            VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS
+        )
+
         const { data: updatedVideo, error: updateError } = await supabase
             .from('videos')
             .update({
-                ...updateData,
+                ...filteredUpdateData,
                 updated_at: new Date().toISOString()
             })
             .eq('id', video.id)

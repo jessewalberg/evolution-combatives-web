@@ -9,22 +9,11 @@
 import {
     createAdminClient
 } from '../lib/supabase'
-
-/**
- * Escape user input for use in PostgREST filter strings.
- * PostgREST filter syntax uses commas, dots, parentheses, and percent signs.
- * This escapes them to prevent filter injection.
- */
-export function escapePostgrestFilter(input: string): string {
-    return input
-        .replace(/\\/g, '\\\\')
-        .replace(/%/g, '\\%')
-        .replace(/_/g, '\\_')
-        .replace(/,/g, '\\,')
-        .replace(/\./g, '\\.')
-        .replace(/\(/g, '\\(')
-        .replace(/\)/g, '\\)')
-}
+import { escapeLikePattern, buildOrIlikeFilter } from '../lib/postgrest-escape'
+import {
+    VIDEO_ALLOWED_UPDATE_FIELDS,
+    filterAllowedFields,
+} from '../lib/video-field-allowlists'
 import { createClientComponentClient } from '../lib/supabase-browser'
 import { handleSupabaseError } from '../lib/shared/utils/supabase-errors'
 import { RealtimeService } from '../lib/shared/services/realtime'
@@ -241,8 +230,7 @@ export const contentQueries = {
 
         // Apply filters
         if (filters.search) {
-            const safeSearch = escapePostgrestFilter(filters.search)
-            query = query.or(`title.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
+            query = query.or(buildOrIlikeFilter(['title', 'description'], filters.search))
         }
         if (filters.categoryId) {
             query = query.eq('category_id', filters.categoryId)
@@ -395,7 +383,7 @@ export const contentMutations = {
             tags: videoData.tags || null,
             processing_status: videoData.status || 'processing',
             is_published: videoData.isPublished || false,
-            view_count: videoData.viewCount || 0,
+            view_count: 0,
             sort_order: videoData.sortOrder || 0
         }
 
@@ -424,10 +412,15 @@ export const contentMutations = {
 
         const supabase = createAdminClient()
 
+        const filteredUpdates = filterAllowedFields(
+            updates as Record<string, unknown>,
+            VIDEO_ALLOWED_UPDATE_FIELDS
+        )
+
         const { data, error } = await supabase
             .from('videos')
             .update({
-                ...updates,
+                ...filteredUpdates,
                 updated_at: new Date().toISOString()
             })
             .eq('id', videoId)
@@ -971,7 +964,7 @@ export const adminFeatures = {
         videos: VideoWithRelations[]
     }> {
         const supabase = createAdminClient()
-        const safeQuery = escapePostgrestFilter(query)
+        const safeQuery = escapeLikePattern(query)
 
         const [disciplinesResult, categoriesResult, videosResult] = await Promise.all([
             supabase
@@ -994,7 +987,7 @@ export const adminFeatures = {
                     *,
                     categories!category_id(*, disciplines!discipline_id(*))
                 `)
-                .or(`title.ilike.%${safeQuery}%,description.ilike.%${safeQuery}%`)
+                .or(buildOrIlikeFilter(['title', 'description'], query))
                 .limit(20)
         ])
 
