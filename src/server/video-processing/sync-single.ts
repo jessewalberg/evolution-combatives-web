@@ -1,7 +1,7 @@
 import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
-import { CloudflareStreamError } from '@/src/services/cloudflare-stream'
+import { CloudflareStreamError, isValidStreamVideoId } from '@/src/services/cloudflare-stream'
 
 export async function POST({ request }: { request: Request }) {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -38,6 +38,14 @@ export async function POST({ request }: { request: Request }) {
         if (!video.cloudflare_video_id) {
             return json(
                 { success: false, error: 'No Cloudflare video ID' },
+                { status: 400 }
+            )
+        }
+
+        // Validate cloudflare video ID format before calling the service
+        if (!isValidStreamVideoId(video.cloudflare_video_id)) {
+            return json(
+                { success: false, error: 'Invalid video ID format' },
                 { status: 400 }
             )
         }

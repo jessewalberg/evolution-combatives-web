@@ -12,6 +12,21 @@ vi.mock('@/src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
+// Helper to assert no console method received any part of the payload
+function assertNoPayloadLogged(
+  spies: { log: ReturnType<typeof vi.spyOn>; info: ReturnType<typeof vi.spyOn>; warn: ReturnType<typeof vi.spyOn>; error: ReturnType<typeof vi.spyOn>; debug: ReturnType<typeof vi.spyOn> },
+  payloadParts: string[]
+) {
+  for (const [name, spy] of Object.entries(spies)) {
+    for (const call of spy.mock.calls) {
+      const callStr = call.map((arg: unknown) => String(arg)).join(' ')
+      for (const part of payloadParts) {
+        expect(callStr, `console.${name} should not contain payload part "${part}"`).not.toContain(part)
+      }
+    }
+  }
+}
+
 import { createAdminClient } from '@/src/lib/supabase'
 
 const mockCreateAdminClient = vi.mocked(createAdminClient)
@@ -113,7 +128,16 @@ describe('POST /api/webhooks/cloudflare', () => {
   })
 
   it('returns 401 for invalid signature', async () => {
-    const payload = JSON.stringify(buildWebhookPayload())
+    const spies = {
+      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+    }
+
+    const webhookPayload = buildWebhookPayload()
+    const payload = JSON.stringify(webhookPayload)
     const now = Math.floor(Date.now() / 1000)
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -127,10 +151,23 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(res.status).toBe(401)
     expect(body.error).toBe('Invalid signature')
     expect(supabase.update).not.toHaveBeenCalled()
+    expect(supabase.from).not.toHaveBeenCalledWith('webhook_logs')
+    assertNoPayloadLogged(spies, [webhookPayload.uid, 'ready', 'test.mp4'])
+
+    Object.values(spies).forEach(spy => spy.mockRestore())
   })
 
-  it('returns 401 for same-length wrong signature (timing-safe comparison)', async () => {
-    const payload = JSON.stringify(buildWebhookPayload())
+  it('returns 401 for same-length wrong signature', async () => {
+    const spies = {
+      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+    }
+
+    const webhookPayload = buildWebhookPayload()
+    const payload = JSON.stringify(webhookPayload)
     const now = Math.floor(Date.now() / 1000)
     // A different 64-char hex string (same length as valid sig)
     const wrongSig = '0'.repeat(64)
@@ -147,10 +184,22 @@ describe('POST /api/webhooks/cloudflare', () => {
     expect(body.error).toBe('Invalid signature')
     expect(supabase.update).not.toHaveBeenCalled()
     expect(supabase.from).not.toHaveBeenCalledWith('webhook_logs')
+    assertNoPayloadLogged(spies, [webhookPayload.uid, 'ready', 'test.mp4'])
+
+    Object.values(spies).forEach(spy => spy.mockRestore())
   })
 
   it('returns 401 for timestamp older than 5 minutes', async () => {
-    const payload = JSON.stringify(buildWebhookPayload())
+    const spies = {
+      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+    }
+
+    const webhookPayload = buildWebhookPayload()
+    const payload = JSON.stringify(webhookPayload)
     const oldTimestamp = Math.floor(Date.now() / 1000) - 400 // 6+ minutes ago
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -159,11 +208,25 @@ describe('POST /api/webhooks/cloudflare', () => {
         headers: { 'Webhook-Signature': signPayload(payload, WEBHOOK_SECRET, oldTimestamp) },
       })
     )
+
     expect(res.status).toBe(401)
+    expect(supabase.from).not.toHaveBeenCalledWith('webhook_logs')
+    assertNoPayloadLogged(spies, [webhookPayload.uid, 'ready', 'test.mp4'])
+
+    Object.values(spies).forEach(spy => spy.mockRestore())
   })
 
   it('returns 401 for timestamp more than 5 minutes in the future', async () => {
-    const payload = JSON.stringify(buildWebhookPayload())
+    const spies = {
+      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+    }
+
+    const webhookPayload = buildWebhookPayload()
+    const payload = JSON.stringify(webhookPayload)
     const futureTimestamp = Math.floor(Date.now() / 1000) + 400 // 6+ minutes in future
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -172,11 +235,25 @@ describe('POST /api/webhooks/cloudflare', () => {
         headers: { 'Webhook-Signature': signPayload(payload, WEBHOOK_SECRET, futureTimestamp) },
       })
     )
+
     expect(res.status).toBe(401)
+    expect(supabase.from).not.toHaveBeenCalledWith('webhook_logs')
+    assertNoPayloadLogged(spies, [webhookPayload.uid, 'ready', 'test.mp4'])
+
+    Object.values(spies).forEach(spy => spy.mockRestore())
   })
 
   it('returns 401 when signature header missing', async () => {
-    const payload = JSON.stringify(buildWebhookPayload())
+    const spies = {
+      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+    }
+
+    const webhookPayload = buildWebhookPayload()
+    const payload = JSON.stringify(webhookPayload)
 
     const res = await POST(
       createNextRequest('/api/webhooks/cloudflare', {
@@ -184,7 +261,12 @@ describe('POST /api/webhooks/cloudflare', () => {
         body: payload,
       })
     )
+
     expect(res.status).toBe(401)
+    expect(supabase.from).not.toHaveBeenCalledWith('webhook_logs')
+    assertNoPayloadLogged(spies, [webhookPayload.uid, 'ready', 'test.mp4'])
+
+    Object.values(spies).forEach(spy => spy.mockRestore())
   })
 
   it('processes ready state by writing status, publish flag, and stream metadata', async () => {

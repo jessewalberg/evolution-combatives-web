@@ -33,28 +33,14 @@ describe('escapeCsvField', () => {
         expect(escapeCsvField('"quoted"')).toBe('"""quoted"""')
     })
 
-    it('prefixes equals sign for spreadsheet compatibility', () => {
+    it('prefixes leading = + - @ tab CR with a quote', () => {
         expect(escapeCsvField('=SUM(A1)')).toBe("\"'=SUM(A1)\"")
         expect(escapeCsvField('=1+1')).toBe("\"'=1+1\"")
-    })
-
-    it('prefixes plus sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('+1234')).toBe("\"'+1234\"")
-    })
-
-    it('prefixes minus sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('-123')).toBe("\"'-123\"")
-    })
-
-    it('prefixes at sign for spreadsheet compatibility', () => {
         expect(escapeCsvField('@SUM(A1)')).toBe("\"'@SUM(A1)\"")
-    })
-
-    it('prefixes tab for spreadsheet compatibility', () => {
         expect(escapeCsvField('\t=cmd')).toBe("\"'\t=cmd\"")
-    })
-
-    it('handles combined escaping and neutralization', () => {
+        expect(escapeCsvField('\r=cmd')).toBe("\"'\r=cmd\"")
         expect(escapeCsvField('=A1, "B2"')).toBe("\"'=A1, \"\"B2\"\"\"")
     })
 })
@@ -104,22 +90,78 @@ describe('toCsv', () => {
         expect(csv).toBe('"John"')
     })
 
-    it('properly escapes data with formula characters', () => {
+    it('escapes data with leading special characters', () => {
         const data = [
-            { formula: '=SUM(A1)', value: 'normal' },
-            { formula: '+123', value: 'test, value' }
+            { prefixed: '=SUM(A1)', value: 'normal' },
+            { prefixed: '+123', value: 'test, value' }
         ]
         const csv = toCsv(data)
         const lines = csv.split('\n')
         
-        // All cells quoted, formula prefix added
         expect(lines[1]).toBe("\"'=SUM(A1)\",\"normal\"")
         expect(lines[2]).toBe("\"'+123\",\"test, value\"")
     })
 })
 
+describe('users export row builder', () => {
+    it('produces no cell containing literal string undefined', () => {
+        const userData = [
+            {
+                email: 'user@test.com',
+                firstName: 'Test',
+                lastName: 'User',
+                subscriptionTier: undefined as unknown as string,
+                status: 'active',
+                joinDate: '2024-01-01',
+                lastActive: '2024-01-15',
+                totalProgress: '50.0%',
+                completionRate: '25.0%',
+                department: undefined as unknown as string,
+                location: null as unknown as string
+            }
+        ]
+
+        const csv = toCsv(userData, {
+            headers: ['Email', 'First Name', 'Last Name', 'Subscription', 'Status', 'Join Date', 'Last Active', 'Progress', 'Completion Rate', 'Department', 'Location'],
+            keys: ['email', 'firstName', 'lastName', 'subscriptionTier', 'status', 'joinDate', 'lastActive', 'totalProgress', 'completionRate', 'department', 'location']
+        })
+
+        expect(csv).not.toContain('"undefined"')
+        expect(csv).not.toMatch(/,undefined,/)
+        expect(csv).not.toMatch(/,undefined$/)
+    })
+
+    it('prefixes cells starting with = for spreadsheet compatibility', () => {
+        const userData = [
+            {
+                email: '=HYPERLINK("http://test")',
+                firstName: 'Test',
+                lastName: '+User',
+                subscriptionTier: 'tier1',
+                status: 'active',
+                joinDate: '2024-01-01',
+                lastActive: '-1 day',
+                totalProgress: '50.0%',
+                completionRate: '@mention',
+                department: 'IT',
+                location: 'NYC'
+            }
+        ]
+
+        const csv = toCsv(userData, {
+            headers: ['Email', 'First Name', 'Last Name', 'Subscription', 'Status', 'Join Date', 'Last Active', 'Progress', 'Completion Rate', 'Department', 'Location'],
+            keys: ['email', 'firstName', 'lastName', 'subscriptionTier', 'status', 'joinDate', 'lastActive', 'totalProgress', 'completionRate', 'department', 'location']
+        })
+
+        expect(csv).toContain("\"'=HYPERLINK")
+        expect(csv).toContain("\"'+User\"")
+        expect(csv).toContain("\"'-1 day\"")
+        expect(csv).toContain("\"'@mention\"")
+    })
+})
+
 describe('video export integration', () => {
-    it('properly escapes video titles with formula characters', () => {
+    it('prefixes video title starting with = for spreadsheet compatibility', () => {
         const videoData = [
             { title: '=HYPERLINK("external")', category: 'Training', status: 'ready' },
             { title: '+Normal Title', category: 'Tutorial, Advanced', status: 'processing' },

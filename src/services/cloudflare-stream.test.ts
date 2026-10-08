@@ -159,7 +159,7 @@ describe('uploadFunctions', () => {
     expect(body.requireSignedURLs).toBe(true)
   })
 
-  it('getUploadUrl ignores requireSignedURLs option and always sends true', async () => {
+  it('getUploadUrl caller-supplied value is ignored', async () => {
     mockFetch.mockResolvedValue(
       textResponse(
         JSON.stringify({
@@ -170,7 +170,6 @@ describe('uploadFunctions', () => {
       )
     )
 
-    // The service always sends requireSignedURLs: true regardless of options
     await uploadFunctions.getUploadUrl({ requireSignedURLs: false } as never)
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
     expect(body.requireSignedURLs).toBe(true)

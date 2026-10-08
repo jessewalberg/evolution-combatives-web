@@ -248,8 +248,8 @@ describe('POST /api/video-processing/update-status', () => {
           updateData: {
             processing_status: 'ready',
             view_count: 9999,
-            id: 'injected-id',
-            cloudflare_video_id: 'injected-cf-id',
+            id: 'other-id',
+            cloudflare_video_id: 'other-cf-id',
             title: 'should-be-stripped',
           },
         }),

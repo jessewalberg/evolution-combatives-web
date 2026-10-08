@@ -190,45 +190,42 @@ describe('getSafeRedirectUrl', () => {
 
   it('uses custom fallback when provided', () => {
     expect(getSafeRedirectUrl(null, '/login')).toBe('/login')
-    expect(getSafeRedirectUrl('https://other-site.com', '/home')).toBe('/home')
+    expect(getSafeRedirectUrl('https://example.invalid', '/home')).toBe('/home')
   })
 
   it('rejects absolute URLs with protocols', () => {
-    expect(getSafeRedirectUrl('https://other-site.com')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('http://other-site.com/path')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('https://example.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('http://example.invalid/path')).toBe('/dashboard')
     expect(getSafeRedirectUrl('javascript:alert(1)')).toBe('/dashboard')
     expect(getSafeRedirectUrl('data:text/html,<script>alert(1)</script>')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('HTTPS://OTHER-SITE.COM')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('HTTPS://EXAMPLE.INVALID')).toBe('/dashboard')
   })
 
   it('rejects protocol-relative URLs', () => {
-    expect(getSafeRedirectUrl('//other-site.com')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('//other-site.com/path')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('//example.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('//example.invalid/path')).toBe('/dashboard')
   })
 
   it('rejects paths not starting with /', () => {
     expect(getSafeRedirectUrl('dashboard')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('other-site.com')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('example.invalid')).toBe('/dashboard')
   })
 
-  it('rejects URLs with special encoded characters', () => {
-    expect(getSafeRedirectUrl('/%2f%2fother-site.com')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('/%2Fother-site.com')).toBe('/dashboard')
-    // Encoded backslash (%5C)
-    expect(getSafeRedirectUrl('/%5Cother-site.com')).toBe('/dashboard')
+  it('rejects encoded slash variants', () => {
+    expect(getSafeRedirectUrl('/%2f%2fexample.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/%2Fexample.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/%5Cexample.invalid')).toBe('/dashboard')
     expect(getSafeRedirectUrl('/path%5Cto%5Cfile')).toBe('/dashboard')
-    // Encoded control characters (%00 = null, %0a = newline, %09 = tab)
     expect(getSafeRedirectUrl('/path%00hidden')).toBe('/dashboard')
     expect(getSafeRedirectUrl('/path%0ahidden')).toBe('/dashboard')
     expect(getSafeRedirectUrl('/path%09hidden')).toBe('/dashboard')
-    // Encoded whitespace (%20 = space)
     expect(getSafeRedirectUrl('/path%20with%20space')).toBe('/dashboard')
   })
 
   it('rejects URLs with backslash', () => {
     expect(getSafeRedirectUrl('/path\\to\\file')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('\\\\other-site.com')).toBe('/dashboard')
-    expect(getSafeRedirectUrl('/\\other-site.com')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('\\\\example.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/\\example.invalid')).toBe('/dashboard')
   })
 
   it('rejects URLs with control characters', () => {

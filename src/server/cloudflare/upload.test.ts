@@ -39,6 +39,7 @@ vi.mock('@/src/services/cloudflare-stream', () => {
       },
     },
     CloudflareStreamError,
+    isValidStreamVideoId: (id: unknown) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id),
   }
 })
 
@@ -115,13 +116,14 @@ describe('POST /api/cloudflare/upload', () => {
   it('handles generateThumbnailUrl', async () => {
     authSuccess(mockAuth)
     mockGenerateThumbnailUrl.mockResolvedValue('https://thumb')
+    const validVideoId = '6b9e68b07dfee8cc2d116e4c51d6a957'
 
     const res = await POST(
       createNextRequest('/api/cloudflare/upload', {
         method: 'POST',
         body: JSON.stringify({
           action: 'generateThumbnailUrl',
-          videoId: 'v1',
+          videoId: validVideoId,
           options: { time: '1s' },
         }),
       })
@@ -129,7 +131,7 @@ describe('POST /api/cloudflare/upload', () => {
     const body = await res.json()
 
     expect(body).toEqual({ success: true, data: { thumbnailUrl: 'https://thumb' } })
-    expect(mockGenerateThumbnailUrl).toHaveBeenCalledWith('v1', { time: '1s' })
+    expect(mockGenerateThumbnailUrl).toHaveBeenCalledWith(validVideoId, { time: '1s' })
   })
 
   it('handles retryProcessing', async () => {
@@ -267,12 +269,8 @@ describe('POST /api/cloudflare/upload', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 for invalid video ID format in generateThumbnailUrl', async () => {
+  it('returns 400 for invalid video ID format in generateThumbnailUrl before service call', async () => {
     authSuccess(mockAuth)
-    const { CloudflareStreamError } = await import('@/src/services/cloudflare-stream')
-    mockGenerateThumbnailUrl.mockRejectedValue(
-      new CloudflareStreamError('Invalid video ID format', 400)
-    )
 
     const res = await POST(
       createNextRequest('/api/cloudflare/upload', {
@@ -283,5 +281,7 @@ describe('POST /api/cloudflare/upload', () => {
 
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('Invalid video ID format')
+    // Service should NOT be called when validation fails
+    expect(mockGenerateThumbnailUrl).not.toHaveBeenCalled()
   })
 })

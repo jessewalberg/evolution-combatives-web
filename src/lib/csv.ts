@@ -4,17 +4,16 @@
  * Handles:
  * - Proper escaping of quotes (doubled within quoted fields)
  * - Quoting of fields containing commas, quotes, or newlines
- * - Formula character handling (prefixes =, +, -, @, tab, carriage return)
+ * - Escape CSV cells (prefixes =, +, -, @, tab, carriage return)
  */
 
 /**
- * Characters that trigger formula interpretation in spreadsheet applications.
- * These are neutralized by prepending a single quote.
+ * Characters that are prefixed with a single quote for spreadsheet compatibility.
  */
-const FORMULA_TRIGGERS = ['=', '+', '-', '@', '\t', '\r']
+const CELL_PREFIX_TRIGGERS = ['=', '+', '-', '@', '\t', '\r']
 
 /**
- * Escapes a single CSV field value with proper encoding and formula neutralization.
+ * Escapes a single CSV field value with proper encoding.
  * 
  * @param value - The value to escape (will be converted to string)
  * @returns Properly escaped CSV field
@@ -34,8 +33,8 @@ export function escapeCsvField(value: unknown): string {
 
     let str = String(value)
 
-    // Handle formula characters by prepending a single quote for spreadsheet compatibility
-    if (FORMULA_TRIGGERS.some(trigger => str.startsWith(trigger))) {
+    // Escape CSV cells by prepending a single quote
+    if (CELL_PREFIX_TRIGGERS.some(trigger => str.startsWith(trigger))) {
         str = "'" + str
     }
 

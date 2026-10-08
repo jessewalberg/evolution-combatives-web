@@ -377,8 +377,7 @@ export function generateInitials(
 // ============================================================================
 
 /**
- * Validates and sanitizes a redirect URL for safe navigation
- * Accepts only app-relative paths for safe navigation
+ * Accepts only app-relative paths
  * 
  * @param url - URL to validate (may be user-provided)
  * @param fallback - Fallback path if URL is invalid (default: '/dashboard')
@@ -387,8 +386,8 @@ export function generateInitials(
  * @example
  * ```tsx
  * getSafeRedirectUrl('/dashboard/users') // '/dashboard/users'
- * getSafeRedirectUrl('https://other-site.com') // '/dashboard'
- * getSafeRedirectUrl('//other-site.com') // '/dashboard'
+ * getSafeRedirectUrl('https://example.invalid') // '/dashboard'
+ * getSafeRedirectUrl('//example.invalid') // '/dashboard'
  * getSafeRedirectUrl('/login', '/home') // '/login'
  * getSafeRedirectUrl(undefined) // '/dashboard'
  * ```
@@ -439,12 +438,11 @@ export function getSafeRedirectUrl(
         return fallback
     }
 
-    // Validate decoded value for special characters
-    // (e.g., %2f%2f for //, %3a for :, %5c for \, %00 for null, %20 for space)
+    // Re-check decoded value
     try {
         const decoded = decodeURIComponent(trimmed)
         if (decoded !== trimmed) {
-            // Re-validate decoded version for all dangerous patterns
+            // Re-validate decoded version
             if (decoded.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(decoded)) {
                 return fallback
             }

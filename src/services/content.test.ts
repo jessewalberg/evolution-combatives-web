@@ -399,8 +399,8 @@ describe('contentMutations', () => {
     await contentMutations.updateVideo('v1', {
       title: 'OK',
       view_count: 999,
-      id: 'injected-id',
-      cloudflare_video_id: 'injected-cf-id',
+      id: 'other-id',
+      cloudflare_video_id: 'other-cf-id',
       created_at: '1970-01-01',
     } as never)
 

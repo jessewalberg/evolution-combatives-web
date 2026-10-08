@@ -236,6 +236,41 @@ describe('VideoLibraryPage', () => {
     expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url')
   })
 
+  it('exports CSV with prefix on titles starting with =', async () => {
+    const videosWithSpecialTitle = [
+      {
+        id: 'vid-special',
+        title: '=HYPERLINK("http://test.com")',
+        description: 'Test video',
+        category_id: 'cat-1',
+        processing_status: 'ready',
+        tier_required: 'tier1',
+        created_at: '2024-06-01T00:00:00.000Z',
+        updated_at: '2024-06-02T00:00:00.000Z',
+        view_count: 10,
+        duration_seconds: 60,
+        thumbnail_url: null,
+        tags: [],
+        cloudflare_video_id: 'cf-special',
+      },
+    ]
+    mockFetchVideos.mockResolvedValue({ data: videosWithSpecialTitle, totalCount: 1 })
+
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('=HYPERLINK("http://test.com")')
+
+    await user.click(screen.getByRole('button', { name: /Export/i }))
+
+    expect(createObjectURLSpy).toHaveBeenCalled()
+    const blobArg = createObjectURLSpy.mock.calls[0][0] as Blob
+    const csvText = await blobArg.text()
+
+    expect(csvText).toContain("\"'=HYPERLINK")
+    expect(csvText).not.toContain('"=HYPERLINK')
+  })
+
   it('delete mutation calls deleteVideo and toasts success', async () => {
     const user = userEvent.setup()
     mockDeleteVideo.mockResolvedValue({ success: true })

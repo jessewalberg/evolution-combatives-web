@@ -272,8 +272,11 @@ A Stream webhook endpoint may already exist from the Vercel deployment:
 ### Create New Webhook (Only If None Exists)
 1. Go to Cloudflare Dashboard → Stream → Notifications
 2. Add notification webhook: `https://evolutioncombatives.com/api/webhooks/cloudflare`
-3. Select the video processing events needed for the app
-4. Copy the signing secret → Set as `CLOUDFLARE_STREAM_WEBHOOK_SECRET`
+3. Copy the signing secret → Set as `CLOUDFLARE_STREAM_WEBHOOK_SECRET`
+
+### Before Pointing Webhook at the Worker
+
+Confirm `CLOUDFLARE_STREAM_WEBHOOK_SECRET` matches the secret returned by the Stream webhook API (`GET/PUT /accounts/{account_id}/stream/webhook`), and that this release is deployed.
 
 ---
 

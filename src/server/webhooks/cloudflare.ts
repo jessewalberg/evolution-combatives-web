@@ -46,9 +46,7 @@ const RETRY_CONFIG = {
 // Maximum age for webhook requests (5 minutes)
 const MAX_TIMESTAMP_AGE_SECONDS = 300
 
-// Constant-time comparison that works in both Node.js and Cloudflare Workers.
-// When lengths differ, we still do a full comparison against expected to avoid
-// leaking the expected signature's length through timing.
+// Constant-time comparison for both Node.js and Cloudflare Workers.
 function timingSafeEqual(expected: Uint8Array, received: Uint8Array): boolean {
     const lengthsMatch = expected.byteLength === received.byteLength
     const compareTarget = lengthsMatch ? received : expected
