@@ -144,7 +144,7 @@ describe('uploadFunctions', () => {
     expect(body.maxDurationSeconds).toBe(3600)
   })
 
-  it('getUploadUrl defaults requireSignedURLs to true for paid content', async () => {
+  it('getUploadUrl always sets requireSignedURLs to true', async () => {
     mockFetch.mockResolvedValue(
       textResponse(
         JSON.stringify({

@@ -32,12 +32,23 @@ vi.mock('@/src/lib/supabase', () => ({
 const mockGetVideoDetails = vi.fn()
 const mockGenerateSignedUrl = vi.fn()
 
-vi.mock('@/src/services/cloudflare-stream', () => ({
-  videoManagement: {
-    getVideoDetails: (...args: unknown[]) => mockGetVideoDetails(...args),
-    generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
-  },
-}))
+vi.mock('@/src/services/cloudflare-stream', () => {
+  class CloudflareStreamError extends Error {
+    code: number
+    constructor(message: string, code: number) {
+      super(message)
+      this.code = code
+      this.name = 'CloudflareStreamError'
+    }
+  }
+  return {
+    videoManagement: {
+      getVideoDetails: (...args: unknown[]) => mockGetVideoDetails(...args),
+      generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
+    },
+    CloudflareStreamError,
+  }
+})
 
 function authRequest(body: Record<string, unknown>) {
   return createNextRequest('/api/video/signed-url', {

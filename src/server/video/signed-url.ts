@@ -5,6 +5,7 @@ import {
     SUBSCRIPTION_TIER_HIERARCHY,
     type SubscriptionTier 
 } from '@/src/lib/shared/constants/subscriptionTiers'
+import { CloudflareStreamError } from '@/src/services/cloudflare-stream'
 
 function isValidTier(tier: unknown): tier is SubscriptionTier {
     return typeof tier === 'string' && tier in SUBSCRIPTION_TIER_HIERARCHY
@@ -221,6 +222,14 @@ export async function POST({ request }: { request: Request }) {
 
     } catch (error) {
         console.error('Error generating signed video URL:', error)
+
+        // Handle video ID validation errors
+        if (error instanceof CloudflareStreamError && error.code === 400) {
+            return json(
+                { error: error.message },
+                { status: 400 }
+            )
+        }
 
         // Handle specific Cloudflare Stream errors
         if (error instanceof Error && error.message.includes('Not Found')) {

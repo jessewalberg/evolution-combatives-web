@@ -15,21 +15,32 @@ const mockGenerateAdminPreviewUrl = vi.fn()
 const mockGenerateThumbnailUrl = vi.fn()
 const mockRetryProcessing = vi.fn()
 
-vi.mock('@/src/services/cloudflare-stream', () => ({
-  cloudflareStreamService: {
-    upload: {
-      getUploadUrl: (...args: unknown[]) => mockGetUploadUrl(...args),
-      checkUploadStatus: (...args: unknown[]) => mockCheckUploadStatus(...args),
+vi.mock('@/src/services/cloudflare-stream', () => {
+  class CloudflareStreamError extends Error {
+    code: number
+    constructor(message: string, code: number) {
+      super(message)
+      this.code = code
+      this.name = 'CloudflareStreamError'
+    }
+  }
+  return {
+    cloudflareStreamService: {
+      upload: {
+        getUploadUrl: (...args: unknown[]) => mockGetUploadUrl(...args),
+        checkUploadStatus: (...args: unknown[]) => mockCheckUploadStatus(...args),
+      },
+      security: {
+        generateAdminPreviewUrl: (...args: unknown[]) => mockGenerateAdminPreviewUrl(...args),
+      },
+      video: {
+        generateThumbnailUrl: (...args: unknown[]) => mockGenerateThumbnailUrl(...args),
+        retryProcessing: (...args: unknown[]) => mockRetryProcessing(...args),
+      },
     },
-    security: {
-      generateAdminPreviewUrl: (...args: unknown[]) => mockGenerateAdminPreviewUrl(...args),
-    },
-    video: {
-      generateThumbnailUrl: (...args: unknown[]) => mockGenerateThumbnailUrl(...args),
-      retryProcessing: (...args: unknown[]) => mockRetryProcessing(...args),
-    },
-  },
-}))
+    CloudflareStreamError,
+  }
+})
 
 import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 
@@ -165,5 +176,94 @@ describe('POST /api/cloudflare/upload', () => {
 
     expect(res.status).toBe(500)
     expect(body).toEqual({ success: false, error: 'CF down' })
+  })
+
+  it('getUploadUrl passes only allowed fields and does not forward requireSignedURLs', async () => {
+    authSuccess(mockAuth)
+    mockGetUploadUrl.mockResolvedValue({ uploadURL: 'https://upload', uid: 'cf-1' })
+
+    const res = await POST(
+      createNextRequest('/api/cloudflare/upload', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'getUploadUrl',
+          maxDurationSeconds: 7200,
+          requireSignedURLs: false,
+          allowedOrigins: ['https://example.com'],
+          thumbnailTimestampPct: 0.5,
+          creator: 'admin',
+          expiry: '2030-01-01',
+          scheduledDeletion: '2030-06-01',
+          metadata: { name: 'Test Video' },
+          arbitraryField: 'should-be-ignored',
+          __proto__: { bad: 'field' },
+        }),
+      })
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockGetUploadUrl).toHaveBeenCalledTimes(1)
+    const calledWith = mockGetUploadUrl.mock.calls[0][0]
+    expect(calledWith.maxDurationSeconds).toBe(7200)
+    expect(calledWith.allowedOrigins).toEqual(['https://example.com'])
+    expect(calledWith.thumbnailTimestampPct).toBe(0.5)
+    expect(calledWith.creator).toBe('admin')
+    expect(calledWith.expiry).toBe('2030-01-01')
+    expect(calledWith.scheduledDeletion).toBe('2030-06-01')
+    expect(calledWith.metadata).toEqual({ name: 'Test Video' })
+    expect(calledWith.requireSignedURLs).toBeUndefined()
+    expect(calledWith.arbitraryField).toBeUndefined()
+  })
+
+  it('returns 400 for invalid video ID format in checkUploadStatus', async () => {
+    authSuccess(mockAuth)
+    const { CloudflareStreamError } = await import('@/src/services/cloudflare-stream')
+    mockCheckUploadStatus.mockRejectedValue(
+      new CloudflareStreamError('Invalid video ID format', 400)
+    )
+
+    const res = await POST(
+      createNextRequest('/api/cloudflare/upload', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'checkUploadStatus', streamId: 'invalid' }),
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+  })
+
+  it('returns 400 for invalid video ID format in generateAdminPreviewUrl', async () => {
+    authSuccess(mockAuth)
+    const { CloudflareStreamError } = await import('@/src/services/cloudflare-stream')
+    mockGenerateAdminPreviewUrl.mockRejectedValue(
+      new CloudflareStreamError('Invalid video ID format', 400)
+    )
+
+    const res = await POST(
+      createNextRequest('/api/cloudflare/upload', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'generateAdminPreviewUrl', videoId: 'bad-id' }),
+      })
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 for invalid video ID format in retryProcessing', async () => {
+    authSuccess(mockAuth)
+    const { CloudflareStreamError } = await import('@/src/services/cloudflare-stream')
+    mockRetryProcessing.mockRejectedValue(
+      new CloudflareStreamError('Invalid video ID format', 400)
+    )
+
+    const res = await POST(
+      createNextRequest('/api/cloudflare/upload', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'retryProcessing', videoId: 'xyz' }),
+      })
+    )
+
+    expect(res.status).toBe(400)
   })
 })

@@ -17,13 +17,24 @@ vi.mock('@/src/lib/supabase', () => ({
 
 const mockCheckUploadStatus = vi.fn()
 
-vi.mock('@/src/services/cloudflare-stream', () => ({
-  cloudflareStreamService: {
-    upload: {
-      checkUploadStatus: (...args: unknown[]) => mockCheckUploadStatus(...args),
+vi.mock('@/src/services/cloudflare-stream', () => {
+  class CloudflareStreamError extends Error {
+    code: number
+    constructor(message: string, code: number) {
+      super(message)
+      this.code = code
+      this.name = 'CloudflareStreamError'
+    }
+  }
+  return {
+    cloudflareStreamService: {
+      upload: {
+        checkUploadStatus: (...args: unknown[]) => mockCheckUploadStatus(...args),
+      },
     },
-  },
-}))
+    CloudflareStreamError,
+  }
+})
 
 import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 import { createAdminClient } from '@/src/lib/supabase'

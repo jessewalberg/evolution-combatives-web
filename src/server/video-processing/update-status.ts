@@ -5,6 +5,7 @@ import {
     VIDEO_ALLOWED_WEBHOOK_STATUS_FIELDS,
     filterAllowedFields,
 } from '@/src/lib/video-field-allowlists'
+import { isValidStreamVideoId } from '@/src/services/cloudflare-stream'
 
 export async function POST({ request }: { request: Request }) {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -18,6 +19,13 @@ export async function POST({ request }: { request: Request }) {
         if (!cloudflareVideoId) {
             return json(
                 { success: false, error: 'Missing cloudflareVideoId' },
+                { status: 400 }
+            )
+        }
+
+        if (!isValidStreamVideoId(cloudflareVideoId)) {
+            return json(
+                { success: false, error: 'Invalid video ID format' },
                 { status: 400 }
             )
         }

@@ -1,6 +1,7 @@
 import { validateApiAuthWithSession } from '@/src/lib/api-auth'
 import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
+import { CloudflareStreamError } from '@/src/services/cloudflare-stream'
 
 export async function POST({ request }: { request: Request }) {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -98,6 +99,12 @@ export async function POST({ request }: { request: Request }) {
             result
         })
     } catch (error) {
+        if (error instanceof CloudflareStreamError && error.code === 400) {
+            return json(
+                { success: false, error: error.message },
+                { status: 400 }
+            )
+        }
         console.error('Single video sync API error:', error)
         return json(
             {

@@ -266,7 +266,6 @@ export const uploadFunctions = {
      */
     async getUploadUrl(options: {
         maxDurationSeconds?: number
-        requireSignedURLs?: boolean
         allowedOrigins?: string[]
         thumbnailTimestampPct?: number
         creator?: string
@@ -278,8 +277,8 @@ export const uploadFunctions = {
         videoId: string
     }> {
         const payload: Record<string, unknown> = {
-            maxDurationSeconds: options.maxDurationSeconds || 3600, // 1 hour default, required field
-            requireSignedURLs: options.requireSignedURLs !== false // Default to true for paid content
+            maxDurationSeconds: options.maxDurationSeconds || 3600,
+            requireSignedURLs: true
         }
 
         if (options.thumbnailTimestampPct !== undefined) {
@@ -594,6 +593,7 @@ export const videoManagement = {
      * Retry processing for a failed video
      */
     async retryProcessing(videoId: string): Promise<void> {
+        validateStreamVideoId(videoId)
         try {
             // First, get current video details to check status
             const videoDetails = await videoManagement.getVideoDetails(videoId)

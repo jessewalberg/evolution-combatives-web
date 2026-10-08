@@ -12,7 +12,6 @@ import {
 import { escapeLikePattern, buildOrIlikeFilter } from '../lib/postgrest-escape'
 import {
     VIDEO_ALLOWED_UPDATE_FIELDS,
-    VIDEO_ALLOWED_BULK_STATUS_FIELDS,
     filterAllowedFields,
 } from '../lib/video-field-allowlists'
 import { createClientComponentClient } from '../lib/supabase-browser'
@@ -807,58 +806,6 @@ export const contentMutations = {
 
 // Admin Features
 export const adminFeatures = {
-    /**
-     * Bulk update video status
-     * NOTE: This function requires admin access and should only be called server-side
-     */
-    async bulkUpdateVideoStatus(
-        videoIds: string[],
-        updates: { is_published?: boolean; processing_status?: ProcessingStatus }
-    ): Promise<BulkOperationResult> {
-        // Check if we're in a browser environment
-        if (typeof window !== 'undefined') {
-            throw new Error('bulkUpdateVideoStatus requires admin access and cannot be used in browser environment - use server-side API routes instead')
-        }
-
-        const supabase = createAdminClient()
-        const results: BulkOperationResult = {
-            success: false,
-            processed: 0,
-            failed: 0,
-            errors: []
-        }
-
-        const filteredUpdates = filterAllowedFields(
-            updates as Record<string, unknown>,
-            VIDEO_ALLOWED_BULK_STATUS_FIELDS
-        )
-
-        for (const videoId of videoIds) {
-            try {
-                const { error } = await supabase
-                    .from('videos')
-                    .update({
-                        ...filteredUpdates,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', videoId)
-
-                if (error) {
-                    results.failed++
-                    results.errors.push(`Video ${videoId}: ${handleSupabaseError(error)}`)
-                } else {
-                    results.processed++
-                }
-            } catch (error) {
-                results.failed++
-                results.errors.push(`Video ${videoId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-            }
-        }
-
-        results.success = results.failed === 0
-        return results
-    },
-
     /**
      * Bulk delete videos
      * NOTE: This function requires admin access and should only be called server-side

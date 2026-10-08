@@ -1,5 +1,6 @@
 import { json } from '@/src/lib/http'
 import { validateApiAuthWithSession } from '@/src/lib/api-auth'
+import { CloudflareStreamError } from '@/src/services/cloudflare-stream'
 
 export async function POST({ request }: { request: Request }) {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -14,7 +15,44 @@ export async function POST({ request }: { request: Request }) {
 
         switch (action) {
             case 'getUploadUrl':
-                const uploadUrl = await cloudflareStreamService.upload.getUploadUrl(data)
+                const uploadOptions: {
+                    maxDurationSeconds?: number
+                    allowedOrigins?: string[]
+                    thumbnailTimestampPct?: number
+                    creator?: string
+                    expiry?: string
+                    scheduledDeletion?: string
+                    metadata?: Record<string, string>
+                } = {}
+                if (typeof data.maxDurationSeconds === 'number') {
+                    uploadOptions.maxDurationSeconds = data.maxDurationSeconds
+                }
+                if (Array.isArray(data.allowedOrigins)) {
+                    uploadOptions.allowedOrigins = data.allowedOrigins.filter(
+                        (o: unknown) => typeof o === 'string'
+                    )
+                }
+                if (typeof data.thumbnailTimestampPct === 'number') {
+                    uploadOptions.thumbnailTimestampPct = data.thumbnailTimestampPct
+                }
+                if (typeof data.creator === 'string') {
+                    uploadOptions.creator = data.creator
+                }
+                if (typeof data.expiry === 'string') {
+                    uploadOptions.expiry = data.expiry
+                }
+                if (typeof data.scheduledDeletion === 'string') {
+                    uploadOptions.scheduledDeletion = data.scheduledDeletion
+                }
+                if (data.metadata && typeof data.metadata === 'object') {
+                    uploadOptions.metadata = {}
+                    for (const [k, v] of Object.entries(data.metadata)) {
+                        if (typeof v === 'string') {
+                            uploadOptions.metadata[k] = v
+                        }
+                    }
+                }
+                const uploadUrl = await cloudflareStreamService.upload.getUploadUrl(uploadOptions)
                 return json({ success: true, data: uploadUrl })
 
             case 'checkUploadStatus':
@@ -40,6 +78,12 @@ export async function POST({ request }: { request: Request }) {
                 )
         }
     } catch (error) {
+        if (error instanceof CloudflareStreamError && error.code === 400) {
+            return json(
+                { success: false, error: error.message },
+                { status: 400 }
+            )
+        }
         console.error('Cloudflare API error:', error)
         return json(
             {

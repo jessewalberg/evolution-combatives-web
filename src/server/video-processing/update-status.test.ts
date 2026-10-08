@@ -58,7 +58,7 @@ describe('POST /api/video-processing/update-status', () => {
       createNextRequest('/api/video-processing/update-status', {
         method: 'POST',
         body: JSON.stringify({
-          cloudflareVideoId: 'cf-1',
+          cloudflareVideoId: 'abcdef01234567890abcdef012345678',
           updateData: { processing_status: 'ready' },
         }),
       })
@@ -96,7 +96,7 @@ describe('POST /api/video-processing/update-status', () => {
       createNextRequest('/api/video-processing/update-status', {
         method: 'POST',
         body: JSON.stringify({
-          cloudflareVideoId: 'cf-missing',
+          cloudflareVideoId: 'bcdef01234567890abcdef0123456789',
           updateData: { processing_status: 'ready' },
         }),
       })
@@ -121,7 +121,7 @@ describe('POST /api/video-processing/update-status', () => {
       createNextRequest('/api/video-processing/update-status', {
         method: 'POST',
         body: JSON.stringify({
-          cloudflareVideoId: 'cf-1',
+          cloudflareVideoId: 'abcdef01234567890abcdef012345678',
           updateData: { processing_status: 'ready' },
         }),
       })
@@ -143,7 +143,7 @@ describe('POST /api/video-processing/update-status', () => {
       createNextRequest('/api/video-processing/update-status', {
         method: 'POST',
         body: JSON.stringify({
-          cloudflareVideoId: 'cf-1',
+          cloudflareVideoId: 'abcdef01234567890abcdef012345678',
           updateData: { processing_status: 'ready' },
         }),
       })
@@ -169,7 +169,7 @@ describe('POST /api/video-processing/update-status', () => {
       createNextRequest('/api/video-processing/update-status', {
         method: 'POST',
         body: JSON.stringify({
-          cloudflareVideoId: 'cf-1',
+          cloudflareVideoId: 'abcdef01234567890abcdef012345678',
           updateData: { processing_status: 'ready' },
         }),
       })
@@ -193,5 +193,77 @@ describe('POST /api/video-processing/update-status', () => {
       })
     )
     expect(res.status).toBe(500)
+  })
+
+  it('returns 400 for invalid cloudflareVideoId format', async () => {
+    mockAuth.mockResolvedValue({
+      user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
+    })
+
+    const res = await POST(
+      createNextRequest('/api/video-processing/update-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          cloudflareVideoId: 'invalid-format',
+          updateData: { processing_status: 'ready' },
+        }),
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+  })
+
+  it('drops disallowed fields from updateData before writing to database', async () => {
+    mockAuth.mockResolvedValue({
+      user: { userId: 'u1', role: 'content_admin', email: 'admin@test.com' },
+    })
+
+    const updateFn = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: { id: 'v1', processing_status: 'ready' },
+            error: null,
+          }),
+        }),
+      }),
+    })
+    const selectEq = vi.fn().mockResolvedValue({
+      data: [{ id: 'v1', title: 'Test', processing_status: 'processing' }],
+      error: null,
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({ eq: selectEq }),
+        update: updateFn,
+      })),
+    } as never)
+
+    const res = await POST(
+      createNextRequest('/api/video-processing/update-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          cloudflareVideoId: 'abcdef01234567890abcdef012345678',
+          updateData: {
+            processing_status: 'ready',
+            view_count: 9999,
+            id: 'injected-id',
+            cloudflare_video_id: 'injected-cf-id',
+            title: 'should-be-stripped',
+          },
+        }),
+      })
+    )
+
+    expect(res.status).toBe(200)
+    expect(updateFn).toHaveBeenCalledTimes(1)
+    const payload = updateFn.mock.calls[0][0]
+    expect(payload.processing_status).toBe('ready')
+    expect(payload.view_count).toBeUndefined()
+    expect(payload.id).toBeUndefined()
+    expect(payload.cloudflare_video_id).toBeUndefined()
+    expect(payload.title).toBeUndefined()
+    expect(payload.updated_at).toBeDefined()
   })
 })
