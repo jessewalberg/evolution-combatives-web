@@ -1267,3 +1267,17 @@ describe('browser environment guards', () => {
     })
   }
 })
+
+describe('escapePostgrestFilter', () => {
+  it('escapes PostgREST filter metacharacters', async () => {
+    const { escapePostgrestFilter } = await import('./content')
+    expect(escapePostgrestFilter('normal')).toBe('normal')
+    expect(escapePostgrestFilter('foo,bar')).toBe('foo\\,bar')
+    expect(escapePostgrestFilter('foo.bar')).toBe('foo\\.bar')
+    expect(escapePostgrestFilter('foo(bar)')).toBe('foo\\(bar\\)')
+    expect(escapePostgrestFilter('50%')).toBe('50\\%')
+    expect(escapePostgrestFilter('_test')).toBe('\\_test')
+    expect(escapePostgrestFilter('back\\slash')).toBe('back\\\\slash')
+    expect(escapePostgrestFilter('all,chars.here(test)%_\\')).toBe('all\\,chars\\.here\\(test\\)\\%\\_\\\\')
+  })
+})

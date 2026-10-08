@@ -9,6 +9,22 @@
 import {
     createAdminClient
 } from '../lib/supabase'
+
+/**
+ * Escape user input for use in PostgREST filter strings.
+ * PostgREST filter syntax uses commas, dots, parentheses, and percent signs.
+ * This escapes them to prevent filter injection.
+ */
+export function escapePostgrestFilter(input: string): string {
+    return input
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_')
+        .replace(/,/g, '\\,')
+        .replace(/\./g, '\\.')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+}
 import { createClientComponentClient } from '../lib/supabase-browser'
 import { handleSupabaseError } from '../lib/shared/utils/supabase-errors'
 import { RealtimeService } from '../lib/shared/services/realtime'
@@ -225,7 +241,8 @@ export const contentQueries = {
 
         // Apply filters
         if (filters.search) {
-            query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+            const safeSearch = escapePostgrestFilter(filters.search)
+            query = query.or(`title.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
         }
         if (filters.categoryId) {
             query = query.eq('category_id', filters.categoryId)
@@ -954,19 +971,20 @@ export const adminFeatures = {
         videos: VideoWithRelations[]
     }> {
         const supabase = createAdminClient()
+        const safeQuery = escapePostgrestFilter(query)
 
         const [disciplinesResult, categoriesResult, videosResult] = await Promise.all([
             supabase
                 .from('disciplines')
                 .select('*, categories(*)')
-                .ilike('name', `%${query}%`)
+                .ilike('name', `%${safeQuery}%`)
                 .eq('is_active', true)
                 .limit(10),
 
             supabase
                 .from('categories')
                 .select('*, discipline(*)')
-                .ilike('name', `%${query}%`)
+                .ilike('name', `%${safeQuery}%`)
                 .eq('is_active', true)
                 .limit(10),
 
@@ -976,7 +994,7 @@ export const adminFeatures = {
                     *,
                     categories!category_id(*, disciplines!discipline_id(*))
                 `)
-                .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+                .or(`title.ilike.%${safeQuery}%,description.ilike.%${safeQuery}%`)
                 .limit(20)
         ])
 

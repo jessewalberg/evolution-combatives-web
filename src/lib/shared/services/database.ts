@@ -6,6 +6,17 @@
  * @author Evolution Combatives
  */
 
+function escapePostgrestFilter(input: string): string {
+    return input
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_')
+        .replace(/,/g, '\\,')
+        .replace(/\./g, '\\.')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+}
+
 import type {
     TypedSupabaseClient,
     VideoFilters,
@@ -90,7 +101,8 @@ export class DatabaseService {
                     query = query.eq('status', 'published')
                 }
                 if (filters?.search) {
-                    query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+                    const safeSearch = escapePostgrestFilter(filters.search)
+                    query = query.or(`title.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
                 }
 
                 // Apply sorting
