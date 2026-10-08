@@ -37,7 +37,7 @@ describe('needsCSRFProtection', () => {
     expect(needsCSRFProtection(createNextRequest('/api/webhooks/cloudflare', { method: 'DELETE' }))).toBe(false)
   })
 
-  it('requires CSRF for paths containing webhook but not under /api/webhooks/', () => {
+  it('only exempts the /api/webhooks/ prefix', () => {
     expect(needsCSRFProtection(createNextRequest('/api/webhook/test', { method: 'POST' }))).toBe(true)
     expect(needsCSRFProtection(createNextRequest('/api/some-webhook', { method: 'POST' }))).toBe(true)
     expect(needsCSRFProtection(createNextRequest('/api/v1/webhook-handler', { method: 'POST' }))).toBe(true)
