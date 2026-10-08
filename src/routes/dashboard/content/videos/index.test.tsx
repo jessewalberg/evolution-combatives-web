@@ -217,11 +217,11 @@ describe('VideoLibraryPage', () => {
     expect(createObjectURLSpy).toHaveBeenCalled()
     const blobArg = createObjectURLSpy.mock.calls[0][0] as Blob
     expect(blobArg).toBeInstanceOf(Blob)
-    expect(blobArg.type).toBe('text/csv')
+    expect(blobArg.type).toBe('text/csv;charset=utf-8')
 
     const csvText = await blobArg.text()
     const lines = csvText.split('\n')
-    expect(lines[0]).toBe('Title,Category,Instructor,Status,Tier,Upload Date,Views')
+    expect(lines[0]).toBe('"Title","Category","Instructor","Status","Tier","Upload Date","Views"')
     expect(lines).toContain(
       '"Guard Pass Fundamentals","Fundamentals","","ready","tier1","2024-05-01T00:00:00.000Z","100"'
     )
