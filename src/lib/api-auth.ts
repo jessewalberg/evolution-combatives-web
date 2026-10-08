@@ -91,3 +91,47 @@ export async function validateApiAuthWithSession(requiredPermission: string): Pr
 export async function validateApiAuth(_request: Request, requiredPermission: string): Promise<{ user: ApiUser } | { error: Response }> {
     return validateApiAuthWithSession(requiredPermission)
 }
+
+export interface SessionUser {
+    userId: string
+    email: string
+}
+
+type SessionAuthSuccess = { user: SessionUser }
+type SessionAuthError = { error: Response }
+export type SessionAuthResult = SessionAuthSuccess | SessionAuthError
+
+/**
+ * Validates cookie-based session auth for regular users (no admin role required).
+ * Use for user-facing endpoints like checkout where any authenticated user can access.
+ */
+export async function validateSessionAuth(): Promise<SessionAuthResult> {
+    try {
+        const supabase = await createServerClient()
+
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+        if (userError || !user) {
+            return {
+                error: json({ success: false, error: 'Authentication required' }, { status: 401 })
+            }
+        }
+
+        if (!user.email) {
+            return {
+                error: json({ success: false, error: 'User email not found' }, { status: 400 })
+            }
+        }
+
+        return {
+            user: {
+                userId: user.id,
+                email: user.email
+            }
+        }
+    } catch {
+        return {
+            error: json({ success: false, error: 'Authentication failed' }, { status: 500 })
+        }
+    }
+}

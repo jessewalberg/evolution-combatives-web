@@ -91,8 +91,6 @@ function SubscribePage() {
                 credentials: 'include',
                 body: JSON.stringify({
                     tier,
-                    userId,
-                    userEmail,
                 }),
             });
 

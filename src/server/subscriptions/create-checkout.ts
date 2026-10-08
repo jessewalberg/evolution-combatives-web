@@ -1,6 +1,9 @@
 /**
- * Evolution Combatives - Create Stripe Checkout Session API
+ * Evolution Combatives - Create Stripe Checkout Session API (Web)
  * Handles creation of Stripe checkout sessions for subscription payments
+ * 
+ * This endpoint uses cookie-based session auth for web clients.
+ * Mobile clients should use /api/mobile/subscriptions/create-checkout instead.
  *
  * @description Secure API endpoint for initiating subscription payments
  * @author Evolution Combatives
@@ -9,40 +12,32 @@
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe';
 import { SUBSCRIPTION_PRICING, type SubscriptionTier } from '@/src/lib/shared/constants/subscriptionTiers';
 import { createAdminClient } from '@/src/lib/supabase';
-import { validateMobileAppAuth } from '@/src/lib/mobile-auth';
+import { validateSessionAuth } from '@/src/lib/api-auth';
 import { json } from '@/src/lib/http';
 import { z } from 'zod';
 
-// Request validation schema
+// Request validation schema - userId/userEmail not accepted from body
 const CreateCheckoutSchema = z.object({
     tier: z.enum(['none', 'tier1', 'tier2', 'tier3']),
     successUrl: z.string().url().optional(),
     cancelUrl: z.string().url().optional(),
 });
 
-export async function POST({ request }: { request: Request }): Promise<Response> {
-    // Validate mobile auth - user can only create checkout for themselves
-    // User identity is derived from the authenticated token, not from request body
-    const authResult = await validateMobileAppAuth(request, 'Checkout API');
+export async function POST({ request: _request }: { request: Request }): Promise<Response> {
+    // Validate cookie session - user identity derived from session, not request body
+    const authResult = await validateSessionAuth();
     if ('error' in authResult) {
         return authResult.error;
     }
     
-    const { user: authUser } = authResult;
-    const userId = authUser.id;
-    const userEmail = authUser.email;
-    
-    if (!userEmail) {
-        return json(
-            { error: 'User email not found in session' },
-            { status: 400 }
-        );
-    }
+    const { user: sessionUser } = authResult;
+    const userId = sessionUser.userId;
+    const userEmail = sessionUser.email;
     
     let tier: SubscriptionTier | undefined;
     
     try {
-        const body = await request.json();
+        const body = await _request.json();
         const validatedData = CreateCheckoutSchema.parse(body);
 
         tier = validatedData.tier;
@@ -94,13 +89,11 @@ export async function POST({ request }: { request: Request }): Promise<Response>
             cancelUrl: defaultCancelUrl,
         });
 
-        // Log the checkout session creation
-        console.log('✅ Checkout session created successfully:', {
+        // Log the checkout session creation (no PII)
+        console.log('✅ Checkout session created:', {
             userId,
             tier,
             sessionId: session.id,
-            url: session.url,
-            customerEmail: session.customer_details?.email || userEmail,
             timestamp: new Date().toISOString()
         });
 
@@ -115,7 +108,8 @@ export async function POST({ request }: { request: Request }): Promise<Response>
         console.error('❌ Error creating checkout session:', {
             error: error instanceof Error ? error.message : error,
             stack: error instanceof Error ? error.stack : undefined,
-            requestBody: { tier, userId, userEmail },
+            tier,
+            userId,
             timestamp: new Date().toISOString()
         });
 

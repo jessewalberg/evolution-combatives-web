@@ -3,7 +3,7 @@ import { createNextRequest } from '@/test/helpers/next-request'
 import { POST as POSTHandler, GET } from './create-checkout'
 const POST = (request: Request): Promise<Response> => POSTHandler({ request } as never)
 
-const mockValidateMobileAppAuth = vi.fn()
+const mockValidateSessionAuth = vi.fn()
 
 vi.mock('@/src/lib/stripe', () => ({
   createCheckoutSession: vi.fn(),
@@ -14,8 +14,8 @@ vi.mock('@/src/lib/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-vi.mock('@/src/lib/mobile-auth', () => ({
-  validateMobileAppAuth: (...args: unknown[]) => mockValidateMobileAppAuth(...args),
+vi.mock('@/src/lib/api-auth', () => ({
+  validateSessionAuth: () => mockValidateSessionAuth(),
 }))
 
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
@@ -30,14 +30,13 @@ const validEmail = 'user@example.com'
 
 function makeAuthSuccess(userId: string, email: string) {
   return {
-    user: { id: userId, email },
-    supabase: {},
+    user: { userId, email },
   }
 }
 
 function makeAuthError(status: number, errorMsg: string) {
   return {
-    error: new Response(JSON.stringify({ error: errorMsg }), {
+    error: new Response(JSON.stringify({ success: false, error: errorMsg }), {
       status,
       headers: { 'Content-Type': 'application/json' },
     }),
@@ -76,10 +75,10 @@ describe('GET /api/subscriptions/create-checkout', () => {
   })
 })
 
-describe('POST /api/subscriptions/create-checkout', () => {
+describe('POST /api/subscriptions/create-checkout (web session auth)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockValidateMobileAppAuth.mockResolvedValue(makeAuthSuccess(validUserId, validEmail))
+    mockValidateSessionAuth.mockResolvedValue(makeAuthSuccess(validUserId, validEmail))
     mockGetOrCreateCustomer.mockResolvedValue({ id: 'cus_123' } as never)
     mockCreateCheckoutSession.mockResolvedValue({
       id: 'cs_123',
@@ -89,8 +88,8 @@ describe('POST /api/subscriptions/create-checkout', () => {
     mockCreateAdminClient.mockReturnValue(buildSupabase({}) as never)
   })
 
-  it('returns 401 when not authenticated', async () => {
-    mockValidateMobileAppAuth.mockResolvedValue(makeAuthError(401, 'Authentication required'))
+  it('returns 401 when not authenticated (no session)', async () => {
+    mockValidateSessionAuth.mockResolvedValue(makeAuthError(401, 'Authentication required'))
 
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
@@ -151,7 +150,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
     expect(body.error).toBe('Price ID not configured for tier: none')
   })
 
-  it('creates checkout session on success', async () => {
+  it('creates checkout session on success with session-derived user', async () => {
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
@@ -167,6 +166,7 @@ describe('POST /api/subscriptions/create-checkout', () => {
       tier: 'tier1',
       price: 19,
     })
+    // User identity comes from session, not request body
     expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -178,17 +178,22 @@ describe('POST /api/subscriptions/create-checkout', () => {
     )
   })
 
-  it('user can only create checkout for themselves', async () => {
-    // The endpoint now uses session auth - users can only checkout for themselves
-    // This is enforced by using session user ID, not accepting userId in body
+  it('ignores userId/userEmail in request body - uses session only', async () => {
+    // Even if attacker sends different userId in body, session user is used
+    const attackerUserId = '22222222-2222-4222-8222-222222222222'
     const res = await POST(
       createNextRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: 'tier1' }),
+        body: JSON.stringify({ 
+          tier: 'tier1',
+          userId: attackerUserId,
+          userEmail: 'attacker@example.com'
+        }),
       })
     )
     
     expect(res.status).toBe(200)
+    // Should use session user, not body values
     expect(mockGetOrCreateCustomer).toHaveBeenCalledWith(validEmail, validUserId)
   })
 })
