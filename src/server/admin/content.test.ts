@@ -591,4 +591,122 @@ describe('POST /api/admin/content', () => {
     expect(res.status).toBe(500)
     expect((await res.json()).success).toBe(false)
   })
+
+  it('strips disallowed fields from createVideo', async () => {
+    authSuccess(mockAuth, { role: 'super_admin' })
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'v-new', title: 'New' },
+          error: null,
+        }),
+      }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({ insert })),
+    } as never)
+
+    await POST(
+      createNextRequest('/api/admin/content', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'createVideo',
+          videoData: {
+            title: 'New',
+            slug: 'new',
+            view_count: 9999,
+            processing_status: 'hacked',
+            id: 'injected-id',
+            created_at: '1970-01-01',
+            updated_at: '1970-01-01',
+          },
+        }),
+      })
+    )
+
+    expect(insert).toHaveBeenCalledTimes(1)
+    const insertedData = insert.mock.calls[0][0]
+    expect(insertedData.view_count).toBeUndefined()
+    expect(insertedData.processing_status).toBeUndefined()
+    expect(insertedData.id).toBeUndefined()
+    expect(insertedData.title).toBe('New')
+    expect(insertedData.slug).toBe('new')
+  })
+
+  it('strips disallowed fields from updateVideo', async () => {
+    authSuccess(mockAuth, { role: 'super_admin' })
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: { id: 'v1', title: 'Updated' },
+            error: null,
+          }),
+        }),
+      }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({ update })),
+    } as never)
+
+    await POST(
+      createNextRequest('/api/admin/content', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'updateVideo',
+          videoId: 'v1',
+          updates: {
+            title: 'Updated',
+            view_count: 9999,
+            processing_status: 'hacked',
+            id: 'injected-id',
+            cloudflare_video_id: 'hijacked-stream',
+            created_at: '1970-01-01',
+          },
+        }),
+      })
+    )
+
+    expect(update).toHaveBeenCalledTimes(1)
+    const updateData = update.mock.calls[0][0]
+    expect(updateData.view_count).toBeUndefined()
+    expect(updateData.processing_status).toBeUndefined()
+    expect(updateData.id).toBeUndefined()
+    expect(updateData.cloudflare_video_id).toBeUndefined()
+    expect(updateData.created_at).toBeUndefined()
+    expect(updateData.title).toBe('Updated')
+  })
+
+  it('strips disallowed fields from bulkUpdateVideoStatus', async () => {
+    authSuccess(mockAuth, { role: 'super_admin' })
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({ update })),
+    } as never)
+
+    await POST(
+      createNextRequest('/api/admin/content', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'bulkUpdateVideoStatus',
+          videoIds: ['v1'],
+          updates: {
+            is_published: true,
+            title: 'should-be-stripped',
+            view_count: 9999,
+            cloudflare_video_id: 'hijacked',
+          },
+        }),
+      })
+    )
+
+    expect(update).toHaveBeenCalledTimes(1)
+    const updateData = update.mock.calls[0][0]
+    expect(updateData.is_published).toBe(true)
+    expect(updateData.title).toBeUndefined()
+    expect(updateData.view_count).toBeUndefined()
+    expect(updateData.cloudflare_video_id).toBeUndefined()
+  })
 })
