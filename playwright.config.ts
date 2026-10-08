@@ -48,9 +48,10 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    // CI disables traces and videos; local runs keep on-first-retry defaults.
+    trace: isCI ? 'off' : 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: isCI ? 'off' : 'retain-on-failure',
     // Pass Cloudflare Access headers when testing Access-protected URLs
     extraHTTPHeaders: cfAccessHeaders,
   },
