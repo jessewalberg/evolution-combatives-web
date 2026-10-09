@@ -18,8 +18,12 @@ test.describe('@visual analytics', () => {
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 })
     const chartMask = page.locator('.recharts-responsive-container, .recharts-wrapper')
+    // Live metrics + system health values are computed during SSR, where the
+    // browser-side Math.random seed cannot reach; mask them like the charts.
+    const liveMask = page.locator('[data-testid="realtime-metrics"], [data-testid="system-health"]')
+    const refreshMask = page.getByRole('button', { name: /auto refresh/i })
     await expectVisualScreenshot(page, `analytics-populated-${vp}`, {
-      mask: [chartMask],
+      mask: [chartMask, liveMask, refreshMask],
     })
   })
 
@@ -32,8 +36,10 @@ test.describe('@visual analytics', () => {
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 })
     const chartMask = page.locator('.recharts-responsive-container, .recharts-wrapper')
+    const liveMask = page.locator('[data-testid="realtime-metrics"], [data-testid="system-health"]')
+    const refreshMask = page.getByRole('button', { name: /auto refresh/i })
     await expectVisualScreenshot(page, `analytics-empty-${vp}`, {
-      mask: [chartMask],
+      mask: [chartMask, liveMask, refreshMask],
     })
   })
 })

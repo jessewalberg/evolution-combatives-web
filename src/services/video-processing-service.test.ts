@@ -178,4 +178,63 @@ describe('videoProcessingService', () => {
     // @ts-expect-error cleanup
     delete globalThis.window
   })
+
+  it('sends processing_status ready without is_published when video becomes ready', async () => {
+    const svc = await loadService()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    svc.addProcessingVideo('cf-ready-no-publish')
+
+    checkUploadStatus.mockResolvedValueOnce({ status: 'ready' })
+    getVideoDetails.mockResolvedValue({ duration: 120 })
+    mockFetch.mockResolvedValue({ ok: true, statusText: 'OK' })
+
+    svc.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await Promise.resolve()
+    await Promise.resolve()
+    await vi.runOnlyPendingTimersAsync()
+
+    // Find the update-status call
+    const updateCall = mockFetch.mock.calls.find(
+      (call) => call[0] === '/api/video-processing/update-status'
+    )
+    expect(updateCall).toBeDefined()
+
+    const body = JSON.parse(updateCall![1].body)
+    expect(body.updateData.processing_status).toBe('ready')
+    expect(body.updateData).not.toHaveProperty('is_published')
+
+    svc.stop()
+    log.mockRestore()
+  })
+
+  it('sends processing_status ready without is_published for previously unpublished video', async () => {
+    const svc = await loadService()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    svc.addProcessingVideo('cf-unpublished-video')
+
+    checkUploadStatus.mockResolvedValueOnce({ status: 'ready' })
+    getVideoDetails.mockResolvedValue({ duration: 60 })
+    mockFetch.mockResolvedValue({ ok: true, statusText: 'OK' })
+
+    svc.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await Promise.resolve()
+    await Promise.resolve()
+    await vi.runOnlyPendingTimersAsync()
+
+    const updateCall = mockFetch.mock.calls.find(
+      (call) => call[0] === '/api/video-processing/update-status'
+    )
+    expect(updateCall).toBeDefined()
+
+    const body = JSON.parse(updateCall![1].body)
+    expect(body.updateData.processing_status).toBe('ready')
+    expect(body.updateData).not.toHaveProperty('is_published')
+
+    svc.stop()
+    log.mockRestore()
+  })
 })

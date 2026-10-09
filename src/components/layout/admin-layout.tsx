@@ -10,8 +10,8 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Link from '@/src/components/compat/link'
+import { useLocation } from '@tanstack/react-router'
 import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
 import ROUTES from '../../lib/routes'
@@ -221,7 +221,7 @@ const NavItemComponent: React.FC<NavItemComponentProps> = ({
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(false)
     const hasChildren = item.children && item.children.length > 0
-    const pathname = usePathname()
+    const pathname = useLocation({ select: (l) => l.pathname })
 
     // Check if user has access to this item
     if (!item.roles.includes(userRole)) {
@@ -370,7 +370,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onToggle,
     onClose
 }) => {
-    const pathname = usePathname()
+    const pathname = useLocation({ select: (l) => l.pathname })
 
     return (
         <>

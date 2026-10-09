@@ -1,0 +1,277 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createNextRequest } from '@/test/helpers/next-request'
+import { POST as POSTHandler } from './signed-url'
+
+const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
+
+// Valid 32-char lowercase hex video ID
+const VALID_VIDEO_ID = '6b9e68b07dfee8cc2d116e4c51d6a957'
+const ANOTHER_VALID_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1'
+
+const mockGetUser = vi.fn()
+const mockSubscriptionSelect = vi.fn()
+const mockAdminVideoSelect = vi.fn()
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({
+    auth: { getUser: mockGetUser },
+  })),
+}))
+
+vi.mock('@/src/lib/supabase', () => ({
+  getSupabaseConfig: () => ({ url: 'https://test.supabase.co', anonKey: 'anon-key' }),
+  createAdminClient: () => ({
+    from: (table: string) => {
+      if (table === 'videos') {
+        return { select: () => ({ eq: () => ({ single: mockAdminVideoSelect }) }) }
+      }
+      if (table === 'subscriptions') {
+        return { select: () => ({ eq: () => ({ in: () => ({ maybeSingle: mockSubscriptionSelect }) }) }) }
+      }
+      return { select: () => ({ eq: () => ({ single: vi.fn() }) }) }
+    },
+  }),
+}))
+
+const mockGetVideoDetails = vi.fn()
+const mockGenerateSignedUrl = vi.fn()
+
+vi.mock('@/src/services/cloudflare-stream', () => {
+  class CloudflareStreamError extends Error {
+    code: number
+    constructor(message: string, code: number) {
+      super(message)
+      this.code = code
+      this.name = 'CloudflareStreamError'
+    }
+  }
+  return {
+    videoManagement: {
+      getVideoDetails: (...args: unknown[]) => mockGetVideoDetails(...args),
+      generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
+    },
+    CloudflareStreamError,
+    isValidStreamVideoId: (id: unknown) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id),
+  }
+})
+
+function authRequest(body: Record<string, unknown>) {
+  return createNextRequest('/api/video/signed-url', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { Authorization: 'Bearer valid-token' },
+  })
+}
+
+describe('POST /api/video/signed-url', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'user@test.com' } },
+      error: null,
+    })
+    mockSubscriptionSelect.mockResolvedValue({
+      data: { tier: 'tier3' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
+      error: null,
+    })
+    mockGetVideoDetails.mockResolvedValue({
+      status: 'ready',
+      duration: 90,
+      readyToStream: true,
+      thumbnail: 'https://thumb',
+    })
+    mockGenerateSignedUrl.mockResolvedValue('https://stream.example/video.m3u8?token=xyz')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: () => 'application/vnd.apple.mpegurl' },
+      })
+    )
+  })
+
+  it('returns 401 without bearer token', async () => {
+    const res = (await POST(
+      createNextRequest('/api/video/signed-url', {
+        method: 'POST',
+        body: JSON.stringify({ videoId: 'v1' }),
+      })
+    ))!
+    expect(res.status).toBe(401)
+    expect((await res.json()).error).toBe('Authentication required')
+  })
+
+  it('returns 401 for invalid token', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'bad' } })
+
+    const res = (await POST(authRequest({ videoId: 'v1' })))!
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 400 when videoId missing', async () => {
+    const res = (await POST(authRequest({})))!
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Video ID is required')
+  })
+
+  it('returns 400 for invalid video ID format before DB lookup', async () => {
+    const res = (await POST(authRequest({ videoId: 'not-valid-hex' })))!
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+    // Verify no DB call was made
+    expect(mockAdminVideoSelect).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 when video missing in Cloudflare', async () => {
+    mockGetVideoDetails.mockRejectedValueOnce(new Error('gone'))
+
+    const res = (await POST(authRequest({ videoId: ANOTHER_VALID_ID })))!
+    expect(res.status).toBe(404)
+    expect((await res.json()).error).toBe('Video not found in Cloudflare Stream')
+  })
+
+  it('generates signed url using user actual tier (tier3 user)', async () => {
+    const res = (await POST(
+      authRequest({ videoId: VALID_VIDEO_ID, format: 'mp4' })
+    ))!
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.success).toBe(true)
+    expect(body.data.signed_url).toContain('token=')
+    // Should use user's actual tier (tier3) not any client-provided value
+    expect(mockGenerateSignedUrl).toHaveBeenCalledWith(
+      VALID_VIDEO_ID,
+      'tier3',
+      expect.objectContaining({ downloadable: true }),
+      'mp4'
+    )
+  })
+
+  it('returns 403 when user tier insufficient for video', async () => {
+    mockSubscriptionSelect.mockResolvedValue({
+      data: { tier: 'tier1' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier3', cloudflare_video_id: VALID_VIDEO_ID, title: 'Premium Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+  })
+
+  it('returns 403 for unpublished videos', async () => {
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: VALID_VIDEO_ID, title: 'Draft Video', is_published: false },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Video not available')
+  })
+
+  it('treats unknown tier values as none', async () => {
+    mockSubscriptionSelect.mockResolvedValue({
+      data: { tier: 'legacy_premium' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+  })
+
+  it('treats missing subscription as none tier', async () => {
+    mockSubscriptionSelect.mockResolvedValue({
+      data: null,
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'tier1', cloudflare_video_id: VALID_VIDEO_ID, title: 'Test Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+  })
+
+  it('allows access when no subscription required (tier none)', async () => {
+    mockSubscriptionSelect.mockResolvedValue({
+      data: null,
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'none', cloudflare_video_id: VALID_VIDEO_ID, title: 'Free Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(200)
+  })
+
+  it('treats invalid video tier_required as tier3 (denied, not free)', async () => {
+    mockSubscriptionSelect.mockResolvedValue({
+      data: { tier: 'tier2' },
+      error: null,
+    })
+    mockAdminVideoSelect.mockResolvedValue({
+      data: { id: 'vid-1', tier_required: 'garbage_invalid_tier', cloudflare_video_id: VALID_VIDEO_ID, title: 'Corrupted Video', is_published: true },
+      error: null,
+    })
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe('Subscription tier too low')
+    expect(body.details).toContain('tier3')
+  })
+
+  it('tolerates HEAD probe failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(200)
+  })
+
+  it('returns 404 for Not Found from generateSignedUrl', async () => {
+    mockGenerateSignedUrl.mockRejectedValue(new Error('Not Found'))
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 500 for generic errors', async () => {
+    mockGenerateSignedUrl.mockRejectedValue(new Error('boom'))
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toBe('Failed to generate signed video URL')
+  })
+
+  it('returns 500 when auth throws', async () => {
+    mockGetUser.mockRejectedValue(new Error('auth crash'))
+
+    const res = (await POST(authRequest({ videoId: VALID_VIDEO_ID })))!
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toBe('Authentication failed')
+  })
+})

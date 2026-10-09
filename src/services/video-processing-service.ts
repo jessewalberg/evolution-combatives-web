@@ -145,7 +145,6 @@ class VideoProcessingService {
             interface UpdateData {
                 processing_status: 'ready' | 'error';
                 duration_seconds?: number;
-                is_published?: boolean;
             }
 
             const updateData: UpdateData = {
@@ -156,9 +155,7 @@ class VideoProcessingService {
                 updateData.duration_seconds = Math.round(duration)
             }
 
-            if (status === 'ready') {
-                updateData.is_published = true // Auto-publish when ready
-            }
+            // Publishing is an admin action; sync updates processing_status only
 
             const response = await fetch('/api/video-processing/update-status', {
                 method: 'POST',

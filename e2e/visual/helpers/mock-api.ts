@@ -192,10 +192,6 @@ export async function installVisualMocks(
     })
   })
 
-  await page.route('**/api/subscriptions/create-checkout', (route) =>
-    json(route, { url: 'https://checkout.stripe.com/test/visual-session' })
-  )
-
   await page.route('**/api/cloudflare/**', (route) =>
     json(route, {
       success: true,

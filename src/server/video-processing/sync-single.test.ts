@@ -1,0 +1,361 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { json as jsonResponse } from '@/src/lib/http'
+import { createNextRequest } from '@/test/helpers/next-request'
+import { authSuccess } from '@/test/helpers/auth'
+import { POST as POSTHandler } from './sync-single'
+
+const POST = (request?: Request) =>
+  POSTHandler({ request: request ?? new Request('http://localhost/') } as never)
+
+vi.mock('@/src/lib/api-auth', () => ({
+  validateApiAuthWithSession: vi.fn(),
+}))
+
+vi.mock('@/src/lib/supabase', () => ({
+  createAdminClient: vi.fn(),
+}))
+
+const mockCheckUploadStatus = vi.fn()
+
+vi.mock('@/src/services/cloudflare-stream', () => {
+  class CloudflareStreamError extends Error {
+    code: number
+    constructor(message: string, code: number) {
+      super(message)
+      this.code = code
+      this.name = 'CloudflareStreamError'
+    }
+  }
+  return {
+    cloudflareStreamService: {
+      upload: {
+        checkUploadStatus: (...args: unknown[]) => mockCheckUploadStatus(...args),
+      },
+    },
+    CloudflareStreamError,
+    isValidStreamVideoId: (id: unknown) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id),
+  }
+})
+
+import { validateApiAuthWithSession } from '@/src/lib/api-auth'
+import { createAdminClient } from '@/src/lib/supabase'
+
+const mockAuth = vi.mocked(validateApiAuthWithSession)
+const mockCreateAdminClient = vi.mocked(createAdminClient)
+
+function request(body: Record<string, unknown>) {
+  return createNextRequest('/api/video-processing/sync-single', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+describe('POST /api/video-processing/sync-single', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('returns auth error', async () => {
+    mockAuth.mockResolvedValue({
+      error: jsonResponse({ success: false, error: 'denied' }, { status: 401 }),
+    })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 400 when videoId missing', async () => {
+    authSuccess(mockAuth)
+    const res = await POST(request({}))
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('Video ID is required')
+  })
+
+  it('returns 404 when video not found', async () => {
+    authSuccess(mockAuth)
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'missing' } }),
+          }),
+        }),
+      })),
+    } as never)
+
+    const res = await POST(request({ videoId: 'missing' }))
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 when cloudflare id missing', async () => {
+    authSuccess(mockAuth)
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: null,
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+      })),
+    } as never)
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('No Cloudflare video ID')
+  })
+
+  it('updates video when cloudflare status is ready', async () => {
+    authSuccess(mockAuth)
+    const updateEq = vi.fn().mockResolvedValue({ error: null })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({ eq: updateEq }),
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'ready' })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    const body = await res.json()
+
+    expect(mockAuth).toHaveBeenCalledWith('content.write')
+    expect(res.status).toBe(200)
+    expect(body.success).toBe(true)
+    expect(body.result.updated).toBe(true)
+    expect(body.result.newStatus).toBe('ready')
+  })
+
+  it('updates video when cloudflare status is error', async () => {
+    authSuccess(mockAuth)
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'error' })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    const body = await res.json()
+
+    expect(body.result.newStatus).toBe('error')
+    expect(body.result.updated).toBe(true)
+  })
+
+  it('does not update when still processing', async () => {
+    authSuccess(mockAuth)
+    const update = vi.fn()
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update,
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'processing' })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    const body = await res.json()
+
+    expect(body.result.updated).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('returns 500 when update fails', async () => {
+    authSuccess(mockAuth)
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: { message: 'lock' } }),
+        }),
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'ready' })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toContain('Failed to update video')
+  })
+
+  it('returns 500 when cloudflare throws', async () => {
+    authSuccess(mockAuth)
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+      })),
+    } as never)
+    mockCheckUploadStatus.mockRejectedValue(new Error('CF down'))
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toBe('CF down')
+  })
+
+  it('returns 400 when cloudflare video ID is invalid format before service call', async () => {
+    authSuccess(mockAuth)
+    const updateMock = vi.fn()
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: 'invalid-format',
+                title: 'Vid',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update: updateMock,
+      })),
+    } as never)
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid video ID format')
+    // Stream service should NOT be called when validation fails
+    expect(mockCheckUploadStatus).not.toHaveBeenCalled()
+    // Videos row should NOT be updated when validation fails
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('sets processing_status ready without is_published when Stream reports ready', async () => {
+    authSuccess(mockAuth)
+    const updateMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Draft Video',
+                processing_status: 'processing',
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update: updateMock,
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'ready' })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(200)
+
+    const updateArg = updateMock.mock.calls[0][0]
+    expect(updateArg.processing_status).toBe('ready')
+    expect(updateArg).not.toHaveProperty('is_published')
+  })
+
+  it('sets processing_status ready without is_published for previously unpublished video', async () => {
+    authSuccess(mockAuth)
+    const updateMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'v1',
+                cloudflare_video_id: '6b9e68b07dfee8cc2d116e4c51d6a957',
+                title: 'Unpublished Video',
+                processing_status: 'processing',
+                is_published: false,
+              },
+              error: null,
+            }),
+          }),
+        }),
+        update: updateMock,
+      })),
+    } as never)
+    mockCheckUploadStatus.mockResolvedValue({ status: 'ready' })
+
+    const res = await POST(request({ videoId: 'v1' }))
+    expect(res.status).toBe(200)
+
+    const updateArg = updateMock.mock.calls[0][0]
+    expect(updateArg.processing_status).toBe('ready')
+    expect(updateArg).not.toHaveProperty('is_published')
+  })
+})

@@ -207,7 +207,7 @@ export const staleTimeConfig = {
 // Error handling for queries
 function handleQueryError(error: unknown, queryKey: QueryKey) {
     if (process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console
+         
         console.error('Query error:', { error, queryKey })
     }
 
@@ -473,7 +473,7 @@ export const devUtils = {
     logQueries: (queryClient: QueryClient) => {
         if (process.env.NODE_ENV === 'development') {
             const queryCache = queryClient.getQueryCache()
-            // eslint-disable-next-line no-console
+             
             console.table(
                 queryCache.getAll().map(query => ({
                     queryKey: JSON.stringify(query.queryKey),

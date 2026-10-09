@@ -20,7 +20,7 @@ Vault / item for local-dev:
 Per field:
 
 ```bash
-op read "op://evolution-combatives-web-app/preview/NEXT_PUBLIC_SUPABASE_URL"
+op read "op://evolution-combatives-web-app/preview/VITE_SUPABASE_URL"
 # …repeat for each field, or:
 op item get preview --vault evolution-combatives-web-app
 ```
@@ -29,28 +29,21 @@ Required fields (same names as app env / GitHub Actions secrets):
 
 | Variable |
 |----------|
-| `NEXT_PUBLIC_SUPABASE_URL` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| `VITE_SUPABASE_URL` |
+| `VITE_SUPABASE_ANON_KEY` |
 | `SUPABASE_SERVICE_ROLE_KEY` |
 | `STRIPE_SECRET_KEY` |
 | `STRIPE_PUBLISHABLE_KEY` |
-| `STRIPE_WEBHOOK_SECRET` |
 | `STRIPE_BEGINNER_PRICE_ID` |
 | `STRIPE_INTERMEDIATE_PRICE_ID` |
 | `STRIPE_ADVANCED_PRICE_ID` |
 | `CLOUDFLARE_ACCOUNT_ID` |
-| `CLOUDFLARE_API_TOKEN` |
 | `CLOUDFLARE_CUSTOMER_SUBDOMAIN` |
-| `CLOUDFLARE_STREAM_SIGNING_KEY` |
-| `CLOUDFLARE_STREAM_SIGNING_KEY_ID` |
-| `CLOUDFLARE_STREAM_WEBHOOK_SECRET` |
-| `CLOUDFLARE_WEBHOOK_SECRET` |
-| `NEXT_PUBLIC_MOBILE_APP_SCHEME` |
-| `NEXT_PUBLIC_POSTHOG_KEY` |
-| `NEXT_PUBLIC_POSTHOG_HOST` |
-| `NEXT_PUBLIC_APP_URL` |
-| `NEXT_PUBLIC_ADMIN_URL` |
-| `NODE_ENV` |
+| `VITE_MOBILE_APP_SCHEME` |
+| `VITE_POSTHOG_KEY` |
+| `VITE_POSTHOG_HOST` |
+| `VITE_APP_URL` |
+| `VITE_ADMIN_URL` |
 
 E2E-only credentials (admin user used by the auth setup project):
 
@@ -58,12 +51,16 @@ E2E-only credentials (admin user used by the auth setup project):
 |----------|---------|
 | `E2E_ADMIN_EMAIL` | Super-admin (or content-capable admin) for `storageState` |
 | `E2E_ADMIN_PASSWORD` | Password for that user |
+| `CF_ACCESS_CLIENT_ID` | Cloudflare Access service token ID |
+| `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access service token secret |
 
 `playwright.config.ts` loads `.env.test.local` via `dotenv`. Never print secret values into logs, screenshots assertions, or commit them.
 
 ## CI credentials
 
-`.github/workflows/e2e.yml` reads **plain GitHub Actions secrets** with the same names as the env vars above (plus `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD`). It does **not** invoke the 1Password CLI. Populating those repo secrets is the repo owner's job (values live in vault `evolution-combatives-web-ci` / item `preview`).
+`.github/workflows/e2e.yml` uses the **Preview** GitHub Environment (`environment: preview`), which holds all E2E secrets as environment-scoped secrets. It does **not** invoke the 1Password CLI. Populating those environment secrets is the repo owner's job (values live in vault `evolution-combatives-web-ci` / item `preview`).
+
+See `docs/GO-LIVE.md` section 2 "Preview Environment Secrets" for the full list of required secrets.
 
 Fork PRs are skipped (`head.repo.full_name == github.repository`) because secrets are unavailable.
 

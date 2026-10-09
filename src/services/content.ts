@@ -9,6 +9,11 @@
 import {
     createAdminClient
 } from '../lib/supabase'
+import { escapeLikePattern, buildOrIlikeFilter } from '../lib/postgrest-escape'
+import {
+    VIDEO_ALLOWED_UPDATE_FIELDS,
+    filterAllowedFields,
+} from '../lib/video-field-allowlists'
 import { createClientComponentClient } from '../lib/supabase-browser'
 import { handleSupabaseError } from '../lib/shared/utils/supabase-errors'
 import { RealtimeService } from '../lib/shared/services/realtime'
@@ -225,7 +230,7 @@ export const contentQueries = {
 
         // Apply filters
         if (filters.search) {
-            query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+            query = query.or(buildOrIlikeFilter(['title', 'description'], filters.search))
         }
         if (filters.categoryId) {
             query = query.eq('category_id', filters.categoryId)
@@ -378,7 +383,7 @@ export const contentMutations = {
             tags: videoData.tags || null,
             processing_status: videoData.status || 'processing',
             is_published: videoData.isPublished || false,
-            view_count: videoData.viewCount || 0,
+            view_count: 0,
             sort_order: videoData.sortOrder || 0
         }
 
@@ -407,10 +412,15 @@ export const contentMutations = {
 
         const supabase = createAdminClient()
 
+        const filteredUpdates = filterAllowedFields(
+            updates as Record<string, unknown>,
+            VIDEO_ALLOWED_UPDATE_FIELDS
+        )
+
         const { data, error } = await supabase
             .from('videos')
             .update({
-                ...updates,
+                ...filteredUpdates,
                 updated_at: new Date().toISOString()
             })
             .eq('id', videoId)
@@ -797,53 +807,6 @@ export const contentMutations = {
 // Admin Features
 export const adminFeatures = {
     /**
-     * Bulk update video status
-     * NOTE: This function requires admin access and should only be called server-side
-     */
-    async bulkUpdateVideoStatus(
-        videoIds: string[],
-        updates: { is_published?: boolean; processing_status?: ProcessingStatus }
-    ): Promise<BulkOperationResult> {
-        // Check if we're in a browser environment
-        if (typeof window !== 'undefined') {
-            throw new Error('bulkUpdateVideoStatus requires admin access and cannot be used in browser environment - use server-side API routes instead')
-        }
-
-        const supabase = createAdminClient()
-        const results: BulkOperationResult = {
-            success: false,
-            processed: 0,
-            failed: 0,
-            errors: []
-        }
-
-        for (const videoId of videoIds) {
-            try {
-                const { error } = await supabase
-                    .from('videos')
-                    .update({
-                        ...updates,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', videoId)
-
-                if (error) {
-                    results.failed++
-                    results.errors.push(`Video ${videoId}: ${handleSupabaseError(error)}`)
-                } else {
-                    results.processed++
-                }
-            } catch (error) {
-                results.failed++
-                results.errors.push(`Video ${videoId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-            }
-        }
-
-        results.success = results.failed === 0
-        return results
-    },
-
-    /**
      * Bulk delete videos
      * NOTE: This function requires admin access and should only be called server-side
      */
@@ -954,19 +917,20 @@ export const adminFeatures = {
         videos: VideoWithRelations[]
     }> {
         const supabase = createAdminClient()
+        const safeQuery = escapeLikePattern(query)
 
         const [disciplinesResult, categoriesResult, videosResult] = await Promise.all([
             supabase
                 .from('disciplines')
                 .select('*, categories(*)')
-                .ilike('name', `%${query}%`)
+                .ilike('name', `%${safeQuery}%`)
                 .eq('is_active', true)
                 .limit(10),
 
             supabase
                 .from('categories')
                 .select('*, discipline(*)')
-                .ilike('name', `%${query}%`)
+                .ilike('name', `%${safeQuery}%`)
                 .eq('is_active', true)
                 .limit(10),
 
@@ -976,7 +940,7 @@ export const adminFeatures = {
                     *,
                     categories!category_id(*, disciplines!discipline_id(*))
                 `)
-                .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+                .or(buildOrIlikeFilter(['title', 'description'], query))
                 .limit(20)
         ])
 

@@ -20,7 +20,6 @@ export const ROUTES = {
     SIGNUP: '/sign-up',
     FORGOT_PASSWORD: '/forgot-password',
     RESET_PASSWORD: '/reset-password',
-    SUBSCRIBE: '/subscribe',
     SUBSCRIPTION_SUCCESS: '/subscription-success',
 
     // Auth routes
@@ -108,9 +107,6 @@ export const ROUTES = {
         VIDEO: {
             SIGNED_URL: '/api/video/signed-url',
         },
-        SUBSCRIPTIONS: {
-            CREATE_CHECKOUT: '/api/subscriptions/create-checkout',
-        },
     },
 } as const
 
@@ -136,7 +132,6 @@ export const RouteHelpers = {
             ROUTES.FORGOT_PASSWORD,
             ROUTES.RESET_PASSWORD,
             ROUTES.AUTH.CONFIRM,
-            ROUTES.SUBSCRIBE,
             ROUTES.SUBSCRIPTION_SUCCESS,
         ]
         return publicRoutes.includes(path) || path.startsWith('/api/')

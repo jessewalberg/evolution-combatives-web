@@ -14,11 +14,13 @@ import {
   debounce,
   getTacticalStatusText,
   formatTierName,
+  getSafeRedirectUrl,
 } from '@/src/lib/utils'
 
 describe('cn', () => {
   it('merges class names and resolves Tailwind conflicts', () => {
     expect(cn('px-4', 'px-6')).toContain('px-6')
+    // eslint-disable-next-line no-constant-binary-expression -- exercising cn() falsy filtering
     expect(cn('px-4', false && 'hidden', 'block')).toContain('block')
   })
 })
@@ -167,5 +169,77 @@ describe('tactical / tier display', () => {
     expect(formatTierName('tier2')).toBe('Tier 2 Operator')
     expect(formatTierName('tier1')).toBe('Tier 1 Recruit')
     expect(formatTierName('none')).toBe('No Active Subscription')
+  })
+})
+
+describe('getSafeRedirectUrl', () => {
+  it('accepts valid relative paths starting with /', () => {
+    expect(getSafeRedirectUrl('/dashboard')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/dashboard/users')).toBe('/dashboard/users')
+    expect(getSafeRedirectUrl('/login')).toBe('/login')
+    expect(getSafeRedirectUrl('/')).toBe('/')
+    expect(getSafeRedirectUrl('/path?query=1')).toBe('/path?query=1')
+  })
+
+  it('returns fallback for null, undefined, and empty', () => {
+    expect(getSafeRedirectUrl(null)).toBe('/dashboard')
+    expect(getSafeRedirectUrl(undefined)).toBe('/dashboard')
+    expect(getSafeRedirectUrl('')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('   ')).toBe('/dashboard')
+  })
+
+  it('uses custom fallback when provided', () => {
+    expect(getSafeRedirectUrl(null, '/login')).toBe('/login')
+    expect(getSafeRedirectUrl('https://example.invalid', '/home')).toBe('/home')
+  })
+
+  it('rejects absolute URLs with protocols', () => {
+    expect(getSafeRedirectUrl('https://example.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('http://example.invalid/path')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('javascript:alert(1)')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('data:text/html,<script>alert(1)</script>')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('HTTPS://EXAMPLE.INVALID')).toBe('/dashboard')
+  })
+
+  it('rejects protocol-relative URLs', () => {
+    expect(getSafeRedirectUrl('//example.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('//example.invalid/path')).toBe('/dashboard')
+  })
+
+  it('rejects paths not starting with /', () => {
+    expect(getSafeRedirectUrl('dashboard')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('example.invalid')).toBe('/dashboard')
+  })
+
+  it('rejects encoded slash variants', () => {
+    expect(getSafeRedirectUrl('/%2f%2fexample.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/%2Fexample.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/%5Cexample.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%5Cto%5Cfile')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%00hidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%0ahidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%09hidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path%20with%20space')).toBe('/dashboard')
+  })
+
+  it('rejects URLs with backslash', () => {
+    expect(getSafeRedirectUrl('/path\\to\\file')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('\\\\example.invalid')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/\\example.invalid')).toBe('/dashboard')
+  })
+
+  it('rejects URLs with control characters', () => {
+    expect(getSafeRedirectUrl('/path\x00hidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\x1fhidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\x7fhidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\nhidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\rhidden')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\thidden')).toBe('/dashboard')
+  })
+
+  it('rejects URLs with embedded whitespace', () => {
+    expect(getSafeRedirectUrl('/path with space')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\twith-tab')).toBe('/dashboard')
+    expect(getSafeRedirectUrl('/path\nwith-newline')).toBe('/dashboard')
   })
 })

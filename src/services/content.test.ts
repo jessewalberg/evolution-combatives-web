@@ -314,6 +314,29 @@ describe('contentMutations', () => {
     )
   })
 
+  it('createVideo ignores client-supplied viewCount and writes 0', async () => {
+    const created = { id: 'cf-1', title: 'Test', view_count: 0 }
+    const single = vi.fn().mockResolvedValue({ data: created, error: null })
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({ single }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn().mockReturnValue({ insert }),
+    } as never)
+
+    await contentMutations.createVideo({
+      id: 'cf-1',
+      title: 'Test',
+      slug: 'test',
+      categoryId: 'cat-1',
+      viewCount: 9999,
+    })
+
+    expect(insert).toHaveBeenCalledTimes(1)
+    const payload = insert.mock.calls[0][0]
+    expect(payload.view_count).toBe(0)
+  })
+
   it('createVideo throws on insert error', async () => {
     const single = vi.fn().mockResolvedValue({
       data: null,
@@ -362,6 +385,33 @@ describe('contentMutations', () => {
       }),
     } as never)
     await expect(contentMutations.updateVideo('v1', { title: 'X' })).rejects.toBeTruthy()
+  })
+
+  it('updateVideo drops disallowed fields before sending to database', async () => {
+    const single = vi.fn().mockResolvedValue({ data: { id: 'v1', title: 'OK' }, error: null })
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single }) }),
+    })
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn().mockReturnValue({ update }),
+    } as never)
+
+    await contentMutations.updateVideo('v1', {
+      title: 'OK',
+      view_count: 999,
+      id: 'other-id',
+      cloudflare_video_id: 'other-cf-id',
+      created_at: '1970-01-01',
+    } as never)
+
+    expect(update).toHaveBeenCalledTimes(1)
+    const payload = update.mock.calls[0][0]
+    expect(payload.title).toBe('OK')
+    expect(payload.view_count).toBeUndefined()
+    expect(payload.id).toBeUndefined()
+    expect(payload.cloudflare_video_id).toBeUndefined()
+    expect(payload.created_at).toBeUndefined()
+    expect(payload.updated_at).toBeDefined()
   })
 
   it('deleteVideo cleans up progress then deletes video', async () => {
@@ -599,30 +649,6 @@ describe('contentMutations', () => {
 
 describe('adminFeatures', () => {
   beforeEach(() => vi.clearAllMocks())
-
-  it('bulkUpdateVideoStatus counts processed and failed', async () => {
-    let call = 0
-    mockCreateAdminClient.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockImplementation(async () => {
-            call++
-            if (call === 2) {
-              return { error: { code: 'XX', message: 'nope', details: '', hint: '' } }
-            }
-            return { error: null }
-          }),
-        }),
-      }),
-    } as never)
-
-    const result = await adminFeatures.bulkUpdateVideoStatus(['a', 'b', 'c'], {
-      is_published: true,
-    })
-    expect(result.processed).toBe(2)
-    expect(result.failed).toBe(1)
-    expect(result.success).toBe(false)
-  })
 
   it('bulkDeleteVideos aggregates delete results', async () => {
     const progressEq = vi.fn().mockResolvedValue({ error: null })
@@ -1107,43 +1133,6 @@ describe('additional error and edge paths', () => {
     expect(analytics.subscriberTierBreakdown.none).toBe(0)
   })
 
-  it('bulkUpdateVideoStatus succeeds fully and captures thrown errors', async () => {
-    mockCreateAdminClient.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ error: null }),
-        }),
-      }),
-    } as never)
-    const ok = await adminFeatures.bulkUpdateVideoStatus(['a'], { processing_status: 'ready' })
-    expect(ok).toMatchObject({ success: true, processed: 1, failed: 0 })
-
-    mockCreateAdminClient.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockImplementation(() => {
-            throw new Error('network')
-          }),
-        }),
-      }),
-    } as never)
-    const failed = await adminFeatures.bulkUpdateVideoStatus(['b'], { is_published: false })
-    expect(failed.failed).toBe(1)
-    expect(failed.errors[0]).toMatch(/network/)
-
-    mockCreateAdminClient.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockImplementation(() => {
-            throw 'string-fail'
-          }),
-        }),
-      }),
-    } as never)
-    const unknown = await adminFeatures.bulkUpdateVideoStatus(['c'], { is_published: true })
-    expect(unknown.errors[0]).toMatch(/Unknown error/)
-  })
-
   it('bulkDeleteVideos reports full success', async () => {
     mockCreateAdminClient.mockReturnValue({
       from: vi.fn(() => ({
@@ -1243,10 +1232,6 @@ describe('browser environment guards', () => {
       run: () => contentMutations.reorderContent('videos', [{ id: 'v1', sort_order: 1 }]),
     },
     {
-      name: 'bulkUpdateVideoStatus',
-      run: () => adminFeatures.bulkUpdateVideoStatus(['v1'], { is_published: true }),
-    },
-    {
       name: 'bulkDeleteVideos',
       run: () => adminFeatures.bulkDeleteVideos(['v1']),
     },
@@ -1267,3 +1252,4 @@ describe('browser environment guards', () => {
     })
   }
 })
+

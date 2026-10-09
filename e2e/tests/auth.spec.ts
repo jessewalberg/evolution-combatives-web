@@ -207,6 +207,7 @@ test.describe('Auth - session timeout', () => {
         )
       }
       if (failures.length) {
+        // eslint-disable-next-line no-unsafe-finally -- teardown failures must surface
         throw new Error(
           `Session timeout teardown failed: ${failures.join('; ')}`
         )

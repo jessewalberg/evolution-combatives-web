@@ -1,0 +1,92 @@
+# Pre-merge quality gate. Separate jobs keep branch-protection checks
+# independently visible and rerunnable.
+#
+# Typecheck runs `pnpm exec vite build` first because the TSS plugin
+# generates src/routeTree.gen.ts during build; tsc needs that file to
+# type-check route files correctly.
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  # Intentionally no `push:` trigger. Checks fire on PRs only — branch
+  # protection gates the merge. deploy.yml's push trigger handles
+  # auto-deploy separately.
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Worker types
+        run: pnpm cf-typegen
+
+      - name: Build + typecheck
+        # vite build triggers the tanstackStart() plugin, which writes
+        # src/routeTree.gen.ts; the package build script then runs tsc.
+        run: pnpm build
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage gate
+        run: pnpm test:coverage
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run lint
+        run: pnpm lint

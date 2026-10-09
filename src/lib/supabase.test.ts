@@ -3,59 +3,85 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const createClientComponentClient = vi.fn(() => ({ kind: 'browser' }))
-const createServerComponentClient = vi.fn(() => ({ kind: 'server' }))
-const createMiddlewareClientHelper = vi.fn(() => ({ kind: 'middleware' }))
+const ssrBrowserClient = vi.fn(() => ({ kind: 'browser' }))
+const ssrServerClient = vi.fn(() => ({ kind: 'server' }))
 const createClient = vi.fn(() => ({ kind: 'admin' }))
+const getCookies = vi.fn(() => ({ 'sb-auth': 'token' }))
+const setCookie = vi.fn()
 
-vi.mock('@supabase/auth-helpers-nextjs', () => ({
-  createClientComponentClient: (...args: unknown[]) =>
-    (createClientComponentClient as (...a: unknown[]) => unknown)(...args),
-  createServerComponentClient: (...args: unknown[]) =>
-    (createServerComponentClient as (...a: unknown[]) => unknown)(...args),
-  createMiddlewareClient: (...args: unknown[]) =>
-    (createMiddlewareClientHelper as (...a: unknown[]) => unknown)(...args),
+vi.mock('@supabase/ssr', () => ({
+  createBrowserClient: (...args: unknown[]) => (ssrBrowserClient as (...a: unknown[]) => unknown)(...args),
+  createServerClient: (...args: unknown[]) => (ssrServerClient as (...a: unknown[]) => unknown)(...args),
+  parseCookieHeader: (header: string) =>
+    header
+      ? header.split('; ').map((part) => {
+          const [name, ...rest] = part.split('=')
+          return { name, value: rest.join('=') }
+        })
+      : [],
+  serializeCookieHeader: (name: string, value: string) => `${name}=${value}`,
 }))
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: (...args: unknown[]) => (createClient as (...a: unknown[]) => unknown)(...args),
 }))
 
-vi.mock('next/headers', () => ({
-  cookies: vi.fn(() => ({ get: vi.fn() })),
+vi.mock('@tanstack/react-start/server', () => ({
+  getCookies: (...args: unknown[]) => (getCookies as (...a: unknown[]) => unknown)(...args),
+  setCookie: (...args: unknown[]) => (setCookie as (...a: unknown[]) => unknown)(...args),
 }))
+
+type CookieAdapter = {
+  cookies: {
+    getAll: () => Array<{ name: string; value: string }>
+    setAll: (cookies: Array<{ name: string; value: string; options?: object }>) => void
+  }
+}
 
 describe('supabase clients', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co')
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key')
   })
 
   afterEach(() => {
+    vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
 
-  it('createBrowserClient uses createClientComponentClient', async () => {
+  it('createBrowserClient builds an SSR browser client with url and anon key', async () => {
     const { createBrowserClient } = await import('./supabase')
     expect(createBrowserClient()).toEqual({ kind: 'browser' })
-    expect(createClientComponentClient).toHaveBeenCalled()
+    expect(ssrBrowserClient).toHaveBeenCalledWith('https://test.supabase.co', 'anon-key')
   })
 
-  it('createServerClient and createServerComponentClient pass cookies', async () => {
-    const { createServerClient, createServerComponentClient: createSCC } = await import('./supabase')
+  it('createServerClient wires cookies through the Start request context', async () => {
+    const { createServerClient } = await import('./supabase')
     await expect(createServerClient()).resolves.toEqual({ kind: 'server' })
-    await expect(createSCC()).resolves.toEqual({ kind: 'server' })
-    expect(createServerComponentClient).toHaveBeenCalledWith(
-      expect.objectContaining({ cookies: expect.any(Function) })
-    )
+
+    const adapter = (ssrServerClient.mock.calls[0] as unknown[])[2] as CookieAdapter
+    expect(adapter.cookies.getAll()).toEqual([{ name: 'sb-auth', value: 'token' }])
+
+    adapter.cookies.setAll([{ name: 'sb-auth', value: 'refreshed', options: { path: '/' } }])
+    expect(setCookie).toHaveBeenCalledWith('sb-auth', 'refreshed', { path: '/' })
   })
 
-  it('createMiddlewareClient forwards req/res', async () => {
+  it('createMiddlewareClient reads request cookies and collects Set-Cookie headers', async () => {
     const { createMiddlewareClient } = await import('./supabase')
-    const req = { url: 'https://example.com' } as never
-    const res = { cookies: {} } as never
-    expect(createMiddlewareClient(req, res)).toEqual({ kind: 'middleware' })
-    expect(createMiddlewareClientHelper).toHaveBeenCalledWith({ req, res })
+    const request = new Request('https://example.com/dashboard', {
+      headers: { cookie: 'sb-auth=token' },
+    })
+
+    const { supabase, cookieHeaders } = createMiddlewareClient(request)
+    expect(supabase).toEqual({ kind: 'server' })
+
+    const adapter = (ssrServerClient.mock.calls[0] as unknown[])[2] as CookieAdapter
+    expect(adapter.cookies.getAll()).toEqual([{ name: 'sb-auth', value: 'token' }])
+
+    adapter.cookies.setAll([{ name: 'sb-auth', value: 'refreshed' }])
+    expect(cookieHeaders.getSetCookie()).toEqual(['sb-auth=refreshed'])
   })
 
   it('createAdminClient throws in browser', async () => {
@@ -67,7 +93,6 @@ describe('supabase clients', () => {
   it('createAdminClient throws when service role key missing', async () => {
     const prev = process.env.SUPABASE_SERVICE_ROLE_KEY
     delete process.env.SUPABASE_SERVICE_ROLE_KEY
-    // Ensure no window
     // @ts-expect-error test cleanup
     delete globalThis.window
 
@@ -81,7 +106,6 @@ describe('supabase clients', () => {
     // @ts-expect-error ensure server
     delete globalThis.window
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role'
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
 
     const { createAdminClient } = await import('./supabase')
     expect(createAdminClient()).toEqual({ kind: 'admin' })
