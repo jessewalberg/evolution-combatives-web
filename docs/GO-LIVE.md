@@ -18,6 +18,7 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 
 - **Apex**: `evolutioncombatives.com`
 - **WWW**: `www.evolutioncombatives.com`
+- **Public access**: The production domain is the customer-facing site and is publicly accessible. Cloudflare Access is not applied to production.
 - Custom domains are attached in a separate cutover change after the first production deploy (see Cutover section below)
 
 ---
@@ -361,7 +362,9 @@ Confirm `CLOUDFLARE_STREAM_WEBHOOK_SECRET` matches the secret returned by the St
 
 ---
 
-## 10. Cloudflare Access Protection (DONE)
+## 10. Cloudflare Access Protection (Staging/Preview Only)
+
+Cloudflare Access applies only to staging and preview Workers. The production domain (`evolutioncombatives.com`) is public and is not behind Access.
 
 Staging and preview Workers are protected by Cloudflare Access. This was configured via `cf` CLI on Oct 8, 2026.
 
