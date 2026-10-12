@@ -599,7 +599,8 @@ export const videoManagement = {
             width?: number
             height?: number
             fit?: 'clip' | 'crop' | 'pad' | 'scale-down'
-        } = {}
+        } = {},
+        expiresAt?: number
     ): Promise<string> {
         validateStreamVideoId(videoId)
         assertStreamSigningKeys(videoId)
@@ -613,7 +614,7 @@ export const videoManagement = {
 
         const now = Math.floor(Date.now() / 1000)
         const token = await requestStreamToken(videoId, {
-            exp: now + (60 * 60),
+            exp: expiresAt ?? now + (60 * 60),
             nbf: now,
             downloadable: false,
             accessRules: [],

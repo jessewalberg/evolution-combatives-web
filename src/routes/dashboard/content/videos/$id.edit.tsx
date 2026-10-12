@@ -110,6 +110,7 @@ function VideoEditPage() {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
     const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null)
     const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
+    const [signedThumbnailUrl, setSignedThumbnailUrl] = useState<string | null>(null)
     const [isDirty, setIsDirty] = useState(false)
 
     // Check permissions
@@ -157,23 +158,43 @@ function VideoEditPage() {
         }
     }, [videoQuery.data, form])
 
-    // Generate video preview URL when video loads
     useEffect(() => {
+        const streamId = videoQuery.data?.cloudflare_video_id
+        const ready = videoQuery.data?.processing_status === 'ready'
+        let cancelled = false
+        setVideoPreviewUrl(null)
+        setSignedThumbnailUrl(null)
+        if (!streamId) return
+
         const generatePreviewUrl = async () => {
-            if (videoQuery.data?.cloudflare_video_id && videoQuery.data.processing_status === 'ready') {
-                try {
-                    const previewUrl = await cloudflareApi.generateAdminPreviewUrl(
-                        videoQuery.data.cloudflare_video_id
-                    )
-                    setVideoPreviewUrl(previewUrl)
-                } catch (error) {
-                    console.error('Failed to generate preview URL:', error)
+            try {
+                if (ready) {
+                    const previewUrl = await cloudflareApi.generateAdminPreviewUrl(streamId)
+                    if (!cancelled) setVideoPreviewUrl(previewUrl)
+                }
+                const thumbnailUrl = await cloudflareApi.generateThumbnailUrl(streamId)
+                if (!cancelled) setSignedThumbnailUrl(thumbnailUrl)
+            } catch (error) {
+                console.error('Failed to generate preview URL:', error)
+                if (!cancelled) {
+                    setVideoPreviewUrl(null)
+                    setSignedThumbnailUrl(null)
                 }
             }
         }
 
-        generatePreviewUrl()
-    }, [videoQuery.data])
+        void generatePreviewUrl()
+        const refreshTimer = setInterval(() => { void generatePreviewUrl() }, 50 * 60 * 1000)
+        const refreshOnReturn = () => {
+            if (document.visibilityState === 'visible') void generatePreviewUrl()
+        }
+        document.addEventListener('visibilitychange', refreshOnReturn)
+        return () => {
+            cancelled = true
+            clearInterval(refreshTimer)
+            document.removeEventListener('visibilitychange', refreshOnReturn)
+        }
+    }, [videoQuery.data?.cloudflare_video_id, videoQuery.data?.processing_status])
 
     // Watch for form changes
     useEffect(() => {
@@ -570,7 +591,7 @@ function VideoEditPage() {
                                             src={videoPreviewUrl}
                                             controls
                                             className="w-full h-full object-cover"
-                                            poster={video.thumbnail_url || undefined}
+                                            poster={signedThumbnailUrl || undefined}
                                         >
                                             Your browser does not support the video tag.
                                         </video>
@@ -597,9 +618,9 @@ function VideoEditPage() {
                                             height={180}
                                             className="w-full h-full object-cover"
                                         />
-                                    ) : video.thumbnail_url ? (
+                                    ) : signedThumbnailUrl ? (
                                         <Image
-                                            src={video.thumbnail_url}
+                                            src={signedThumbnailUrl}
                                             alt="Video thumbnail"
                                             width={320}
                                             height={180}

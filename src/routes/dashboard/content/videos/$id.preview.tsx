@@ -157,12 +157,23 @@ function VideoPreviewPage() {
                 }
             } catch (error) {
                 console.error('Failed to sign admin video preview:', error)
+                if (!cancelled) {
+                    setSignedPreviewUrl(null)
+                    setSignedThumbnailUrl(null)
+                }
             }
         }
 
         void loadSignedUrls()
+        const refreshTimer = setInterval(() => { void loadSignedUrls() }, 50 * 60 * 1000)
+        const refreshOnReturn = () => {
+            if (document.visibilityState === 'visible') void loadSignedUrls()
+        }
+        document.addEventListener('visibilitychange', refreshOnReturn)
         return () => {
             cancelled = true
+            clearInterval(refreshTimer)
+            document.removeEventListener('visibilitychange', refreshOnReturn)
         }
     }, [streamId, processingStatus])
 

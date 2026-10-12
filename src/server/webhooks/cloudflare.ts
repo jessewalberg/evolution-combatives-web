@@ -23,8 +23,6 @@ interface CloudflareStreamWebhookPayload {
         hls?: string
         dash?: string
     }
-    preview?: string
-    thumbnail?: string
     duration?: number
     input?: {
         width?: number
@@ -188,12 +186,6 @@ function deriveStatusFromPayload(payload: CloudflareStreamWebhookPayload): {
         if (payload.playback?.dash) {
             metadata.dash_url = payload.playback.dash
         }
-        if (payload.thumbnail) {
-            metadata.thumbnail_url = payload.thumbnail
-        }
-        if (payload.preview) {
-            metadata.preview_url = payload.preview
-        }
         if (payload.size) {
             metadata.file_size = payload.size
         }
@@ -257,8 +249,6 @@ async function updateVideoStatus(
     if (metadata.resolution) updateData.resolution = metadata.resolution
     if (metadata.hls_url) updateData.hls_url = metadata.hls_url
     if (metadata.dash_url) updateData.dash_url = metadata.dash_url
-    if (metadata.thumbnail_url) updateData.thumbnail_url = metadata.thumbnail_url
-    if (metadata.preview_url) updateData.preview_url = metadata.preview_url
     if (metadata.file_size) updateData.file_size = metadata.file_size
     if (metadata.error_code) updateData.error_code = metadata.error_code
     if (metadata.error_message) updateData.error_message = metadata.error_message
@@ -513,4 +503,4 @@ export async function DELETE() {
         { error: 'Method not allowed' },
         { status: 405 }
     )
-} 
+}

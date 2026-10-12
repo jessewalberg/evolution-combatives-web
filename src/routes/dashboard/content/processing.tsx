@@ -10,7 +10,7 @@
 import * as React from 'react'
 import { useState, useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import Image from '@/src/components/compat/image'
+import { SignedStreamThumbnail } from '@/src/components/video/signed-stream-thumbnail'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -172,19 +172,16 @@ function ProcessingJobRow({
             <TableCell>
                 <div className="flex items-center gap-3">
                     <div className="w-16 h-12 bg-neutral-700 rounded overflow-hidden">
-                        {job.video.thumbnail_url ? (
-                            <Image
-                                src={job.video.thumbnail_url}
-                                alt={job.video.title}
-                                width={64}
-                                height={48}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center">
+                        <SignedStreamThumbnail
+                            videoId={job.video.cloudflare_video_id}
+                            alt={job.video.title}
+                            width={64}
+                            height={48}
+                            className="w-full h-full object-cover"
+                            fallback={<div className="w-full h-full flex items-center justify-center">
                                 <PlayIcon className="h-6 w-6 text-neutral-400" />
-                            </div>
-                        )}
+                            </div>}
+                        />
                     </div>
                     <div>
                         <div className="font-medium text-neutral-0">{job.video.title}</div>

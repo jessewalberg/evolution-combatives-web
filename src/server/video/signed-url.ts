@@ -189,12 +189,13 @@ export async function POST({ request }: { request: Request }) {
         }
 
         // Generate signed URL using user's ACTUAL subscription tier (not client-provided)
+        const expiresAt = Math.floor(Date.now() / 1000) + getExpirationSeconds(userTier)
         const signedUrl = await videoManagement.generateSignedUrl(
             videoId,
             userTier,
             {
                 downloadable: format === 'mp4',
-                exp: Math.floor(Date.now() / 1000) + getExpirationSeconds(userTier)
+                exp: expiresAt
             },
             format as 'hls' | 'mp4'
         )
@@ -208,6 +209,11 @@ export async function POST({ request }: { request: Request }) {
 
         // Get video metadata for additional info
         const videoDetails = await videoManagement.getVideoDetails(videoId)
+        const thumbnailUrl = await videoManagement.generateThumbnailUrl(
+            videoId,
+            {},
+            expiresAt,
+        )
 
         return json({
             success: true,
@@ -215,8 +221,8 @@ export async function POST({ request }: { request: Request }) {
                 signed_url: signedUrl,
                 video_id: videoId,
                 duration: videoDetails.duration || 0,
-                thumbnail_url: videoDetails.thumbnail || null,
-                expires_at: new Date(Date.now() + getExpirationSeconds(userTier) * 1000).toISOString()
+                thumbnail_url: thumbnailUrl,
+                expires_at: new Date(expiresAt * 1000).toISOString()
             }
         })
 

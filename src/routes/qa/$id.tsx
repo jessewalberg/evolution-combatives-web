@@ -18,6 +18,7 @@ import { Avatar } from '@/src/components/ui/avatar'
 import { LoadingOverlay } from '@/src/components/ui/loading'
 import { createClientComponentClient } from '@/src/lib/supabase-browser'
 import { queryKeys } from '@/src/lib/query-client'
+import { useSignedStreamThumbnail } from '@/src/components/video/signed-stream-thumbnail'
 
 // Icons
 import {
@@ -65,7 +66,7 @@ interface QuestionDetail {
         id: string
         title: string
         description?: string
-        thumbnail_url?: string
+        cloudflare_video_id?: string | null
         stream_url?: string
         duration: number
         category: {
@@ -157,7 +158,7 @@ export function QuestionDetailPage() {
                         id,
                         title,
                         description,
-                        thumbnail_url,
+                        cloudflare_video_id,
                         duration:duration_seconds,
                         category:categories!videos_category_id_fkey(
                             name,
@@ -387,6 +388,9 @@ export function QuestionDetailPage() {
     }
 
     const question = questionQuery.data
+    const signedThumbnailUrl = useSignedStreamThumbnail(
+        profile?.admin_role === 'super_admin' ? question?.video?.cloudflare_video_id : null
+    )
 
     if (authLoading) {
         return (
@@ -539,7 +543,7 @@ export function QuestionDetailPage() {
                                         {question.video.stream_url ? (
                                             <video
                                                 src={question.video.stream_url}
-                                                poster={question.video.thumbnail_url}
+                                                poster={signedThumbnailUrl || undefined}
                                                 controls
                                                 className="w-full h-full object-cover"
                                                 onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}

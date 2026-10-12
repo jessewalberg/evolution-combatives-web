@@ -673,7 +673,6 @@ export function VideoLibraryPage() {
                         id: video.id,
                         title: video.title,
                         description: video.description || '',
-                        thumbnailUrl: video.thumbnail_url || undefined,
                         duration: video.duration_seconds || 0,
                         fileSize: 0, // File size not available in current schema
                         status: (video.processing_status || 'ready') as 'uploading' | 'processing' | 'ready' | 'error' | 'archived',
