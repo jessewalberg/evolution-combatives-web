@@ -1,10 +1,10 @@
 # Playwright E2E
 
-Phase 3 of the testing initiative (GitHub issue #19). These tests run against the **same shared Supabase project and Stripe test-mode keys** used by Vercel preview/staging - not a disposable test project. Treat data hygiene as mandatory.
+Phase 3 of the testing initiative (GitHub issue #19). These tests run against the **shared non-production Supabase project and Stripe test-mode keys** used by Workers preview/staging, not a disposable test project. Treat data hygiene as mandatory.
 
 ## Prerequisites
 
-- Node 20+, pnpm 9.15.0
+- Node 22.22.2+, 24.15.0+, or 26+; pnpm 9+
 - 1Password CLI (`op`) signed in for local secret loading
 - Playwright browsers: `pnpm exec playwright install chromium webkit`
 

@@ -56,7 +56,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### Prerequisites
 - Node.js 22.22.2+ (or 24.15.0+, or 26+); see `package.json` `engines.node` 
-- pnpm 7+
+- pnpm 9+ (see `package.json` for the pinned package manager version)
 - Supabase account
 - Cloudflare Stream account
 - Stripe account
@@ -103,7 +103,7 @@ full list. In deployed environments these are wrangler.jsonc `vars` plus
 
 4. **Set up database**
 ```bash
-# Apply the Supabase migrations
+# Apply migrations to a local or staging Supabase project; see docs/GO-LIVE.md for production cutover
 supabase db push   # migrations live in supabase/migrations/
 ```
 
@@ -165,17 +165,7 @@ export const ADMIN_PERMISSIONS = {
 
 ### Cloudflare Workers Deployment
 1. Follow [docs/GO-LIVE.md](docs/GO-LIVE.md). Replace the three `PLACEHOLDER_STRIPE_*` price ids and set Worker secrets before the production deploy.
-2. Deploy: `pnpm deploy:staging` or `pnpm deploy:production` (CI deploys main → production and PRs → preview versions automatically)
-3. Deploy with automatic CI/CD
-
-### Manual Deployment
-```bash
-# Build the application
-pnpm build
-
-# Start production server
-pnpm start
-```
+2. The deploy workflow deploys `main` to production; the preview workflow uploads a preview version for pull requests. See [docs/GO-LIVE.md](docs/GO-LIVE.md) for the release procedure.
 
 ## 📊 Key Features Deep Dive
 
@@ -218,17 +208,15 @@ The admin dashboard integrates with the Evolution Combatives mobile app through:
 ```bash
 pnpm dev          # Start Vite dev server (Workers runtime via @cloudflare/vite-plugin)
 pnpm build        # Build for production
-pnpm start        # Start production server
 pnpm lint         # Run ESLint
 pnpm lint:fix     # Fix ESLint issues
-pnpm type-check   # Run TypeScript type checking
+pnpm typecheck    # Run TypeScript type checking
+pnpm test:e2e     # Run Playwright end-to-end tests
 ```
 
 ### Code Quality
 - **TypeScript**: Full type safety
 - **ESLint**: Code linting (eslint 9 flat config + typescript-eslint)
-- **Prettier**: Code formatting
-- **Husky**: Git hooks for quality checks
 
 ### Testing Strategy
 
@@ -242,12 +230,12 @@ Release verification is build, typecheck, lint, and Playwright end-to-end tests.
 - `PUT /api/content/videos/[id]` - Update video
 - `DELETE /api/content/videos/[id]` - Delete video
 
-### User Management API
-- `GET /api/users` - List users with pagination
-- `PUT /api/users/[id]` - Update user profile
+### User Administration
+User administration is available in the dashboard under `/users`.
 
-### Video Processing API
-- `POST /api/video/signed-url` - Get signed upload URL
+### Video API
+- `POST /api/video/signed-url` - Get a signed playback URL
+- `POST /api/mobile/video/signed-url` - Get a signed playback URL for the mobile app
 - `GET /api/video-processing/get-processing` - Check processing status
 - `POST /api/video-processing/sync-all` - Sync with Cloudflare
 

@@ -6,7 +6,7 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 
 | Environment | Worker Name | Supabase Project | Stripe Mode | Purpose |
 |-------------|-------------|------------------|-------------|---------|
-| **Production** | `evolution-combatives-admin` | `bxpxpkiubjbcmgsnfpvp` (live, shared with mobile app) | Live | Production traffic on `evolutioncombatives.com` |
+| **Production** | `evolution-combatives-admin` | `bxpxpkiubjbcmgsnfpvp` (live, shared with mobile app) | Live | Production traffic on apex and www |
 | **Staging** | `evolution-combatives-admin-staging` | `hknjeztslvbenmlaqfqa` (non-production) | Test | Manual testing, demo |
 | **PR Preview** | `evolution-combatives-admin-preview` | `hknjeztslvbenmlaqfqa` (non-production) | Test | Per-PR preview versions |
 
@@ -297,11 +297,13 @@ API version `2025-03-31.basil` and later removed subscription-level `current_per
 
 If the endpoint was disabled, re-enable it after both hostnames return 200 from `/api/health`. Send one delivery, confirm a 2xx, then let Stripe retry the backlog. Resend any failed event older than the retry window from the dashboard.
 
-The handler re-reads the subscription from Stripe, keeps only subscriptions whose `metadata.userId` matches that member, and upserts one row per member inside a single database transaction. A delayed event cannot restore a cancelled tier. Customer id and email are not ownership. The profile tier is an independent grant; Stripe reconciliation changes the Stripe subscription row and the profile version, not the grant.
+The handler re-reads the event subscription, searches Stripe for that member's `metadata.userId`, and lists subscriptions for every customer recorded for the member in `stripe_customers` plus the event customer. It accepts a subscription with matching member metadata, or one with no member metadata whose customer is already recorded for that member; conflicting member metadata is never accepted. A customer already recorded for another member is an ownership conflict. Email alone does not establish ownership.
+
+The current item price determines the Stripe tier; unknown prices grant none. Among active or trialing subscriptions, the highest tier wins, with newer creation time and then subscription id breaking ties. If none is current, the newest subscription is persisted with no Stripe tier. One database transaction locks the profile, checks its reconciliation version and event timestamp, upserts the single Stripe row, records customer ids, and sets `profiles.subscription_tier` to the higher of the Stripe tier and `profiles.manual_tier`. The webhook never changes `manual_tier`. Duplicate event ids and strictly older event timestamps are ignored; same-second events apply the freshly read Stripe state. Web and mobile signed video URLs use the same effective tier: the higher of `manual_tier` and all active or trialing subscription tiers.
 
 ### Reconcile after replay
 
-The read-only query that looks for active rows with a null profile tier does not find a paid member who has no subscription row. After deliveries are 2xx, in Stripe live mode list every active and trialing subscription (paginate the full result). Map each subscription to its member with that subscription's `metadata.userId` and tier. Compare that list with every `platform = 'stripe'` row. Flag missing or ambiguous ownership and do not assign it by customer id or email. Flag missing rows, wrong subscription ids, stale status or tier, and database rows that are active without a matching active Stripe subscription. Separately review every paid `profiles.subscription_tier` value and clear any value inherited from old Stripe reconciliation while retaining deliberate grants. Replay or repair each mismatch and compare again before calling reconciliation done.
+The read-only query that looks for active rows with a null profile tier does not find a paid member who has no subscription row. After deliveries are 2xx, in Stripe live mode list every active and trialing subscription (paginate the full result). Resolve ownership from `metadata.userId`, or from `stripe_customers` only when that metadata is empty; flag missing or conflicting ownership. Map tiers from current item prices, then compare the selected subscription with each member's `platform = 'stripe'` row. Flag missing rows, wrong subscription ids, stale status or tier, and database rows that are active without a matching active Stripe subscription. Review `profiles.manual_tier` grants separately from the derived `profiles.subscription_tier`, including grants backfilled by the migration. Replay or repair each mismatch and compare again before calling reconciliation done.
 
 ---
 
@@ -439,7 +441,7 @@ pnpm deploy:production
 Run these checks after the production deploy. Neither host should redirect to the other.
 
 1. **API health**
-   - [ ] `GET https://evolutioncombatives.com/api/health` and `GET https://www.evolutioncombatives.com/api/health` return 200 JSON with `server: cloudflare`
+   - [ ] `GET https://evolutioncombatives.com/api/health` and `GET https://www.evolutioncombatives.com/api/health` return 200 JSON with `status: healthy`
    - [ ] `GET /api/webhooks/stripe` and `GET /api/webhooks/cloudflare` return 200 JSON
    - [ ] `POST https://www.evolutioncombatives.com/api/mobile/video/signed-url` with no token returns 401 JSON
 
