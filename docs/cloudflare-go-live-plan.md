@@ -96,7 +96,7 @@ The staging and preview secrets and the separate non-production Stream account a
   - its **API version**;
   - whether it is **enabled**;
   - the date of the **earliest failed delivery**.
-  
+
   Do not create a second endpoint. Two endpoints would deliver every event twice.
 - **Stream:** the account has a single webhook URL. The domain does not change, so the URL is not repointed. Only the secret has to match.
 

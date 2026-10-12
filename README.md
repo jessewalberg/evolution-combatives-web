@@ -50,7 +50,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 - **Payments**: Stripe
 - **State Management**: TanStack Query, Zustand
 - **Analytics**: PostHog
-- **Deployment**: Vercel-ready
+- **Deployment**: Cloudflare Workers migration planned (see [go-live plan](docs/cloudflare-go-live-plan.md))
 
 ## 📦 Installation
 
@@ -169,10 +169,9 @@ export const ADMIN_PERMISSIONS = {
 
 ## 🚀 Deployment
 
-### Vercel Deployment
-1. Connect your repository to Vercel
-2. Configure environment variables in Vercel dashboard
-3. Deploy with automatic CI/CD
+### Cloudflare Workers deployment
+
+Follow the [go-live plan](docs/cloudflare-go-live-plan.md) for the production cutover.
 
 ### Manual Deployment
 ```bash
@@ -237,10 +236,8 @@ pnpm type-check   # Run TypeScript type checking
 - **Husky**: Git hooks for quality checks
 
 ### Testing Strategy
-- Component testing with React Testing Library
-- API endpoint testing
-- Database integration testing
-- End-to-end testing with Playwright
+
+For the release verification policy, see the [go-live plan](docs/cloudflare-go-live-plan.md).
 
 ## 📚 API Documentation
 
@@ -262,7 +259,6 @@ pnpm type-check   # Run TypeScript type checking
 
 ### Development Guidelines
 - Follow TypeScript best practices
-- Write comprehensive tests
 - Use conventional commit messages
 - Maintain backwards compatibility
 - Document API changes
