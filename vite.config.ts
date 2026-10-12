@@ -6,10 +6,6 @@ import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-// Vitest loads this config too; the cloudflare plugin can't run inside the
-// test runner, so it is skipped there (vitest.config.ts owns test settings).
-const isVitest = Boolean(process.env.VITEST)
-
 /**
  * Parse wrangler.jsonc (full-line // comments only) and return the vars
  * block for the given CLOUDFLARE_ENV (unset → top-level; staging/preview →
@@ -63,7 +59,7 @@ export default defineConfig(({ mode }) => {
             //   CLOUDFLARE_ENV unset    → top-level (evolution-combatives-admin, production)
             //   CLOUDFLARE_ENV=staging  → env.staging
             //   CLOUDFLARE_ENV=preview  → env.preview
-            ...(isVitest ? [] : [cloudflare({ viteEnvironment: { name: 'ssr' } })]),
+            cloudflare({ viteEnvironment: { name: 'ssr' } }),
             tanstackStart({
                 // Allow colocated page tests inside src/routes without the
                 // generator treating them as routes.

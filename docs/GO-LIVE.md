@@ -19,7 +19,7 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 - **Apex**: `evolutioncombatives.com`
 - **WWW**: `www.evolutioncombatives.com`
 - **Public access**: The production domain is the customer-facing site and is publicly accessible. Cloudflare Access is not applied to production.
-- Custom domains are attached in a separate cutover change after the first production deploy (see Cutover section below)
+- This release attaches both hostnames as Worker custom domains. `www` is served directly. Do not add a www→apex redirect: the mobile app POSTs to `https://www.evolutioncombatives.com/api/mobile/*`, and Stripe treats a redirect as a failed delivery.
 
 ---
 
@@ -30,20 +30,16 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 **⚠️ REQUIRED BEFORE FIRST PRODUCTION DEPLOY**: The production environment in `wrangler.jsonc` has placeholder values for Stripe:
 
 ```jsonc
-// Lines 78-81 in wrangler.jsonc - currently set to "update"
-"STRIPE_PUBLISHABLE_KEY": "update",
-"STRIPE_BEGINNER_PRICE_ID": "update",
-"STRIPE_INTERMEDIATE_PRICE_ID": "update",
-"STRIPE_ADVANCED_PRICE_ID": "update"
+"STRIPE_BEGINNER_PRICE_ID": "PLACEHOLDER_STRIPE_BEGINNER_PRICE_ID",
+"STRIPE_INTERMEDIATE_PRICE_ID": "PLACEHOLDER_STRIPE_INTERMEDIATE_PRICE_ID",
+"STRIPE_ADVANCED_PRICE_ID": "PLACEHOLDER_STRIPE_ADVANCED_PRICE_ID"
 ```
 
-Replace these with live-mode values from Stripe Dashboard → Products → Pricing before deploying to production:
-- `STRIPE_PUBLISHABLE_KEY` → `pk_live_...` from Stripe → Developers → API keys
-- `STRIPE_BEGINNER_PRICE_ID` → Price ID for $9 Beginner tier
-- `STRIPE_INTERMEDIATE_PRICE_ID` → Price ID for $19 Intermediate tier
-- `STRIPE_ADVANCED_PRICE_ID` → Price ID for $49 Advanced tier
+Replace those three placeholders in `wrangler.jsonc` with the live-mode price ids before the production deploy. Requests to `evolutioncombatives.com` and `www.evolutioncombatives.com`, including `/api/health`, return HTTP 500 while any of them is unset or still a `PLACEHOLDER_` value. They are config vars, not secrets.
 
-Staging and preview environments already have test-mode values configured.
+`STRIPE_PUBLISHABLE_KEY` is still `"update"` and is unused. Web checkout was removed. It is not a launch blocker.
+
+Staging and preview environments already have test-mode price ids configured.
 
 ---
 
@@ -65,7 +61,7 @@ Create two account-owned API tokens, each limited to one Worker:
 3. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Production** environment
 4. Store `CLOUDFLARE_ACCOUNT_ID` in the **Production** environment
 
-**Note**: These tokens have Workers > Specified Workers > Editor scope and cannot attach custom domains. Custom domain attachment at cutover requires a separate token (see Cutover section). If a deploy fails on an account-level lookup, add **Workers** → **All Workers** → **Metadata Read-Only** to the token rather than widening Editor scope.
+**Note**: These tokens have Workers > Specified Workers > Editor scope and cannot attach custom domains. This release's production deploy attaches the apex and www custom domains, so that deploy needs the temporary token in section 6. If a deploy fails on an account-level lookup, add **Workers** → **All Workers** → **Metadata Read-Only** to the token rather than widening Editor scope.
 
 #### Account ID
 - **Value**: `6b13f76a2d42fd29437154c35fa8a0c9` (already configured)
@@ -200,6 +196,8 @@ Signed URL generation fails closed if Stream signing keys are not configured.
 
 3. - [ ] **Mobile playback test against staging (must pass before DNS cutover).** Using a mobile build pointed at the staging Worker, sign in as a paid test user and play a paid video (a signed URL is issued and plays). Then confirm an unpaid user is denied. The mobile app and the Workers API must agree on which video identifier is sent.
 
+The signing key id and PEM are a gate only. `generateSignedUrl` returns 503 when either is missing. The Worker does not sign the playback token with that PEM. It calls Stream's `/token` API with `CLOUDFLARE_API_TOKEN`. Paid playback needs both the gate secrets and that API token.
+
 ---
 
 ## 5. Supabase Auth Configuration
@@ -233,27 +231,9 @@ The wildcard with hyphen covers all PR preview version URLs (e.g., `<id>-evoluti
 
 ---
 
-## 6. First Production Deploy (Worker Only)
+## 6. Production deploy (single release)
 
-The first approved production deploy creates or updates the Worker without attaching custom domains:
-
-1. Merge the PR (squash merge)
-2. The deploy workflow runs and requires Production environment reviewer approval
-3. After approval, the Worker is deployed to `evolution-combatives-admin`
-4. The Worker has no routes and no `workers.dev` URL (`workers_dev: false`)
-5. Verify the Worker exists in Cloudflare Dashboard → Workers & Pages
-
-At this point, production traffic continues to flow to the existing deployment (Vercel). The Worker is deployed but not receiving traffic.
-
----
-
-## 7. Domain Cutover (Separate Change)
-
-Cutover is a separate small PR that attaches custom domains to the production Worker.
-
-### Cutover PR Contents
-
-Add this to `wrangler.jsonc` top-level (not inside an env block):
+Vercel stays disabled. This release is the cutover: squash-merge once, approve the Production deploy once. The top-level `wrangler.jsonc` routes attach both hostnames:
 
 ```jsonc
 "routes": [
@@ -262,45 +242,26 @@ Add this to `wrangler.jsonc` top-level (not inside an env block):
 ]
 ```
 
-### Before Approving the Cutover Deploy
+Staging and preview set `routes: []` and do not inherit them. `www` is served directly. Do not add a redirect from www to the apex.
 
-1. **Check zone DNS records** (read-only): In Cloudflare Dashboard → DNS, verify the apex and www records. Custom domain attachment may modify them.
-2. **Verify production Worker secrets are set**: All secrets from Section 3 must be configured on the production Worker.
-3. **Confirm mobile playback against staging**: Complete the staging mobile playback test from Section 4 before cutover. The production Worker has no routes, no `workers.dev` address, and no preview URLs before cutover.
-4. **Plan post-cutover verification**: After cutover, run the Post-Cutover Smoke Test at the end of this document.
+### Before approving the deploy
 
-### Cutover Token Requirements
+1. Replace the three `PLACEHOLDER_STRIPE_*` price ids in `wrangler.jsonc` (section 0).
+2. Apply pending production Supabase migrations in order, including `20260808000003_fix_stripe_subscription_columns.sql` and `20261012000000_reconcile_stripe_entitlement.sql`. Confirm `subscriptions.stripe_subscription_id` is unique and `(user_id, platform)` is unique. `deploy.yml` does not apply migrations. Do not approve the deploy while this schema is missing.
+3. Set the Worker secrets in section 3.
+4. Delete the apex `A` record and the `www` CNAME that point at Vercel, immediately before approving the deploy. Cloudflare cannot create a custom domain on a hostname that still has a CNAME. DNS is already on Cloudflare (`anita`/`matias.ns.cloudflare.com`); custom domain attachment writes the replacement records. Do not point the names at `workers.dev` by hand.
+5. Put the temporary deploy token below in the Production GitHub environment.
 
-The cutover deploy requires a token that can both deploy the Worker and attach custom domains. The per-Worker token from Section 1 cannot attach custom domains. For cutover:
+Then merge and approve the deploy. After it succeeds, restore the per-Worker production token from section 1 and delete the temporary token.
 
-1. Create a temporary account-owned token via Manage Account → Account API Tokens with:
-   - **Workers** → **All Workers** → **Editor**
-   - **Zone** → **Workers Routes** → **Edit** limited to the `evolutioncombatives.com` zone
-2. Store this token as `CLOUDFLARE_API_TOKEN` in the **Production** GitHub environment for the cutover deploy only
-3. After cutover succeeds, restore the per-Worker production token from Section 1 in the Production environment
-4. Delete the temporary cutover token from the Cloudflare account
+### Deploy token
 
-### Current DNS (Vercel)
-The domain `evolutioncombatives.com` currently points to Vercel.
+The per-Worker token from section 1 cannot attach custom domains. For this deploy, create a temporary account-owned token via Manage Account → Account API Tokens with:
 
-### After Cutover
+- **Workers** → **All Workers** → **Editor**
+- **Zone** → **Workers Routes** → **Edit** limited to the `evolutioncombatives.com` zone
 
-**Cloudflare-managed DNS:**
-If the domain is on Cloudflare DNS, custom domain attachment handles the DNS automatically.
-
-**External DNS:**
-If DNS is managed elsewhere:
-1. Create CNAME records:
-   - `evolutioncombatives.com` → `evolution-combatives-admin.jesse-6b1.workers.dev`
-   - `www.evolutioncombatives.com` → `evolution-combatives-admin.jesse-6b1.workers.dev`
-2. Enable Cloudflare proxy (orange cloud) if using Cloudflare DNS
-
-### Verification
-After DNS propagation:
-```bash
-curl -I https://evolutioncombatives.com/api/health
-# Should show Server: cloudflare
-```
+Store it as `CLOUDFLARE_API_TOKEN` in the **Production** GitHub environment for this deploy only.
 
 ---
 
@@ -323,18 +284,21 @@ The domain `evolutioncombatives.com` is not changing, so a live-mode webhook end
 3. Select the subscription and checkout events needed for the app
 4. Copy the webhook signing secret → Set as `STRIPE_WEBHOOK_SECRET`
 
-### Important: Events During Vercel Outage
-If Vercel was returning 402 DEPLOYMENT_DISABLED, Stripe webhook deliveries may have failed.
-1. Check Stripe Dashboard → Webhooks → Recent deliveries for failures
-2. For failed subscription events, manually reconcile subscriptions table:
-   ```sql
-   -- Check for subscriptions with mismatched status
-   SELECT s.*, p.subscription_tier
-   FROM subscriptions s
-   JOIN profiles p ON s.user_id = p.id
-   WHERE s.status = 'active' AND p.subscription_tier IS NULL;
-   ```
-3. Consider triggering Stripe webhook replay for critical failed events
+### API version and retries
+
+Record the existing endpoint's URL (apex or www; both are served), its API version, whether it is enabled, and the date of the earliest failed delivery. Do not create a second endpoint.
+
+API version `2025-03-31.basil` and later removed subscription-level `current_period_start` / `current_period_end` and moved `invoice.subscription` under `parent`. The handler reads period fields from the subscription item when the top-level fields are missing, and reads the invoice subscription from `parent.subscription_details.subscription`.
+
+`POST /api/webhooks/stripe` is exempt from the per-IP API rate limit so a backlog replay is not answered 429. The Stream webhook and every other route stay limited.
+
+If the endpoint was disabled, re-enable it after both hostnames return 200 from `/api/health`. Send one delivery, confirm a 2xx, then let Stripe retry the backlog. Resend any failed event older than the retry window from the dashboard.
+
+The handler re-reads the subscription from Stripe, keeps only subscriptions whose `metadata.userId` matches that member, and upserts one row per member inside a single database transaction. A delayed event cannot restore a cancelled tier. Customer id and email are not ownership.
+
+### Reconcile after replay
+
+The read-only query that looks for active rows with a null profile tier does not find a paid member who has no subscription row. After deliveries are 2xx, in Stripe live mode list every active and trialing subscription (paginate the full result). Map each subscription to its member with that subscription's `metadata.userId` and tier. Compare that list with every `platform = 'stripe'` row and with `profiles.subscription_tier`. Flag missing or ambiguous ownership and do not assign it by customer id or email. Flag missing rows, wrong subscription ids, stale status or tier, database rows that are active without a matching active Stripe subscription, and profile mismatches. Replay or repair each mismatch and compare again before calling reconciliation done.
 
 ---
 
@@ -456,10 +420,8 @@ wrangler deployments list
 wrangler rollback <deployment-id>
 ```
 
-### Option 2: DNS Rollback to Vercel
-If critical issues arise:
-1. Point DNS back to Vercel (if Vercel deployment is re-enabled)
-2. Or restore from a prior Worker version
+### Option 2: Revert deploy
+Vercel is disabled, so there is no DNS fallback. `wrangler rollback` restores an earlier Worker version. A revert PR still waits for the Production reviewer.
 
 ### Option 3: Quick Fix Deploy
 ```bash
@@ -471,23 +433,26 @@ pnpm deploy:production
 
 ## Post-Cutover Smoke Test
 
-Run these checks after cutover:
+Run these checks after the production deploy. Neither host should redirect to the other.
 
-1. **Login and Dashboard**
-   - [ ] Navigate to `https://evolutioncombatives.com` and verify login works
-   - [ ] Dashboard loads after authentication
+1. **API health**
+   - [ ] `GET https://evolutioncombatives.com/api/health` and `GET https://www.evolutioncombatives.com/api/health` return 200 JSON with `server: cloudflare`
+   - [ ] `GET /api/webhooks/stripe` and `GET /api/webhooks/cloudflare` return 200 JSON
+   - [ ] `POST https://www.evolutioncombatives.com/api/mobile/video/signed-url` with no token returns 401 JSON
 
-2. **API Health**
-   - [ ] `/api/health` returns 200
-   - [ ] `/api/csrf-token` returns token
+2. **Login and Dashboard**
+   - [ ] Log in on both apex and www
+   - [ ] Dashboard, videos, and a video preview load
+   - [ ] `/dashboard` redirects to `/login` when signed out
 
-3. **Mobile API**
-   - [ ] `/api/mobile/video/signed-url` accepts Bearer token
+3. **Mobile**
+   - [ ] A paid account plays a paid video and a free account is denied
+   - [ ] Checkout for each tier opens Stripe showing the right product. No purchase is required
 
-4. **Webhook Verification**
-   - [ ] Upload a test video to Cloudflare Stream
-   - [ ] Verify webhook is received (check Worker logs for 200 response)
-   - [ ] Verify video status is updated in database
+4. **Webhooks**
+   - [ ] Stripe deliveries return 2xx and Worker logs show no signature failure
+   - [ ] Upload a short clip and watch `processing_status` reach `ready`
+   - [ ] Run the subscription reconciliation in section 8
 
 5. **Admin Functions**
    - [ ] Video upload works
@@ -517,7 +482,7 @@ Run these checks after cutover:
 | Verify/create Stream webhook | 5 minutes |
 | Production deploy | 5 minutes |
 | Stream signed playback verification | 10 minutes |
-| DNS cutover | 5-15 minutes (propagation) |
+| Delete the two Vercel DNS records, then approve the deploy | 10 minutes |
 | Smoke testing | 15 minutes |
 | **Total** | ~1.5 hours |
 

@@ -1,11 +1,8 @@
 import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
-import { SUBSCRIPTION_PRICING } from '@/src/lib/shared/constants/subscriptionTiers'
+import { readRequiredStripePriceId, STRIPE_PRICE_ENV } from '@/src/lib/stripe-price-config'
 import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
 import { json } from '@/src/lib/http'
 import { z } from 'zod'
-
-// Use exact subscription tiers from .cursorrules
-type SubscriptionTier = 'none' | 'tier1' | 'tier2' | 'tier3'
 
 // Request validation schema
 const CreateCheckoutSchema = z.object({
@@ -87,19 +84,22 @@ export async function POST({ request }: { request: Request }) {
             userEmail: user.email
         });
 
-        // Get pricing for the tier
-        const pricing = SUBSCRIPTION_PRICING[tier as SubscriptionTier]
-        if (!pricing) {
+        const priceEnvName = tier === 'tier1' || tier === 'tier2' || tier === 'tier3'
+            ? STRIPE_PRICE_ENV[tier]
+            : null
+        if (!priceEnvName) {
             return json(
                 { success: false, error: 'Invalid subscription tier' },
                 { status: 400 }
             )
         }
 
+        const priceId = readRequiredStripePriceId(priceEnvName)
+
         // Create Stripe checkout session
         const session = await createCheckoutSession({
             customerId: customer.id,
-            priceId: pricing.stripePriceId,
+            priceId,
             userId: user.id,
             tier: tier,
             successUrl: successUrl || `evolutioncombatives://subscription/success?tier=${tier}`,

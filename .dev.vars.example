@@ -10,6 +10,7 @@ MOBILE_APP_SCHEME=evolutioncombatives
 STRIPE_SECRET_KEY=sk_test_your_key
 STRIPE_PUBLISHABLE_KEY=pk_test_your_key
 STRIPE_WEBHOOK_SECRET=whsec_your_secret
+# Required. The Worker returns 500 on every request if these are empty or still PLACEHOLDER_ values.
 STRIPE_BEGINNER_PRICE_ID=price_x
 STRIPE_INTERMEDIATE_PRICE_ID=price_y
 STRIPE_ADVANCED_PRICE_ID=price_z

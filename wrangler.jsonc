@@ -23,8 +23,8 @@
 // Per Wrangler v4 env inheritance, `account_id`, `compatibility_date`,
 // `compatibility_flags`, `main`, `workers_dev`, `preview_urls`, and `routes`
 // flow down. `vars` and `observability` do NOT inherit; repeat per env block.
-// Custom domains are attached in a separate cutover change after the first
-// production deploy. Staging and preview set `routes: []` explicitly.
+// Production serves apex and www directly (no www→apex redirect). Staging
+// and preview set `routes: []` so they do not inherit those hostnames.
 //
 // With this compatibility date + nodejs_compat, Workers populates
 // `process.env` from vars/secrets, so server code can keep reading
@@ -40,9 +40,13 @@
     "compatibility_flags": ["nodejs_compat"],
     "main": "@tanstack/react-start/server-entry",
     // Production has no workers.dev route and no preview URLs (staging/preview
-    // re-enable workers_dev for themselves). Custom domains are attached in a
-    // separate cutover change.
+    // re-enable workers_dev for themselves). www is a second custom domain,
+    // not a redirect: the mobile app POSTs to www.
     "workers_dev": false,
+    "routes": [
+        { "pattern": "evolutioncombatives.com", "custom_domain": true },
+        { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
+    ],
     "preview_urls": false,
     "observability": {
         "enabled": true,
@@ -50,7 +54,11 @@
         "logs": { "enabled": true },
         "traces": { "enabled": true, "head_sampling_rate": 0.01 }
     },
-    // TODO(deploy): replace placeholder values before first production deploy.
+    // TODO(deploy): replace the three PLACEHOLDER_STRIPE_* price ids before
+    // the production deploy. Requests to evolutioncombatives.com and www
+    // return 500 while any of them is unset or still a placeholder.
+    // STRIPE_PUBLISHABLE_KEY is unused (web checkout was removed) and is not
+    // a launch blocker.
     // VITE_* vars are injected by vite.config.ts `define` from this file at
     // build time (CLOUDFLARE_ENV selects the env block); the non-VITE_*
     // duplicates are read by server code at runtime.
@@ -76,9 +84,9 @@
         "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
         "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
         "STRIPE_PUBLISHABLE_KEY": "update",
-        "STRIPE_BEGINNER_PRICE_ID": "update",
-        "STRIPE_INTERMEDIATE_PRICE_ID": "update",
-        "STRIPE_ADVANCED_PRICE_ID": "update"
+        "STRIPE_BEGINNER_PRICE_ID": "PLACEHOLDER_STRIPE_BEGINNER_PRICE_ID",
+        "STRIPE_INTERMEDIATE_PRICE_ID": "PLACEHOLDER_STRIPE_INTERMEDIATE_PRICE_ID",
+        "STRIPE_ADVANCED_PRICE_ID": "PLACEHOLDER_STRIPE_ADVANCED_PRICE_ID"
     },
     "env": {
         "staging": {

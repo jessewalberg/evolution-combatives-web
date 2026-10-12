@@ -3,8 +3,8 @@
  *
  * Backed by Cloudflare Workers rate-limiting bindings (configured in
  * wrangler.jsonc `unsafe.bindings`), which count across isolates within a
- * colo. Outside the Workers runtime (vitest, plain node) an in-memory
- * fallback keeps the same semantics per process.
+ * colo. Outside the Workers runtime, an in-memory fallback keeps the same
+ * semantics per process.
  *
  * The binding only supports 10s/60s periods, so the legacy per-15-minute
  * windows are expressed as per-minute equivalents:

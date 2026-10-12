@@ -46,7 +46,8 @@ Cloudflare APIs change, so retrieve current docs (Cloudflare docs MCP or develop
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev                 # local dev
-pnpm typecheck && pnpm lint && pnpm test && pnpm build   # all must pass
+pnpm typecheck && pnpm lint && pnpm build   # all must pass
+pnpm test:e2e            # Playwright. No unit tests [J 2026-10-09].
 ```
 
 ## Workers rules (from workers-best-practices; flag violations in review)
@@ -67,8 +68,8 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build   # all must pass
 ## Pull request rules
 - One purpose per PR, **≤ 400 changed lines** (excluding lockfiles and generated files), and **≤ 2 open agent PRs** per repo.
 - The description must include: **What / Why / How I verified it / Preview URL / Security notes / Commands for Jesse / Found, not fixed**.
-- Required checks green: `typecheck`, `lint`, `test`, `build`, and the Workers Builds Preview build.
-- Logic changes come with tests. Never delete or skip a test to get green. New dependencies need a one-line justification.
+- Required checks green: `typecheck`, `lint`, `build`, Playwright E2E, and the Workers Builds Preview build.
+- No unit tests [J 2026-10-09]. Do not add them back. New dependencies need a one-line justification.
 
 ## Measurement (same events in every product)
 `page_viewed` · `cta_clicked` (prop `cta`) · `signup` · `checkout_started` · `payment_succeeded` (server-side, from the Stripe webhook).

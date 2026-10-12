@@ -13,6 +13,7 @@ import { csrfProtection } from './lib/csrf-protection'
 import { checkRateLimit, getClientIP, rateLimitResponse } from './lib/rate-limit'
 import { isSecureRequest } from './lib/csrf-protection'
 import { json } from './lib/http'
+import { assertStripePriceIdsConfigured } from './lib/stripe-price-config'
 import type { AdminRole } from 'shared/types/database'
 
 // Route configuration
@@ -134,8 +135,8 @@ function resultResponse(result: unknown): Response | undefined {
 
 /**
  * Replace an HTML SSR fallback on /api/* with a JSON 405.
- * Exported for unit tests — TanStack Start falls through to HTML 200 for
- * undeclared HTTP verbs; Next auto-405'd them.
+ * TanStack Start falls through to HTML 200 for undeclared HTTP verbs;
+ * Next auto-405'd them.
  */
 export function replaceHtmlApiFallback<T>(result: T): T | Response {
     const response = resultResponse(result)
@@ -203,8 +204,14 @@ const csrfMiddleware = createMiddleware({ type: 'request' }).server(
  */
 const rateLimitMiddleware = createMiddleware({ type: 'request' }).server(
     async ({ request, next }) => {
-        const pathname = new URL(request.url).pathname
+        const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/'
         const clientIP = getClientIP(request)
+
+        // Stripe replays a backlog from a few IPs. Only this POST is exempt.
+        // GET and the Stream webhook stay on the per-IP limiter.
+        if (request.method === 'POST' && pathname === '/api/webhooks/stripe') {
+            return next()
+        }
 
         const isAuthPath =
             (pathname === '/api/auth/login' || pathname === '/api/auth/sign-up') && request.method === 'POST'
@@ -331,9 +338,22 @@ const authGuardMiddleware = createMiddleware({ type: 'request' }).server(
     },
 )
 
+const stripePriceMiddleware = createMiddleware({ type: 'request' }).server(
+    async ({ request, next }) => {
+        try {
+            assertStripePriceIdsConfigured(new URL(request.url).hostname)
+        } catch (error) {
+            console.error(error instanceof Error ? error.message : error)
+            return json({ error: 'Stripe price configuration is invalid' }, { status: 500 })
+        }
+        return next()
+    },
+)
+
 export const startInstance = createStart(() => {
     return {
         requestMiddleware: [
+            stripePriceMiddleware,
             securityHeadersMiddleware,
             csrfMiddleware,
             rateLimitMiddleware,

@@ -11,6 +11,13 @@ function isValidTier(tier: unknown): tier is SubscriptionTier {
     return typeof tier === 'string' && tier in SUBSCRIPTION_TIER_HIERARCHY
 }
 
+function higherTier(current: SubscriptionTier, candidate: unknown): SubscriptionTier {
+    if (!isValidTier(candidate)) return current
+    return SUBSCRIPTION_TIER_HIERARCHY[candidate] > SUBSCRIPTION_TIER_HIERARCHY[current]
+        ? candidate
+        : current
+}
+
 function getExpirationSeconds(tier: SubscriptionTier): number {
     switch (tier) {
         case 'none': return 30 * 60        // 30 minutes
@@ -57,17 +64,36 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
-        // Derive entitlement from server-written subscriptions table
+        // Active subscription rows and a paid tier on the profile both count.
+        // maybeSingle is wrong here: a member can have a Stripe row and a
+        // RevenueCat row, and a comped member may have only the profile tier.
         const adminClient = createAdminClient()
-        const { data: subscription } = await adminClient
+        const { data: subscriptionRows, error: subscriptionError } = await adminClient
             .from('subscriptions')
             .select('tier')
             .eq('user_id', user.id)
             .in('status', ['active', 'trialing'])
+
+        if (subscriptionError) {
+            console.error('[Mobile API] subscription tier lookup failed')
+        }
+
+        let userTier: SubscriptionTier = 'none'
+        for (const row of subscriptionRows ?? []) {
+            userTier = higherTier(userTier, row.tier)
+        }
+
+        const { data: profile, error: profileError } = await adminClient
+            .from('profiles')
+            .select('subscription_tier')
+            .eq('id', user.id)
             .maybeSingle()
 
-        const dbTier = subscription?.tier
-        const userTier: SubscriptionTier = isValidTier(dbTier) ? dbTier : 'none'
+        if (profileError) {
+            console.error('[Mobile API] profile tier lookup failed')
+        } else {
+            userTier = higherTier(userTier, profile?.subscription_tier)
+        }
 
         // Fetch video metadata from database to get tier_required and is_published
         const { data: video, error: videoError } = await adminClient

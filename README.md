@@ -164,7 +164,7 @@ export const ADMIN_PERMISSIONS = {
 ## 🚀 Deployment
 
 ### Cloudflare Workers Deployment
-1. Fill in the real values in `wrangler.jsonc` `vars` (currently TODO placeholders) and set Worker secrets with `wrangler secret put`
+1. Follow [docs/GO-LIVE.md](docs/GO-LIVE.md). Replace the three `PLACEHOLDER_STRIPE_*` price ids and set Worker secrets before the production deploy.
 2. Deploy: `pnpm deploy:staging` or `pnpm deploy:production` (CI deploys main → production and PRs → preview versions automatically)
 3. Deploy with automatic CI/CD
 
@@ -231,10 +231,8 @@ pnpm type-check   # Run TypeScript type checking
 - **Husky**: Git hooks for quality checks
 
 ### Testing Strategy
-- Component testing with React Testing Library
-- API endpoint testing
-- Database integration testing
-- End-to-end testing with Playwright
+
+Release verification is build, typecheck, lint, and Playwright end-to-end tests. Unit tests are not part of this project.
 
 ## 📚 API Documentation
 
@@ -255,7 +253,6 @@ pnpm type-check   # Run TypeScript type checking
 
 ### Development Guidelines
 - Follow TypeScript best practices
-- Write comprehensive tests
 - Use conventional commit messages
 - Maintain backwards compatibility
 - Document API changes
