@@ -172,9 +172,12 @@ wrangler secret put --env staging CLOUDFLARE_STREAM_WEBHOOK_SECRET
 
 Signed URL generation fails closed if Stream signing keys are not configured.
 
+- [ ] Before cutover, inventory every production Stream video and set `requireSignedURLs` to `true` for each one. Verify that an unsigned playback URL is denied for every video; changing the Worker alone does not make previously public videos private.
+
 ### Separate Cloudflare Account for Non-Production Stream (Required)
 - [ ] Staging and preview use Cloudflare Stream in a **separate Cloudflare account** (a different account ID) from production. A second Stream library, API token, or signing key inside the production Cloudflare account does not satisfy this item.
   - Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_CUSTOMER_SUBDOMAIN` in `wrangler.jsonc` `env.staging` and `env.preview` to the non-production account's values.
+  - The checked-in values are placeholders. Stream operations fail until both are replaced with that separate account's values.
   - Create the staging/preview `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_STREAM_SIGNING_KEY_ID`, `CLOUDFLARE_STREAM_SIGNING_KEY`, and `CLOUDFLARE_STREAM_WEBHOOK_SECRET` in the non-production account and set them with `wrangler secret put --env staging` / `--env preview`.
   - Upload test videos to the non-production account only.
 
@@ -294,11 +297,11 @@ API version `2025-03-31.basil` and later removed subscription-level `current_per
 
 If the endpoint was disabled, re-enable it after both hostnames return 200 from `/api/health`. Send one delivery, confirm a 2xx, then let Stripe retry the backlog. Resend any failed event older than the retry window from the dashboard.
 
-The handler re-reads the subscription from Stripe, keeps only subscriptions whose `metadata.userId` matches that member, and upserts one row per member inside a single database transaction. A delayed event cannot restore a cancelled tier. Customer id and email are not ownership.
+The handler re-reads the subscription from Stripe, keeps only subscriptions whose `metadata.userId` matches that member, and upserts one row per member inside a single database transaction. A delayed event cannot restore a cancelled tier. Customer id and email are not ownership. The profile tier is an independent grant; Stripe reconciliation changes the Stripe subscription row and the profile version, not the grant.
 
 ### Reconcile after replay
 
-The read-only query that looks for active rows with a null profile tier does not find a paid member who has no subscription row. After deliveries are 2xx, in Stripe live mode list every active and trialing subscription (paginate the full result). Map each subscription to its member with that subscription's `metadata.userId` and tier. Compare that list with every `platform = 'stripe'` row and with `profiles.subscription_tier`. Flag missing or ambiguous ownership and do not assign it by customer id or email. Flag missing rows, wrong subscription ids, stale status or tier, database rows that are active without a matching active Stripe subscription, and profile mismatches. Replay or repair each mismatch and compare again before calling reconciliation done.
+The read-only query that looks for active rows with a null profile tier does not find a paid member who has no subscription row. After deliveries are 2xx, in Stripe live mode list every active and trialing subscription (paginate the full result). Map each subscription to its member with that subscription's `metadata.userId` and tier. Compare that list with every `platform = 'stripe'` row. Flag missing or ambiguous ownership and do not assign it by customer id or email. Flag missing rows, wrong subscription ids, stale status or tier, and database rows that are active without a matching active Stripe subscription. Separately review every paid `profiles.subscription_tier` value and clear any value inherited from old Stripe reconciliation while retaining deliberate grants. Replay or repair each mismatch and compare again before calling reconciliation done.
 
 ---
 

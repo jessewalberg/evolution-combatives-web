@@ -23,7 +23,7 @@ export function stripePriceConfigProblem(name: string, value: string | undefined
         return `${name} is unset`
     }
     const trimmed = value.trim()
-    if (trimmed === 'update' || trimmed.startsWith('PLACEHOLDER_')) {
+    if (trimmed.startsWith('PLACEHOLDER_')) {
         return `${name} is still a placeholder`
     }
     return null

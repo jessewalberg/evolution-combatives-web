@@ -27,13 +27,13 @@ function getStreamEnv(): { accountId: string; apiToken: string; customerSubdomai
 
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
     const apiToken = process.env.CLOUDFLARE_API_TOKEN
-    const customerSubdomain = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN || 'customer-235te0s698xfdejs'
+    const customerSubdomain = process.env.CLOUDFLARE_CUSTOMER_SUBDOMAIN
 
-    if (!accountId || !apiToken || !customerSubdomain) {
+    if (!accountId || !apiToken || !customerSubdomain || accountId.startsWith('PLACEHOLDER_') || customerSubdomain.startsWith('PLACEHOLDER_')) {
         const missing = []
-        if (!accountId) missing.push('CLOUDFLARE_ACCOUNT_ID')
+        if (!accountId || accountId.startsWith('PLACEHOLDER_')) missing.push('CLOUDFLARE_ACCOUNT_ID')
         if (!apiToken) missing.push('CLOUDFLARE_API_TOKEN')
-        if (!customerSubdomain) missing.push('CLOUDFLARE_CUSTOMER_SUBDOMAIN')
+        if (!customerSubdomain || customerSubdomain.startsWith('PLACEHOLDER_')) missing.push('CLOUDFLARE_CUSTOMER_SUBDOMAIN')
         throw new Error(`Missing Cloudflare environment variables: ${missing.join(', ')}`)
     }
 
@@ -459,7 +459,10 @@ export const videoManagement = {
                 body: JSON.stringify(settings)
             })
 
-            await handleStreamResponse(response)
+            const data = await handleStreamResponse<{ result: StreamVideoMetadata }>(response)
+            if (settings.requireSignedURLs && data.result?.requireSignedURLs !== true) {
+                throw new CloudflareStreamError('Video still allows unsigned playback', 503)
+            }
         } catch (error) {
             throw new CloudflareStreamError(
                 `Failed to update video settings: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -490,12 +493,7 @@ export const videoManagement = {
             );
         }
 
-        // Configure video to require signed URLs for security
-        try {
-            await this.updateVideoSettings(videoId, { requireSignedURLs: true });
-        } catch {
-            // Settings update is best-effort; proceed with token generation
-        }
+        await this.updateVideoSettings(videoId, { requireSignedURLs: true });
 
         // Set expiration based on subscription tier
         const now = Math.floor(Date.now() / 1000)

@@ -2,7 +2,7 @@
 --
 -- One transaction locks the member profile, refuses a stripe_subscription_id
 -- owned by someone else, upserts the (user_id, platform) row, and updates
--- profiles.subscription_tier together. A stale event cannot restore a
+-- profiles.stripe_reconcile_version together. A stale event cannot restore a
 -- cancelled tier. Requires 20260808000003 (stripe columns and the unique
 -- stripe_subscription_id index) and subscriptions_user_id_platform_key.
 
@@ -38,7 +38,6 @@ DECLARE
     v_owner uuid;
     v_platform text;
     v_row public.subscriptions%ROWTYPE;
-    v_profile_tier text;
 BEGIN
     IF p_tier NOT IN ('tier1', 'tier2', 'tier3') THEN
         RAISE EXCEPTION 'invalid subscription tier';
@@ -89,14 +88,6 @@ BEGIN
             RETURN jsonb_build_object('result', 'stale', 'version', v_version);
         END IF;
 
-        -- Same-second delivery must not turn a cancelled tier back on.
-        IF v_row.stripe_event_created IS NOT NULL
-           AND p_event_created = v_row.stripe_event_created
-           AND v_row.status IN ('canceled', 'incomplete_expired', 'unpaid')
-           AND p_status IN ('active', 'trialing') THEN
-            RETURN jsonb_build_object('result', 'stale', 'version', v_version);
-        END IF;
-
         -- A delayed event for an older subscription must not replace the
         -- member's current active entitlement.
         IF v_row.stripe_subscription_id IS DISTINCT FROM p_stripe_subscription_id
@@ -108,11 +99,6 @@ BEGIN
             RETURN jsonb_build_object('result', 'stale', 'version', v_version);
         END IF;
     END IF;
-
-    v_profile_tier := CASE
-        WHEN p_status IN ('active', 'trialing') THEN p_tier
-        ELSE 'none'
-    END;
 
     IF v_row.id IS NULL THEN
         INSERT INTO public.subscriptions (
@@ -167,8 +153,7 @@ BEGIN
     END IF;
 
     UPDATE public.profiles
-    SET subscription_tier = v_profile_tier,
-        stripe_reconcile_version = stripe_reconcile_version + 1,
+    SET stripe_reconcile_version = stripe_reconcile_version + 1,
         updated_at = pg_catalog.now()
     WHERE id = p_user_id;
 
