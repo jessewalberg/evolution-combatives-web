@@ -2,8 +2,8 @@
 --
 -- One transaction locks the member profile, refuses a stripe_subscription_id
 -- owned by someone else, upserts the (user_id, platform) row, and updates
--- profiles.stripe_reconcile_version together. A stale event cannot restore a
--- cancelled tier. Requires 20260808000003 (stripe columns and the unique
+-- profiles.stripe_reconcile_version and subscription_tier together. A stale
+-- event cannot restore a cancelled tier. Requires 20260808000003 (stripe columns and the unique
 -- stripe_subscription_id index) and subscriptions_user_id_platform_key.
 
 ALTER TABLE public.subscriptions
@@ -14,6 +14,34 @@ ALTER TABLE public.subscriptions
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS stripe_reconcile_version bigint NOT NULL DEFAULT 0;
 
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS manual_tier text NOT NULL DEFAULT 'none'
+    CONSTRAINT profiles_manual_tier_check CHECK (manual_tier IN ('none', 'tier1', 'tier2', 'tier3'));
+
+-- Preserve existing profile grants that are not explained by an active Stripe row.
+UPDATE public.profiles AS p
+SET manual_tier = p.subscription_tier
+WHERE p.subscription_tier IN ('tier1', 'tier2', 'tier3')
+  AND NOT EXISTS (
+      SELECT 1 FROM public.subscriptions AS s
+      WHERE s.user_id = p.id AND s.platform = 'stripe'
+        AND s.status IN ('active', 'trialing')
+        AND CASE s.tier WHEN 'tier3' THEN 3 WHEN 'tier2' THEN 2 WHEN 'tier1' THEN 1 ELSE 0 END
+            >= CASE p.subscription_tier WHEN 'tier3' THEN 3 WHEN 'tier2' THEN 2 ELSE 1 END
+  );
+
+CREATE TABLE IF NOT EXISTS public.stripe_customers (
+    stripe_customer_id text PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE
+);
+ALTER TABLE public.stripe_customers ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.stripe_customers TO service_role;
+
+INSERT INTO public.stripe_customers (stripe_customer_id, user_id)
+SELECT DISTINCT stripe_customer_id, user_id
+FROM public.subscriptions
+WHERE stripe_customer_id IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.reconcile_stripe_entitlement(
     p_user_id uuid,
     p_expected_version bigint,
@@ -21,6 +49,7 @@ CREATE OR REPLACE FUNCTION public.reconcile_stripe_entitlement(
     p_event_created bigint,
     p_stripe_subscription_id text,
     p_stripe_customer_id text,
+    p_customer_ids text[],
     p_subscription_created bigint,
     p_tier text,
     p_status text,
@@ -38,8 +67,9 @@ DECLARE
     v_owner uuid;
     v_platform text;
     v_row public.subscriptions%ROWTYPE;
+    v_customer_id text;
 BEGIN
-    IF p_tier NOT IN ('tier1', 'tier2', 'tier3') THEN
+    IF p_tier NOT IN ('none', 'tier1', 'tier2', 'tier3') THEN
         RAISE EXCEPTION 'invalid subscription tier';
     END IF;
 
@@ -62,6 +92,17 @@ BEGIN
     IF p_expected_version IS DISTINCT FROM v_version THEN
         RETURN jsonb_build_object('result', 'retry', 'version', v_version);
     END IF;
+
+    FOREACH v_customer_id IN ARRAY p_customer_ids LOOP
+        IF v_customer_id IS NOT NULL AND v_customer_id <> '' THEN
+            SELECT user_id INTO v_owner
+            FROM public.stripe_customers
+            WHERE stripe_customer_id = v_customer_id;
+            IF FOUND AND v_owner IS DISTINCT FROM p_user_id THEN
+                RETURN jsonb_build_object('result', 'ownership_conflict', 'version', v_version);
+            END IF;
+        END IF;
+    END LOOP;
 
     SELECT user_id, platform
     INTO v_owner, v_platform
@@ -88,16 +129,19 @@ BEGIN
             RETURN jsonb_build_object('result', 'stale', 'version', v_version);
         END IF;
 
-        -- A delayed event for an older subscription must not replace the
-        -- member's current active entitlement.
-        IF v_row.stripe_subscription_id IS DISTINCT FROM p_stripe_subscription_id
-           AND v_row.status IN ('active', 'trialing')
-           AND (
-                p_status NOT IN ('active', 'trialing')
-                OR p_subscription_created < COALESCE(v_row.stripe_subscription_created, 0)
-           ) THEN
-            RETURN jsonb_build_object('result', 'stale', 'version', v_version);
-        END IF;
+    END IF;
+
+    INSERT INTO public.stripe_customers (stripe_customer_id, user_id)
+    SELECT DISTINCT customer_id, p_user_id
+    FROM unnest(p_customer_ids) AS customer_id
+    WHERE customer_id IS NOT NULL AND customer_id <> ''
+    ON CONFLICT (stripe_customer_id) DO NOTHING;
+
+    IF EXISTS (
+        SELECT 1 FROM public.stripe_customers
+        WHERE stripe_customer_id = ANY(p_customer_ids) AND user_id <> p_user_id
+    ) THEN
+        RAISE unique_violation;
     END IF;
 
     IF v_row.id IS NULL THEN
@@ -154,6 +198,12 @@ BEGIN
 
     UPDATE public.profiles
     SET stripe_reconcile_version = stripe_reconcile_version + 1,
+        subscription_tier = CASE GREATEST(
+            CASE manual_tier WHEN 'tier3' THEN 3 WHEN 'tier2' THEN 2 WHEN 'tier1' THEN 1 ELSE 0 END,
+            CASE WHEN p_status IN ('active', 'trialing') THEN
+                CASE p_tier WHEN 'tier3' THEN 3 WHEN 'tier2' THEN 2 WHEN 'tier1' THEN 1 ELSE 0 END
+            ELSE 0 END
+        ) WHEN 3 THEN 'tier3' WHEN 2 THEN 'tier2' WHEN 1 THEN 'tier1' ELSE 'none' END,
         updated_at = pg_catalog.now()
     WHERE id = p_user_id;
 
@@ -165,9 +215,9 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.reconcile_stripe_entitlement(
-    uuid, bigint, text, bigint, text, text, bigint, text, text, timestamptz, timestamptz, boolean, timestamptz
+    uuid, bigint, text, bigint, text, text, text[], bigint, text, text, timestamptz, timestamptz, boolean, timestamptz
 ) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.reconcile_stripe_entitlement(
-    uuid, bigint, text, bigint, text, text, bigint, text, text, timestamptz, timestamptz, boolean, timestamptz
+    uuid, bigint, text, bigint, text, text, text[], bigint, text, text, timestamptz, timestamptz, boolean, timestamptz
 ) TO service_role;

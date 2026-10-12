@@ -2,15 +2,13 @@
  * One reconciliation path for Stripe subscription and invoice events.
  *
  * The event payload is not the source of truth. We re-read the subscription,
- * keep only subscriptions whose metadata.userId is that owner (a shared
- * customer is not ownership), and pick the current one: active or trialing
- * first, then the newest. The database write is one transaction that upserts
- * on (user_id, platform) and stripe_subscription_id, updates the profile tier
- * in the same transaction, and rejects a stale event so a delayed delivery
- * cannot restore a cancelled tier.
+ * include subscriptions owned by metadata or a recorded customer, and choose
+ * the highest active tier. The database write updates the subscription and
+ * effective profile tier in one transaction, rejecting older event timestamps.
  */
 
-import { tierForConfiguredPriceId, type PaidSubscriptionTier } from '@/src/lib/stripe-price-config'
+import { tierForConfiguredPriceId } from '@/src/lib/stripe-price-config'
+import { SUBSCRIPTION_TIER_HIERARCHY, type SubscriptionTier } from '@/src/lib/shared/constants/subscriptionTiers'
 
 const RECONCILE_ATTEMPTS = 5
 
@@ -66,7 +64,7 @@ export interface StripeEventLike {
 
 export interface StripeSubscriptionSource {
     retrieve(id: string): Promise<StripeSubscriptionLike>
-    /** Strongly consistent customer list. Caller filters on metadata.userId. */
+    searchByUserId(userId: string): Promise<StripeSubscriptionLike[]>
     listByCustomer(customerId: string): Promise<StripeSubscriptionLike[]>
 }
 
@@ -77,8 +75,9 @@ export interface EntitlementApplyInput {
     userId: string
     stripeSubscriptionId: string
     stripeCustomerId: string
+    customerIds: string[]
     subscriptionCreated: number
-    tier: PaidSubscriptionTier
+    tier: SubscriptionTier
     status: string
     currentPeriodStart: string | null
     currentPeriodEnd: string | null
@@ -89,6 +88,8 @@ export interface EntitlementApplyInput {
 export interface EntitlementDb {
     /** Null when the member has no profile row. Read this before the Stripe read. */
     readVersion(userId: string): Promise<number | null>
+    listCustomerIds(userId: string): Promise<string[]>
+    ownerForCustomer(customerId: string): Promise<string | null>
     apply(input: EntitlementApplyInput): Promise<string>
 }
 
@@ -142,9 +143,7 @@ function metadataUserId(sub: StripeSubscriptionLike): string | null {
     return trimmed || null
 }
 
-function tierOf(sub: StripeSubscriptionLike): PaidSubscriptionTier | null {
-    const meta = sub.metadata?.tier
-    if (meta === 'tier1' || meta === 'tier2' || meta === 'tier3') return meta
+function tierOf(sub: StripeSubscriptionLike): SubscriptionTier | null {
     return tierForConfiguredPriceId(priceIdOf(sub))
 }
 
@@ -194,8 +193,13 @@ function selectCurrent(subscriptions: StripeSubscriptionLike[]): StripeSubscript
     const owned = subscriptions.filter((sub) => sub.id && typeof sub.status === 'string')
     if (owned.length === 0) return null
     owned.sort((a, b) => {
-        const rank = Number(isCurrent(b)) - Number(isCurrent(a))
+        const activeTier = (sub: StripeSubscriptionLike) => isCurrent(sub)
+            ? SUBSCRIPTION_TIER_HIERARCHY[tierOf(sub) ?? 'none']
+            : 0
+        const rank = activeTier(b) - activeTier(a)
         if (rank !== 0) return rank
+        const active = Number(isCurrent(b)) - Number(isCurrent(a))
+        if (active !== 0) return active
         const created = (readUnix(b.created) ?? 0) - (readUnix(a.created) ?? 0)
         if (created !== 0) return created
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
@@ -207,14 +211,25 @@ async function ownedSubscriptions(
     source: StripeSubscriptionSource,
     retrieved: StripeSubscriptionLike,
     owner: string,
+    recordedCustomerIds: string[],
 ): Promise<StripeSubscriptionLike[]> {
     const customerId = customerIdOf(retrieved)
-    const listed = customerId ? await source.listByCustomer(customerId) : []
+    const recorded = new Set(recordedCustomerIds)
+    const customers = new Set([...recordedCustomerIds, ...(customerId ? [customerId] : [])])
+    const searched = await source.searchByUserId(owner)
     const combined = new Map<string, StripeSubscriptionLike>()
-    for (const sub of listed) {
+    for (const sub of searched) {
         if (metadataUserId(sub) === owner) combined.set(sub.id, sub)
     }
-    if (metadataUserId(retrieved) === owner) {
+    for (const id of customers) {
+        for (const sub of await source.listByCustomer(id)) {
+            const metadataOwner = metadataUserId(sub)
+            if (metadataOwner === owner || (metadataOwner === null && recorded.has(id))) {
+                combined.set(sub.id, sub)
+            }
+        }
+    }
+    if (metadataUserId(retrieved) === owner || (metadataUserId(retrieved) === null && customerId != null && recorded.has(customerId))) {
         // Retrieved object wins over a list copy of the same id.
         combined.set(retrieved.id, retrieved)
     }
@@ -263,7 +278,8 @@ export async function reconcileStripeWebhookEvent(
     // Peek only to learn the owner. The snapshot we write is read below,
     // after the member version, so a stale read cannot be committed.
     const peeked = await source.retrieve(subscriptionId)
-    const owner = metadataUserId(peeked)
+    const eventCustomerId = customerIdOf(peeked)
+    const owner = metadataUserId(peeked) ?? (eventCustomerId ? await db.ownerForCustomer(eventCustomerId) : null)
     if (!owner || !UUID_RE.test(owner)) {
         console.error(`Stripe event ${event.id} subscription ${subscriptionId} has no usable metadata.userId`)
         return outcome('unresolved')
@@ -277,23 +293,33 @@ export async function reconcileStripeWebhookEvent(
         }
 
         const retrieved = await source.retrieve(subscriptionId)
-        if (metadataUserId(retrieved) !== owner) {
+        const recordedCustomerIds = await db.listCustomerIds(owner)
+        const retrievedCustomerId = customerIdOf(retrieved)
+        if (metadataUserId(retrieved) !== owner
+            && !(metadataUserId(retrieved) === null && retrievedCustomerId && recordedCustomerIds.includes(retrievedCustomerId))) {
             console.error(`Stripe event ${event.id} subscription ${subscriptionId} is not owned by ${owner}`)
             return outcome('unresolved')
         }
 
-        const selected = selectCurrent(await ownedSubscriptions(source, retrieved, owner))
-        if (!selected || metadataUserId(selected) !== owner) {
+        const subscriptions = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds)
+        const selected = selectCurrent(subscriptions)
+        if (!selected) {
             console.error(`Stripe event ${event.id} did not resolve a subscription owned by ${owner}`)
             return outcome('unresolved')
         }
 
         const tier = tierOf(selected)
         const customerId = customerIdOf(selected)
-        if (!tier || !customerId || !STATUSES.has(selected.status)) {
-            console.error(`Stripe event ${event.id} subscription ${selected.id} has no usable tier or status`)
+        if (!customerId || !STATUSES.has(selected.status)) {
+            console.error(`Stripe event ${event.id} subscription ${selected.id} has no usable customer or status`)
             return outcome('unresolved')
         }
+
+        const customerIds = [...new Set([
+            ...recordedCustomerIds,
+            ...(eventCustomerId ? [eventCustomerId] : []),
+            ...subscriptions.map(customerIdOf).filter((id): id is string => id != null),
+        ])]
 
         const result = await db.apply({
             expectedVersion: version,
@@ -302,8 +328,9 @@ export async function reconcileStripeWebhookEvent(
             userId: owner,
             stripeSubscriptionId: selected.id,
             stripeCustomerId: customerId,
+            customerIds,
             subscriptionCreated: readUnix(selected.created) ?? 0,
-            tier,
+            tier: isCurrent(selected) ? (tier ?? 'none') : 'none',
             status: selected.status,
             currentPeriodStart: unixToIso(periodUnix(selected, 'current_period_start')),
             currentPeriodEnd: unixToIso(periodUnix(selected, 'current_period_end')),

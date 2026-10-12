@@ -51,6 +51,23 @@ export function createSupabaseEntitlementDb(): EntitlementDb {
             }
             return version
         },
+        async listCustomerIds(userId) {
+            const { data, error } = await supabase
+                .from('stripe_customers')
+                .select('stripe_customer_id')
+                .eq('user_id', userId)
+            if (error) throw error
+            return (data ?? []).map((row) => row.stripe_customer_id)
+        },
+        async ownerForCustomer(customerId) {
+            const { data, error } = await supabase
+                .from('stripe_customers')
+                .select('user_id')
+                .eq('stripe_customer_id', customerId)
+                .maybeSingle()
+            if (error) throw error
+            return data?.user_id ?? null
+        },
         async apply(input: EntitlementApplyInput) {
             const { data, error } = await supabase.rpc('reconcile_stripe_entitlement', {
                 p_user_id: input.userId,
@@ -59,6 +76,7 @@ export function createSupabaseEntitlementDb(): EntitlementDb {
                 p_event_created: input.eventCreated,
                 p_stripe_subscription_id: input.stripeSubscriptionId,
                 p_stripe_customer_id: input.stripeCustomerId,
+                p_customer_ids: input.customerIds,
                 p_subscription_created: input.subscriptionCreated,
                 p_tier: input.tier,
                 p_status: input.status,
@@ -78,6 +96,22 @@ export function liveStripeSubscriptionSource(): StripeSubscriptionSource {
         async retrieve(id) {
             const subscription = await getStripe().subscriptions.retrieve(id)
             return subscription as unknown as StripeSubscriptionLike
+        },
+        async searchByUserId(userId) {
+            const collected: StripeSubscriptionLike[] = []
+            let pageToken: string | undefined
+            for (let page = 0; page < 10; page++) {
+                const result = await getStripe().subscriptions.search({
+                    query: `metadata['userId']:'${userId}'`,
+                    limit: 100,
+                    ...(pageToken ? { page: pageToken } : {}),
+                })
+                collected.push(...(result.data as unknown as StripeSubscriptionLike[]))
+                if (!result.has_more) return collected
+                pageToken = result.next_page ?? undefined
+                if (!pageToken) break
+            }
+            throw new Error('Stripe subscription search exceeded 10 pages')
         },
         async listByCustomer(customerId) {
             const collected: StripeSubscriptionLike[] = []
