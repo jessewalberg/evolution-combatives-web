@@ -140,10 +140,17 @@ function VideoPreviewPage() {
         }
 
         let cancelled = false
+        let refreshing = false
+        let refreshAt = 0
+        let refreshTimer: ReturnType<typeof setTimeout> | undefined
         setSignedPreviewUrl(null)
         setSignedThumbnailUrl(null)
 
         const loadSignedUrls = async () => {
+            if (cancelled || refreshing) return
+            refreshing = true
+            if (refreshTimer) clearTimeout(refreshTimer)
+            const issuedAt = Date.now()
             try {
                 if (processingStatus === 'ready') {
                     const previewUrl = await cloudflareApi.generateAdminPreviewUrl(streamId, 'iframe')
@@ -161,18 +168,23 @@ function VideoPreviewPage() {
                     setSignedPreviewUrl(null)
                     setSignedThumbnailUrl(null)
                 }
+            } finally {
+                refreshing = false
+                if (!cancelled) {
+                    refreshAt = issuedAt + 50 * 60 * 1000
+                    refreshTimer = setTimeout(() => { void loadSignedUrls() }, Math.max(0, refreshAt - Date.now()))
+                }
             }
         }
 
         void loadSignedUrls()
-        const refreshTimer = setInterval(() => { void loadSignedUrls() }, 50 * 60 * 1000)
         const refreshOnReturn = () => {
-            if (document.visibilityState === 'visible') void loadSignedUrls()
+            if (document.visibilityState === 'visible' && Date.now() >= refreshAt) void loadSignedUrls()
         }
         document.addEventListener('visibilitychange', refreshOnReturn)
         return () => {
             cancelled = true
-            clearInterval(refreshTimer)
+            if (refreshTimer) clearTimeout(refreshTimer)
             document.removeEventListener('visibilitychange', refreshOnReturn)
         }
     }, [streamId, processingStatus])

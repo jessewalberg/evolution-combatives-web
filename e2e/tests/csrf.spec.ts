@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../test'
 import { fetchCsrfHeaders } from '../helpers/csrf'
+import { appAccessHeaders } from '../helpers/access'
 import { getCSRFCookieName, isSecureRequest } from '../../src/lib/csrf-protection'
 
 /**
@@ -14,7 +15,10 @@ test.describe('CSRF protection', () => {
     request,
     baseURL,
   }) => {
-    const response = await request.get('/api/csrf-token')
+    const response = await request.get('/api/csrf-token', {
+      headers: appAccessHeaders('/api/csrf-token'),
+      maxRedirects: 0,
+    })
     expect(response.ok()).toBeTruthy()
 
     const setCookie = response.headers()['set-cookie']
@@ -44,7 +48,8 @@ test.describe('CSRF protection', () => {
         name: 'Should Not Create',
         slug: 'should-not-create',
       },
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...appAccessHeaders('/api/content/disciplines'), 'Content-Type': 'application/json' },
+      maxRedirects: 0,
     })
 
     expect(response.status()).toBe(403)
@@ -56,7 +61,8 @@ test.describe('CSRF protection', () => {
   test('POST /api/admin/content without CSRF token is rejected', async ({ request }) => {
     const response = await request.post('/api/admin/content', {
       data: { action: 'fetchContentStats' },
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...appAccessHeaders('/api/admin/content'), 'Content-Type': 'application/json' },
+      maxRedirects: 0,
     })
 
     expect(response.status()).toBe(403)
@@ -75,7 +81,8 @@ test.describe('CSRF protection', () => {
         name: 'CSRF Control Should Not Persist',
         slug: 'csrf-control-no-persist',
       },
-      headers,
+      headers: { ...headers, ...appAccessHeaders('/api/content/disciplines') },
+      maxRedirects: 0,
     })
 
     // CSRF middleware returns 403 + "CSRF token validation failed".

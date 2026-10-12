@@ -388,9 +388,7 @@ export function QuestionDetailPage() {
     }
 
     const question = questionQuery.data
-    const signedThumbnailUrl = useSignedStreamThumbnail(
-        profile?.admin_role === 'super_admin' ? question?.video?.cloudflare_video_id : null
-    )
+    const signedThumbnailUrl = useSignedStreamThumbnail(question?.video?.cloudflare_video_id)
 
     if (authLoading) {
         return (

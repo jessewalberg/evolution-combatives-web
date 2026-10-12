@@ -35,18 +35,6 @@ export function getStripe(): Stripe {
 }
 
 /**
- * Server-side Stripe client instance (lazy proxy over getStripe so legacy
- * `import { stripe }` call sites keep working).
- */
-export const stripe: Stripe = new Proxy({} as Stripe, {
-    get(_target, prop) {
-        const instance = getStripe();
-        const value = instance[prop as keyof Stripe];
-        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(instance) : value;
-    },
-});
-
-/**
  * Stripe webhook signature validation
  * Ensures webhooks are coming from Stripe. Async because Workers only
  * supports the WebCrypto-based constructEventAsync.
@@ -112,7 +100,7 @@ export const createCheckoutSession = async ({
         sessionParams.customer_creation = 'always';
     }
 
-    return await stripe.checkout.sessions.create(sessionParams);
+    return await getStripe().checkout.sessions.create(sessionParams);
 };
 
 /**
@@ -120,7 +108,7 @@ export const createCheckoutSession = async ({
  */
 export const getOrCreateCustomer = async (email: string, userId: string): Promise<Stripe.Customer> => {
     // First, try to find existing customer by email
-    const existingCustomers = await stripe.customers.list({
+    const existingCustomers = await getStripe().customers.list({
         email,
         limit: 1,
     });
@@ -130,7 +118,7 @@ export const getOrCreateCustomer = async (email: string, userId: string): Promis
     }
 
     // Create new customer
-    return await stripe.customers.create({
+    return await getStripe().customers.create({
         email,
         metadata: {
             userId,
@@ -142,14 +130,14 @@ export const getOrCreateCustomer = async (email: string, userId: string): Promis
  * Get subscription details
  */
 export const getSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> => {
-    return await stripe.subscriptions.retrieve(subscriptionId);
+    return await getStripe().subscriptions.retrieve(subscriptionId);
 };
 
 /**
  * Cancel subscription at period end
  */
 export const cancelSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> => {
-    return await stripe.subscriptions.update(subscriptionId, {
+    return await getStripe().subscriptions.update(subscriptionId, {
         cancel_at_period_end: true,
     });
 };
@@ -158,7 +146,7 @@ export const cancelSubscription = async (subscriptionId: string): Promise<Stripe
  * Reactivate a subscription that was set to cancel at period end
  */
 export const reactivateSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> => {
-    return await stripe.subscriptions.update(subscriptionId, {
+    return await getStripe().subscriptions.update(subscriptionId, {
         cancel_at_period_end: false,
     });
 };
@@ -171,9 +159,9 @@ export const updateSubscription = async (
     newPriceId: string,
     tier: string
 ): Promise<Stripe.Subscription> => {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
 
-    return await stripe.subscriptions.update(subscriptionId, {
+    return await getStripe().subscriptions.update(subscriptionId, {
         items: [
             {
                 id: subscription.items.data[0].id,

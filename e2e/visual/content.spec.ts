@@ -1,4 +1,4 @@
-import { test } from '@playwright/test'
+import { test } from '../test'
 import { FIXTURE_IDS } from './fixtures'
 import { prepareVisualPage } from './helpers/prepare'
 import { expectVisualScreenshot } from './helpers/screenshot'

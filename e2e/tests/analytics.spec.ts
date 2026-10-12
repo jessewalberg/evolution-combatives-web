@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../test'
 
 /**
  * Analytics page is role-gated for super_admin / content_admin.

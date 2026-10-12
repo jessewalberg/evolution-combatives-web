@@ -1,4 +1,4 @@
-import { test } from '@playwright/test'
+import { test } from '../test'
 import { prepareVisualPage } from './helpers/prepare'
 import { expectVisualScreenshot } from './helpers/screenshot'
 import { viewportLabel } from './helpers/viewport'

@@ -12,7 +12,10 @@ export function useSignedStreamThumbnail(videoId: string | null | undefined): st
         queryFn: () => cloudflareApi.generateThumbnailUrl(videoId!),
         enabled: !!videoId,
         staleTime: REFRESH_MS,
-        refetchInterval: REFRESH_MS,
+        refetchInterval: (query) => {
+            const updatedAt = Math.max(query.state.dataUpdatedAt, query.state.errorUpdatedAt)
+            return updatedAt ? Math.max(1_000, updatedAt + REFRESH_MS - Date.now()) : false
+        },
     })
 
     return data && Date.now() - dataUpdatedAt < TOKEN_LIFETIME_MS ? data : null

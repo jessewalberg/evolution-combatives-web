@@ -10,17 +10,6 @@ dotenv.config({ path: path.resolve(import.meta.dirname, '.env.test.local') })
 
 const baseURL = process.env.VITE_APP_URL || 'http://localhost:3000'
 
-/**
- * Cloudflare Access service token headers. When staging/preview URLs are
- * protected by Access, CI needs a service token to authenticate. These are
- * optional — when absent, the tests run without Access headers (fine for
- * local workerd or unprotected URLs).
- */
-const cfAccessHeaders: Record<string, string> = {}
-if (process.env.CF_ACCESS_CLIENT_ID && process.env.CF_ACCESS_CLIENT_SECRET) {
-  cfAccessHeaders['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID
-  cfAccessHeaders['CF-Access-Client-Secret'] = process.env.CF_ACCESS_CLIENT_SECRET
-}
 const isCI = !!process.env.CI
 
 /**
@@ -52,8 +41,6 @@ export default defineConfig({
     trace: isCI ? 'off' : 'on-first-retry',
     screenshot: 'only-on-failure',
     video: isCI ? 'off' : 'retain-on-failure',
-    // Pass Cloudflare Access headers when testing Access-protected URLs
-    extraHTTPHeaders: cfAccessHeaders,
   },
   webServer: {
     command: webServerCommand,

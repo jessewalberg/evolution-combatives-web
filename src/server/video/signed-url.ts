@@ -230,10 +230,10 @@ export async function POST({ request }: { request: Request }) {
         console.error('Error generating signed video URL:', error)
 
         // Handle video ID validation errors
-        if (error instanceof CloudflareStreamError && error.code === 400) {
+        if (error instanceof CloudflareStreamError && (error.code === 400 || error.code === 503)) {
             return json(
                 { error: error.message },
-                { status: 400 }
+                { status: error.code }
             )
         }
 

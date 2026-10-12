@@ -1,17 +1,20 @@
 import { json } from '@/src/lib/http'
-import { validateApiAuthWithSession } from '@/src/lib/api-auth'
+import { hasPermission, validateApiAuthWithSession } from '@/src/lib/api-auth'
+import { createAdminClient } from '@/src/lib/supabase'
 import { CloudflareStreamError, isValidStreamVideoId } from '@/src/services/cloudflare-stream'
 
 export async function POST({ request }: { request: Request }) {
-    const authResult = await validateApiAuthWithSession('content.write')
-    if ('error' in authResult) {
-        return authResult.error
-    }
+    const authResult = await validateApiAuthWithSession('users.read')
+    if ('error' in authResult) return authResult.error
 
     try {
+        const { action, ...data } = await request.json()
+        if (action !== 'generateThumbnailUrl' && !hasPermission(authResult.user.role, 'content.write')) {
+            return json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
+        }
+
         // Import cloudflareStreamService inside the function to avoid environment variable issues
         const { cloudflareStreamService } = await import('@/src/services/cloudflare-stream')
-        const { action, ...data } = await request.json()
 
         switch (action) {
             case 'getUploadUrl':
@@ -78,6 +81,23 @@ export async function POST({ request }: { request: Request }) {
                         { status: 400 }
                     )
                 }
+                if (authResult.user.role === 'support_admin') {
+                    const admin = createAdminClient()
+                    const { data: video, error: videoError } = await admin
+                        .from('videos')
+                        .select('id')
+                        .eq('cloudflare_video_id', data.videoId)
+                        .maybeSingle()
+                    if (videoError) throw videoError
+                    if (!video) return json({ success: false, error: 'Video not available' }, { status: 403 })
+                    const { data: questions, error: questionError } = await admin
+                        .from('questions')
+                        .select('id')
+                        .eq('video_id', video.id)
+                        .limit(1)
+                    if (questionError) throw questionError
+                    if (!questions?.length) return json({ success: false, error: 'Video not available' }, { status: 403 })
+                }
                 const thumbnailUrl = await cloudflareStreamService.video.generateThumbnailUrl(data.videoId, data.options)
                 return json({ success: true, data: { thumbnailUrl } })
 
@@ -92,10 +112,10 @@ export async function POST({ request }: { request: Request }) {
                 )
         }
     } catch (error) {
-        if (error instanceof CloudflareStreamError && error.code === 400) {
+        if (error instanceof CloudflareStreamError && (error.code === 400 || error.code === 503)) {
             return json(
                 { success: false, error: error.message },
-                { status: 400 }
+                { status: error.code }
             )
         }
         console.error('Cloudflare API error:', error)

@@ -216,9 +216,10 @@ async function ownedSubscriptions(
     owner: string,
     recordedCustomerIds: string[],
     soleOwnerCustomerIds: Set<string>,
-): Promise<StripeSubscriptionLike[]> {
+): Promise<{ subscriptions: StripeSubscriptionLike[]; searchComplete: boolean }> {
     const eventCustomerId = customerIdOf(retrieved)
     const listedCustomers = new Set<string>()
+    const listedIds = new Set<string>()
     const combined = new Map<string, StripeSubscriptionLike>()
 
     const accepts = (customerId: string, sub: StripeSubscriptionLike): boolean => {
@@ -232,6 +233,7 @@ async function ownedSubscriptions(
         listedCustomers.add(customerId)
         for (const sub of subs) {
             if (!sub.id) continue
+            listedIds.add(sub.id)
             if (accepts(customerId, sub)) combined.set(sub.id, sub)
         }
     }
@@ -250,18 +252,26 @@ async function ownedSubscriptions(
     }
 
     const searched = await source.searchByUserId(owner)
+    let searchComplete = true
     for (const sub of searched) {
-        if (!sub.id || metadataUserId(sub) !== owner) continue
+        if (metadataUserId(sub) !== owner) {
+            searchComplete = false
+            continue
+        }
         const searchedCustomer = customerIdOf(sub)
-        if (!searchedCustomer) continue
+        if (!sub.id || !searchedCustomer) {
+            searchComplete = false
+            continue
+        }
         if (!listedCustomers.has(searchedCustomer)) {
             await listCustomer(searchedCustomer)
         }
+        if (!listedIds.has(sub.id)) searchComplete = false
     }
 
     if (retrievedOwned) combined.set(retrieved.id, retrieved)
 
-    return [...combined.values()]
+    return { subscriptions: [...combined.values()], searchComplete }
 }
 
 function mapApplyResult(result: string): ReconcileOutcome {
@@ -333,7 +343,18 @@ export async function reconcileStripeWebhookEvent(
             return outcome('unresolved')
         }
 
-        const subscriptions = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds, soleOwnerCustomerIds)
+        let snapshot: Awaited<ReturnType<typeof ownedSubscriptions>>
+        try {
+            snapshot = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds, soleOwnerCustomerIds)
+        } catch (error) {
+            console.error(`Stripe event ${event.id} member ${owner} snapshot could not be completed`, error)
+            return outcome('search_lag', true)
+        }
+        const subscriptions = snapshot.subscriptions
+        if (!snapshot.searchComplete) {
+            console.error(`Stripe event ${event.id} member ${owner} search did not match customer lists`)
+            return outcome('search_lag', true)
+        }
         const selected = selectCurrent(subscriptions)
         if (!selected) {
             console.error(`Stripe event ${event.id} did not resolve a subscription owned by ${owner}`)
@@ -345,12 +366,6 @@ export async function reconcileStripeWebhookEvent(
         if (!customerId || !STATUSES.has(selected.status)) {
             console.error(`Stripe event ${event.id} subscription ${selected.id} has no usable customer or status`)
             return outcome('unresolved')
-        }
-
-        const grantsPaid = isCurrent(selected) && tier != null
-        if (!grantsPaid) {
-            console.error(`Stripe event ${event.id} member ${owner} search may omit a paid subscription; retrying without committing`)
-            return outcome('search_lag', true)
         }
 
         const customerIds = [...new Set([

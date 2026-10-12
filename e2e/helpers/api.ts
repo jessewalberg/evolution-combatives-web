@@ -1,6 +1,7 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { fetchCsrfHeaders, fetchCsrfHeadersFromPage } from './csrf'
 import { createServiceRoleClient } from './supabase-admin'
+import { appAccessHeaders } from './access'
 
 type Json = Record<string, unknown>
 
@@ -13,7 +14,8 @@ async function apiJson(
   const response = await request.fetch(path, {
     method,
     data: options?.data,
-    headers: options?.headers,
+    headers: { ...appAccessHeaders(path), ...options?.headers },
+    maxRedirects: 0,
   })
   const body = (await response.json().catch(() => ({}))) as Json
   return { response, body }

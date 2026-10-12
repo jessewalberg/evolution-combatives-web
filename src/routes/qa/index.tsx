@@ -934,7 +934,7 @@ export function QAManagementPage() {
                                             <div className="flex items-center gap-3">
                                                 <div className="relative">
                                                     <SignedStreamThumbnail
-                                                        videoId={profile?.admin_role === 'super_admin' ? question.video.cloudflare_video_id : null}
+                                                        videoId={question.video.cloudflare_video_id}
                                                         alt={question.video.title}
                                                         width={64}
                                                         height={36}

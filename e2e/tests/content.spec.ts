@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../test'
+import { appAccessHeaders } from '../helpers/access'
 import { randomUUID } from 'crypto'
 import { contentApi } from '../helpers/api'
 import { uniqueSlug, uniqueTitle } from '../helpers/unique'
@@ -111,7 +112,10 @@ test.describe('Content - categories merge / reorder', () => {
     // Source removed by merge - only tear down target + discipline
     created.categoryIds = [target.id]
 
-    const list = await request.get('/api/content/categories')
+    const list = await request.get('/api/content/categories', {
+      headers: appAccessHeaders('/api/content/categories'),
+      maxRedirects: 0,
+    })
     expect(list.ok()).toBeTruthy()
     const body = await list.json()
     const cats = (body.data as Array<{ id: string }>) || []

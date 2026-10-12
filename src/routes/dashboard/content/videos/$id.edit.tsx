@@ -162,11 +162,18 @@ function VideoEditPage() {
         const streamId = videoQuery.data?.cloudflare_video_id
         const ready = videoQuery.data?.processing_status === 'ready'
         let cancelled = false
+        let refreshing = false
+        let refreshAt = 0
+        let refreshTimer: ReturnType<typeof setTimeout> | undefined
         setVideoPreviewUrl(null)
         setSignedThumbnailUrl(null)
         if (!streamId) return
 
         const generatePreviewUrl = async () => {
+            if (cancelled || refreshing) return
+            refreshing = true
+            if (refreshTimer) clearTimeout(refreshTimer)
+            const issuedAt = Date.now()
             try {
                 if (ready) {
                     const previewUrl = await cloudflareApi.generateAdminPreviewUrl(streamId)
@@ -180,18 +187,23 @@ function VideoEditPage() {
                     setVideoPreviewUrl(null)
                     setSignedThumbnailUrl(null)
                 }
+            } finally {
+                refreshing = false
+                if (!cancelled) {
+                    refreshAt = issuedAt + 50 * 60 * 1000
+                    refreshTimer = setTimeout(() => { void generatePreviewUrl() }, Math.max(0, refreshAt - Date.now()))
+                }
             }
         }
 
         void generatePreviewUrl()
-        const refreshTimer = setInterval(() => { void generatePreviewUrl() }, 50 * 60 * 1000)
         const refreshOnReturn = () => {
-            if (document.visibilityState === 'visible') void generatePreviewUrl()
+            if (document.visibilityState === 'visible' && Date.now() >= refreshAt) void generatePreviewUrl()
         }
         document.addEventListener('visibilitychange', refreshOnReturn)
         return () => {
             cancelled = true
-            clearInterval(refreshTimer)
+            if (refreshTimer) clearTimeout(refreshTimer)
             document.removeEventListener('visibilitychange', refreshOnReturn)
         }
     }, [videoQuery.data?.cloudflare_video_id, videoQuery.data?.processing_status])
