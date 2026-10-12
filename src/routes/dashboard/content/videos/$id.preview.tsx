@@ -140,60 +140,69 @@ function VideoPreviewPage() {
         }
 
         let cancelled = false
-        let refreshing = false
-        let refreshAt = 0
-        let lastIssuedAt = 0
-        let refreshTimer: ReturnType<typeof setTimeout> | undefined
         setSignedPreviewUrl(null)
         setSignedThumbnailUrl(null)
 
-        const loadSignedUrls = async () => {
-            if (cancelled || refreshing) return
-            refreshing = true
-            if (refreshTimer) clearTimeout(refreshTimer)
-            const issuedAt = Date.now()
-            try {
-                const [previewUrl, thumbnailUrl] = await Promise.all([
-                    processingStatus === 'ready'
-                        ? cloudflareApi.generateAdminPreviewUrl(streamId, 'iframe')
-                        : Promise.resolve(null),
-                    cloudflareApi.generateThumbnailUrl(streamId),
-                ])
-                if (!thumbnailUrl || !signedUrlReplacesVideoId(thumbnailUrl, streamId) ||
-                    (processingStatus === 'ready' && (!previewUrl || !signedUrlReplacesVideoId(previewUrl, streamId)))) {
-                    throw new Error('Invalid signed Stream URL')
-                }
-                if (!cancelled) {
-                    if (previewUrl) setSignedPreviewUrl(previewUrl)
-                    setSignedThumbnailUrl(thumbnailUrl)
-                    lastIssuedAt = issuedAt
-                    refreshAt = issuedAt + 50 * 60 * 1000
-                }
-            } catch (error) {
-                console.error('Failed to sign admin video preview:', error)
-                if (!cancelled) {
-                    if (lastIssuedAt && Date.now() - lastIssuedAt >= 60 * 60 * 1000) {
-                        setSignedPreviewUrl(null)
-                        setSignedThumbnailUrl(null)
+        const startRefresh = (
+            request: () => Promise<string>,
+            setUrl: (url: string | null) => void,
+        ) => {
+            let refreshing = false
+            let refreshAt = 0
+            let lastIssuedAt = 0
+            let refreshTimer: ReturnType<typeof setTimeout> | undefined
+
+            const refresh = async () => {
+                if (cancelled || refreshing) return
+                refreshing = true
+                if (refreshTimer) clearTimeout(refreshTimer)
+                const issuedAt = Date.now()
+                try {
+                    const url = await request()
+                    if (!url || !signedUrlReplacesVideoId(url, streamId)) {
+                        throw new Error('Invalid signed Stream URL')
                     }
-                    refreshAt = Date.now() + 60 * 1000
+                    if (!cancelled) {
+                        setUrl(url)
+                        lastIssuedAt = issuedAt
+                        refreshAt = issuedAt + 50 * 60 * 1000
+                    }
+                } catch (error) {
+                    console.error('Failed to sign admin video preview:', error)
+                    if (!cancelled) {
+                        if (lastIssuedAt && Date.now() - lastIssuedAt >= 60 * 60 * 1000) setUrl(null)
+                        refreshAt = Date.now() + 60 * 1000
+                    }
+                } finally {
+                    refreshing = false
+                    if (!cancelled) {
+                        refreshTimer = setTimeout(() => { void refresh() }, Math.max(0, refreshAt - Date.now()))
+                    }
                 }
-            } finally {
-                refreshing = false
-                if (!cancelled) {
-                    refreshTimer = setTimeout(() => { void loadSignedUrls() }, Math.max(0, refreshAt - Date.now()))
-                }
+            }
+
+            void refresh()
+            return {
+                refreshIfDue: () => { if (Date.now() >= refreshAt) void refresh() },
+                stop: () => { if (refreshTimer) clearTimeout(refreshTimer) },
             }
         }
 
-        void loadSignedUrls()
+        const previewRefresh = processingStatus === 'ready'
+            ? startRefresh(() => cloudflareApi.generateAdminPreviewUrl(streamId, 'iframe'), setSignedPreviewUrl)
+            : null
+        const thumbnailRefresh = startRefresh(() => cloudflareApi.generateThumbnailUrl(streamId), setSignedThumbnailUrl)
         const refreshOnReturn = () => {
-            if (document.visibilityState === 'visible' && Date.now() >= refreshAt) void loadSignedUrls()
+            if (document.visibilityState === 'visible') {
+                previewRefresh?.refreshIfDue()
+                thumbnailRefresh.refreshIfDue()
+            }
         }
         document.addEventListener('visibilitychange', refreshOnReturn)
         return () => {
             cancelled = true
-            if (refreshTimer) clearTimeout(refreshTimer)
+            previewRefresh?.stop()
+            thumbnailRefresh.stop()
             document.removeEventListener('visibilitychange', refreshOnReturn)
         }
     }, [streamId, processingStatus])
