@@ -5,6 +5,7 @@ import { cloudflareApi } from '@/src/lib/cloudflare-api'
 
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000
 const REFRESH_MS = 50 * 60 * 1000
+const RETRY_MS = 60 * 1000
 
 export function useSignedStreamThumbnail(videoId: string | null | undefined): string | null {
     const { data, dataUpdatedAt } = useQuery({
@@ -12,9 +13,13 @@ export function useSignedStreamThumbnail(videoId: string | null | undefined): st
         queryFn: () => cloudflareApi.generateThumbnailUrl(videoId!),
         enabled: !!videoId,
         staleTime: REFRESH_MS,
+        retry: false,
         refetchInterval: (query) => {
-            const updatedAt = Math.max(query.state.dataUpdatedAt, query.state.errorUpdatedAt)
-            return updatedAt ? Math.max(1_000, updatedAt + REFRESH_MS - Date.now()) : false
+            const { dataUpdatedAt, errorUpdatedAt } = query.state
+            if (errorUpdatedAt > dataUpdatedAt) {
+                return Math.max(1_000, errorUpdatedAt + RETRY_MS - Date.now())
+            }
+            return dataUpdatedAt ? Math.max(1_000, dataUpdatedAt + REFRESH_MS - Date.now()) : false
         },
     })
 

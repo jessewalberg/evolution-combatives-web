@@ -142,6 +142,7 @@ function VideoPreviewPage() {
         let cancelled = false
         let refreshing = false
         let refreshAt = 0
+        let lastIssuedAt = 0
         let refreshTimer: ReturnType<typeof setTimeout> | undefined
         setSignedPreviewUrl(null)
         setSignedThumbnailUrl(null)
@@ -152,26 +153,34 @@ function VideoPreviewPage() {
             if (refreshTimer) clearTimeout(refreshTimer)
             const issuedAt = Date.now()
             try {
-                if (processingStatus === 'ready') {
-                    const previewUrl = await cloudflareApi.generateAdminPreviewUrl(streamId, 'iframe')
-                    if (!cancelled && previewUrl && signedUrlReplacesVideoId(previewUrl, streamId)) {
-                        setSignedPreviewUrl(previewUrl)
-                    }
+                const [previewUrl, thumbnailUrl] = await Promise.all([
+                    processingStatus === 'ready'
+                        ? cloudflareApi.generateAdminPreviewUrl(streamId, 'iframe')
+                        : Promise.resolve(null),
+                    cloudflareApi.generateThumbnailUrl(streamId),
+                ])
+                if (!thumbnailUrl || !signedUrlReplacesVideoId(thumbnailUrl, streamId) ||
+                    (processingStatus === 'ready' && (!previewUrl || !signedUrlReplacesVideoId(previewUrl, streamId)))) {
+                    throw new Error('Invalid signed Stream URL')
                 }
-                const thumbnailUrl = await cloudflareApi.generateThumbnailUrl(streamId)
-                if (!cancelled && thumbnailUrl && signedUrlReplacesVideoId(thumbnailUrl, streamId)) {
+                if (!cancelled) {
+                    if (previewUrl) setSignedPreviewUrl(previewUrl)
                     setSignedThumbnailUrl(thumbnailUrl)
+                    lastIssuedAt = issuedAt
+                    refreshAt = issuedAt + 50 * 60 * 1000
                 }
             } catch (error) {
                 console.error('Failed to sign admin video preview:', error)
                 if (!cancelled) {
-                    setSignedPreviewUrl(null)
-                    setSignedThumbnailUrl(null)
+                    if (lastIssuedAt && Date.now() - lastIssuedAt >= 60 * 60 * 1000) {
+                        setSignedPreviewUrl(null)
+                        setSignedThumbnailUrl(null)
+                    }
+                    refreshAt = Date.now() + 60 * 1000
                 }
             } finally {
                 refreshing = false
                 if (!cancelled) {
-                    refreshAt = issuedAt + 50 * 60 * 1000
                     refreshTimer = setTimeout(() => { void loadSignedUrls() }, Math.max(0, refreshAt - Date.now()))
                 }
             }
