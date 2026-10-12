@@ -538,16 +538,18 @@ export const videoManagement = {
 
                 const data = await handleStreamResponse<{ result: { token: string } }>(response)
 
-                // Construct the signed URL based on requested format using customer subdomain
-                if (format === 'mp4') {
-                    // MP4 download format for better mobile compatibility
-                    // Format: https://customer-subdomain.cloudflarestream.com/video-id/downloads/default.mp4?token=signed-token
-                    return `https://${getStreamEnv().customerSubdomain}/${videoId}/downloads/default.mp4?token=${data.result.token}`
-                } else {
-                    // HLS streaming format (default)
-                    // Format: https://customer-subdomain.cloudflarestream.com/video-id/manifest/video.m3u8?token=signed-token
-                    return `https://${getStreamEnv().customerSubdomain}/${videoId}/manifest/video.m3u8?token=${data.result.token}`
+                const token = data.result.token
+                if (!token) {
+                    throw new CloudflareStreamError('Cloudflare Stream did not return a signing token')
                 }
+
+                // Signed playback puts the JWT where the video id would be.
+                // https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/
+                const host = getStreamEnv().customerSubdomain
+                if (format === 'mp4') {
+                    return `https://${host}/${token}/downloads/default.mp4`
+                }
+                return `https://${host}/${token}/manifest/video.m3u8`
             } catch (error) {
                 throw new CloudflareStreamError(
                     `Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`,

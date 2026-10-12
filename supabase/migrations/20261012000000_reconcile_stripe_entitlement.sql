@@ -2,9 +2,11 @@
 --
 -- One transaction locks the member profile, refuses a stripe_subscription_id
 -- owned by someone else, upserts the (user_id, platform) row, and updates
--- profiles.stripe_reconcile_version and subscription_tier together. A stale
--- event cannot restore a cancelled tier. Requires 20260808000003 (stripe columns and the unique
--- stripe_subscription_id index) and subscriptions_user_id_platform_key.
+-- profiles.stripe_reconcile_version and subscription_tier together from the
+-- Stripe snapshot the caller just fetched. Event timestamps are stored for
+-- audit and do not decide whether that snapshot is written. Requires
+-- 20260808000003 (stripe columns and the unique stripe_subscription_id index)
+-- and subscriptions_user_id_platform_key.
 
 ALTER TABLE public.subscriptions
     ADD COLUMN IF NOT EXISTS stripe_event_id text,
@@ -125,10 +127,9 @@ BEGIN
             RETURN jsonb_build_object('result', 'duplicate', 'version', v_version);
         END IF;
 
-        IF v_row.stripe_event_created IS NOT NULL AND p_event_created < v_row.stripe_event_created THEN
-            RETURN jsonb_build_object('result', 'stale', 'version', v_version);
-        END IF;
-
+        -- The snapshot was just read from Stripe. Apply it even when this
+        -- event is older than the one stored: a newer cancellation can be
+        -- indexed before the paid subscription Stripe search omitted.
     END IF;
 
     INSERT INTO public.stripe_customers (stripe_customer_id, user_id)

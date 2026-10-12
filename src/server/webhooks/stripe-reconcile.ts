@@ -3,14 +3,20 @@
  *
  * The event payload is not the source of truth. We re-read the subscription,
  * include subscriptions owned by metadata or a recorded customer, and choose
- * the highest active tier. The database write updates the subscription and
- * effective profile tier in one transaction, rejecting older event timestamps.
+ * the highest active tier. That fresh snapshot is what we write, not the
+ * event order. Member-wide Stripe search can omit a paid subscription for
+ * STRIPE_SEARCH_LAG_SECONDS; a denial inside that window is retryable instead
+ * of a final success. The database write updates the subscription and
+ * effective profile tier in one transaction.
  */
 
 import { tierForConfiguredPriceId } from '@/src/lib/stripe-price-config'
 import { SUBSCRIPTION_TIER_HIERARCHY, type SubscriptionTier } from '@/src/lib/shared/constants/subscriptionTiers'
 
 const RECONCILE_ATTEMPTS = 5
+
+/** Stripe Search can omit a subscription for about a minute after it changes. */
+export const STRIPE_SEARCH_LAG_SECONDS = 60
 
 const SUBSCRIPTION_EVENTS = new Set([
     'customer.subscription.created',
@@ -101,6 +107,7 @@ export type ReconcileStatus =
     | 'missing_profile'
     | 'ignored'
     | 'unresolved'
+    | 'search_lag'
 
 export interface ReconcileOutcome {
     status: ReconcileStatus
@@ -313,6 +320,17 @@ export async function reconcileStripeWebhookEvent(
         if (!customerId || !STATUSES.has(selected.status)) {
             console.error(`Stripe event ${event.id} subscription ${selected.id} has no usable customer or status`)
             return outcome('unresolved')
+        }
+
+        // Search is the only member-wide lookup. Inside the lag window it can
+        // omit a paid subscription on a customer we have not recorded yet, so
+        // committing a denial would stick. A cancellation older than the
+        // window is trustworthy and commits.
+        const grantsPaid = isCurrent(selected) && tier != null
+        const eventAgeSeconds = Math.floor(Date.now() / 1000) - event.created
+        if (!grantsPaid && eventAgeSeconds < STRIPE_SEARCH_LAG_SECONDS) {
+            console.error(`Stripe event ${event.id} member ${owner} search may omit a paid subscription; retrying without committing`)
+            return outcome('search_lag', true)
         }
 
         const customerIds = [...new Set([

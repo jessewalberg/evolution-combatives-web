@@ -152,7 +152,7 @@ export async function POST({ request }: { request: Request }) {
             videoId,
             userId: user.id,
             format,
-            hasToken: signedUrl.includes('token=')
+            tokenReplacesVideoId: !signedUrl.includes(`/${videoId}/`)
         })
 
         // Get video metadata for additional info

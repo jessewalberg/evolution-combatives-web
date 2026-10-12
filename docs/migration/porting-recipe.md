@@ -89,23 +89,17 @@ and `src/routes/api/webhooks/stripe.ts` as the reference.
    ```
 6. zod 4 is installed: `ZodError.errors` no longer exists — use `.issues`.
 
-## Tests
+## Verification
 
-- Move `app/api/**/route.test.ts` → next to the `src/server/` module
-  (`<module>.test.ts`). Keep tests intact; adapt only:
-  - `import { POST } from './route'` → import from the new module, and wrap:
-    `import { POST as POSTHandler } from './x'` +
-    `const POST = (request?: Request) => POSTHandler({ request: request ?? new Request('http://localhost/') } as never)`
-    (for param routes, pass `{ request, params }`).
-  - Fix moved relative imports (`../../../src/...` → `@/src/...`).
-- Page tests move next to the route file (colocated `.test.tsx` is safe —
-  the generator ignores them). Mock swaps:
-  - `vi.mock('next/link')` → `vi.mock('@/src/components/compat/link')`
-  - `vi.mock('next/image')` → `vi.mock('@/src/components/compat/image')`
-  - `vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }))`
-    → `vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mockPush, useSearch: () => ({}), useParams: () => ({}), useLocation: () => ({ pathname: '/x' }) }))`
-    (include whichever hooks the component uses); assertions change from
-    `mockPush).toHaveBeenCalledWith('/x')` to `({ to: '/x' })`.
+Do not add, move, or keep unit tests. [J 2026-10-09] Delete a legacy
+`app/**/*.test.ts` or `.test.tsx` with the route instead of porting it.
+
+Prove a port with the build, the typecheck, lint, and end-to-end coverage:
+
+- `pnpm exec vite build`
+- `pnpm exec tsc --noEmit`
+- `pnpm lint`
+- `pnpm test:e2e` when the change has a browser or request path
 
 ## Type errors
 
@@ -131,7 +125,8 @@ change is type-only and unavoidable.
 ## Definition of done
 
 1. `pnpm exec vite build` passes (route tree valid).
-2. `pnpm exec vitest run` passes (whole suite, not just your files).
+2. `pnpm lint` passes.
 3. `pnpm exec tsc --noEmit` reports no errors in files you created/ported.
-4. Legacy files deleted.
-5. All work committed on the current branch with a descriptive message.
+4. `pnpm test:e2e` passes when the change has a browser or request path.
+5. Legacy files deleted, including any unit test next to them. Do not recreate unit tests.
+6. All work committed on the current branch with a descriptive message.
