@@ -20,21 +20,10 @@ ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS manual_tier text NOT NULL DEFAULT 'none'
     CONSTRAINT profiles_manual_tier_check CHECK (manual_tier IN ('none', 'tier1', 'tier2', 'tier3'));
 
--- Preserve existing profile grants that are not explained by an active Stripe row.
-UPDATE public.profiles AS p
-SET manual_tier = p.subscription_tier
-WHERE p.subscription_tier IN ('tier1', 'tier2', 'tier3')
-  AND NOT EXISTS (
-      SELECT 1 FROM public.subscriptions AS s
-      WHERE s.user_id = p.id AND s.platform = 'stripe'
-        AND s.status IN ('active', 'trialing')
-        AND CASE s.tier WHEN 'tier3' THEN 3 WHEN 'tier2' THEN 2 WHEN 'tier1' THEN 1 ELSE 0 END
-            >= CASE p.subscription_tier WHEN 'tier3' THEN 3 WHEN 'tier2' THEN 2 ELSE 1 END
-  );
-
 CREATE TABLE IF NOT EXISTS public.stripe_customers (
-    stripe_customer_id text PRIMARY KEY,
-    user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE
+    stripe_customer_id text NOT NULL,
+    user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    PRIMARY KEY (stripe_customer_id, user_id)
 );
 ALTER TABLE public.stripe_customers ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON public.stripe_customers TO service_role;
@@ -69,7 +58,6 @@ DECLARE
     v_owner uuid;
     v_platform text;
     v_row public.subscriptions%ROWTYPE;
-    v_customer_id text;
 BEGIN
     IF p_tier NOT IN ('none', 'tier1', 'tier2', 'tier3') THEN
         RAISE EXCEPTION 'invalid subscription tier';
@@ -94,17 +82,6 @@ BEGIN
     IF p_expected_version IS DISTINCT FROM v_version THEN
         RETURN jsonb_build_object('result', 'retry', 'version', v_version);
     END IF;
-
-    FOREACH v_customer_id IN ARRAY p_customer_ids LOOP
-        IF v_customer_id IS NOT NULL AND v_customer_id <> '' THEN
-            SELECT user_id INTO v_owner
-            FROM public.stripe_customers
-            WHERE stripe_customer_id = v_customer_id;
-            IF FOUND AND v_owner IS DISTINCT FROM p_user_id THEN
-                RETURN jsonb_build_object('result', 'ownership_conflict', 'version', v_version);
-            END IF;
-        END IF;
-    END LOOP;
 
     SELECT user_id, platform
     INTO v_owner, v_platform
@@ -136,14 +113,7 @@ BEGIN
     SELECT DISTINCT customer_id, p_user_id
     FROM unnest(p_customer_ids) AS customer_id
     WHERE customer_id IS NOT NULL AND customer_id <> ''
-    ON CONFLICT (stripe_customer_id) DO NOTHING;
-
-    IF EXISTS (
-        SELECT 1 FROM public.stripe_customers
-        WHERE stripe_customer_id = ANY(p_customer_ids) AND user_id <> p_user_id
-    ) THEN
-        RAISE unique_violation;
-    END IF;
+    ON CONFLICT (stripe_customer_id, user_id) DO NOTHING;
 
     IF v_row.id IS NULL THEN
         INSERT INTO public.subscriptions (

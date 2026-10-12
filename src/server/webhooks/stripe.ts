@@ -64,9 +64,9 @@ export function createSupabaseEntitlementDb(): EntitlementDb {
                 .from('stripe_customers')
                 .select('user_id')
                 .eq('stripe_customer_id', customerId)
-                .maybeSingle()
+                .limit(2)
             if (error) throw error
-            return data?.user_id ?? null
+            return data?.length === 1 ? data[0].user_id : null
         },
         async apply(input: EntitlementApplyInput) {
             const { data, error } = await supabase.rpc('reconcile_stripe_entitlement', {

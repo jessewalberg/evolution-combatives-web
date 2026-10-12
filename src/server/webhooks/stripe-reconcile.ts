@@ -219,9 +219,9 @@ async function ownedSubscriptions(
     retrieved: StripeSubscriptionLike,
     owner: string,
     recordedCustomerIds: string[],
+    soleOwnerCustomerIds: Set<string>,
 ): Promise<StripeSubscriptionLike[]> {
     const customerId = customerIdOf(retrieved)
-    const recorded = new Set(recordedCustomerIds)
     const customers = new Set([...recordedCustomerIds, ...(customerId ? [customerId] : [])])
     const searched = await source.searchByUserId(owner)
     const combined = new Map<string, StripeSubscriptionLike>()
@@ -231,12 +231,12 @@ async function ownedSubscriptions(
     for (const id of customers) {
         for (const sub of await source.listByCustomer(id)) {
             const metadataOwner = metadataUserId(sub)
-            if (metadataOwner === owner || (metadataOwner === null && recorded.has(id))) {
+            if (metadataOwner === owner || (metadataOwner === null && soleOwnerCustomerIds.has(id))) {
                 combined.set(sub.id, sub)
             }
         }
     }
-    if (metadataUserId(retrieved) === owner || (metadataUserId(retrieved) === null && customerId != null && recorded.has(customerId))) {
+    if (metadataUserId(retrieved) === owner || (metadataUserId(retrieved) === null && customerId != null && soleOwnerCustomerIds.has(customerId))) {
         // Retrieved object wins over a list copy of the same id.
         combined.set(retrieved.id, retrieved)
     }
@@ -301,14 +301,18 @@ export async function reconcileStripeWebhookEvent(
 
         const retrieved = await source.retrieve(subscriptionId)
         const recordedCustomerIds = await db.listCustomerIds(owner)
+        const soleOwnerCustomerIds = new Set<string>()
+        for (const id of recordedCustomerIds) {
+            if (await db.ownerForCustomer(id) === owner) soleOwnerCustomerIds.add(id)
+        }
         const retrievedCustomerId = customerIdOf(retrieved)
         if (metadataUserId(retrieved) !== owner
-            && !(metadataUserId(retrieved) === null && retrievedCustomerId && recordedCustomerIds.includes(retrievedCustomerId))) {
+            && !(metadataUserId(retrieved) === null && retrievedCustomerId && soleOwnerCustomerIds.has(retrievedCustomerId))) {
             console.error(`Stripe event ${event.id} subscription ${subscriptionId} is not owned by ${owner}`)
             return outcome('unresolved')
         }
 
-        const subscriptions = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds)
+        const subscriptions = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds, soleOwnerCustomerIds)
         const selected = selectCurrent(subscriptions)
         if (!selected) {
             console.error(`Stripe event ${event.id} did not resolve a subscription owned by ${owner}`)

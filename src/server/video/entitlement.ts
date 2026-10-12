@@ -15,6 +15,7 @@ export async function getEffectiveTier(adminClient: ReturnType<typeof createAdmi
         .from('subscriptions')
         .select('tier')
         .eq('user_id', userId)
+        .eq('platform', 'stripe')
         .in('status', ['active', 'trialing'])
     if (subscriptionError) throw subscriptionError
 
