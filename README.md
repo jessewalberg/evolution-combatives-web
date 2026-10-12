@@ -236,6 +236,7 @@ User administration is available in the dashboard under `/users`.
 ### Video API
 - `POST /api/video/signed-url` - Get a signed playback URL
 - `POST /api/mobile/video/signed-url` - Get a signed playback URL for the mobile app
+- Both endpoints return a Stream playback URL with the signed token in place of the video ID.
 - `GET /api/video-processing/get-processing` - Check processing status
 - `POST /api/video-processing/sync-all` - Sync with Cloudflare
 

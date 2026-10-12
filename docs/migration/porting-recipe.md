@@ -25,8 +25,7 @@ Transform the page component:
 
 1. Delete the `'use client'` directive and any `export const metadata` /
    `export const dynamic`.
-2. `export default function X()` → `export function X()` (named export kept
-   for tests), and register:
+2. `export default function X()` → `export function X()`, and register:
    ```tsx
    import { createFileRoute } from '@tanstack/react-router'
    export const Route = createFileRoute('/dashboard/content/videos/')({
@@ -40,8 +39,7 @@ Transform the page component:
 4. Import swaps (shims keep prop shapes identical):
    - `import Link from 'next/link'` → `import Link from '@/src/components/compat/link'`
    - `import Image from 'next/image'` → `import Image from '@/src/components/compat/image'`
-5. Navigation hooks — use ONLY top-level importable hooks (mockable in
-   tests exactly like the old next/navigation mocks):
+5. Navigation hooks — use top-level importable hooks:
    - `useRouter().push(path)` → `const navigate = useNavigate()` then
      `navigate({ to: path as never })`. If the string contains a query
      (`'/x?y=z'`), split it: `navigate({ to: '/x' as never, search: { y: 'z' } })`.
@@ -94,18 +92,16 @@ and `src/routes/api/webhooks/stripe.ts` as the reference.
 Do not add, move, or keep unit tests. [J 2026-10-09] Delete a legacy
 `app/**/*.test.ts` or `.test.tsx` with the route instead of porting it.
 
-Prove a port with the build, the typecheck, lint, and end-to-end coverage:
+Prove a port with the build, typecheck, lint, and end-to-end coverage:
 
-- `pnpm exec vite build`
-- `pnpm exec tsc --noEmit`
+- `pnpm build`
+- `pnpm typecheck`
 - `pnpm lint`
-- `pnpm test:e2e` when the change has a browser or request path
+- `pnpm test:e2e`
 
 ## Type errors
 
-Your ported files must be `tsc`-clean: check with
-`pnpm exec vite build && pnpm exec tsc --noEmit 2>&1 | grep -E '<your files>'`.
-Pre-existing errors in files you don't own are NOT yours to fix. Where the
+The full `pnpm typecheck` must pass after building the route tree. Where the
 typed Supabase browser client reports `never` rows (stale shared Database
 type), use a local `as` cast at the query site — do NOT edit
 `src/lib/shared/**` (that tree is shared with the mobile repo) unless the
@@ -115,7 +111,7 @@ change is type-only and unavoidable.
 
 - URLs must not change — mobile app and external callers depend on them.
 - Do NOT edit: `src/routes/__root.tsx`, `src/start.ts`, `vite.config.ts`,
-  `package.json`, `wrangler.jsonc`, `vitest.config.ts`,
+  `package.json`, `wrangler.jsonc`,
   `src/lib/{supabase,csrf-protection,rate-limit,api-auth,http,mobile-auth}.ts`,
   `src/hooks/useAuth.ts`, `src/components/**` (shared, already ported), or
   another slice's files. If blocked by one of these, report it instead.
@@ -124,9 +120,9 @@ change is type-only and unavoidable.
 
 ## Definition of done
 
-1. `pnpm exec vite build` passes (route tree valid).
-2. `pnpm lint` passes.
-3. `pnpm exec tsc --noEmit` reports no errors in files you created/ported.
-4. `pnpm test:e2e` passes when the change has a browser or request path.
+1. `pnpm build` passes (route tree valid).
+2. `pnpm typecheck` passes.
+3. `pnpm lint` passes.
+4. `pnpm test:e2e` passes.
 5. Legacy files deleted, including any unit test next to them. Do not recreate unit tests.
 6. All work committed on the current branch with a descriptive message.
