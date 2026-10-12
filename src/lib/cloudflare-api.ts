@@ -11,34 +11,44 @@ interface CloudflareApiResponse<T = unknown> {
 
 export class CloudflareApiClient {
     private csrfTokenCache: { token: string; expires: number } | null = null
+    private csrfTokenPromise: Promise<string> | null = null
 
     private async getCSRFToken(): Promise<string> {
         // Check if we have a cached token that hasn't expired
         if (this.csrfTokenCache && Date.now() < this.csrfTokenCache.expires) {
             return this.csrfTokenCache.token
         }
+        if (this.csrfTokenPromise) return this.csrfTokenPromise
 
-        const response = await fetch('/api/csrf-token', {
-            credentials: 'include' // Ensure cookies are included
-        })
+        const request = (async () => {
+            const response = await fetch('/api/csrf-token', {
+                credentials: 'include' // Ensure cookies are included
+            })
 
-        if (!response.ok) {
-            throw new Error(`Failed to fetch CSRF token: ${response.status} ${response.statusText}`)
+            if (!response.ok) {
+                throw new Error(`Failed to fetch CSRF token: ${response.status} ${response.statusText}`)
+            }
+
+            const data = await response.json()
+
+            if (!data.success || !data.csrfToken) {
+                throw new Error('Failed to get CSRF token from response')
+            }
+
+            // Cache the token with expiration
+            this.csrfTokenCache = {
+                token: data.csrfToken,
+                expires: new Date(data.expiresAt).getTime() - 60000 // Expire 1 minute early for safety
+            }
+
+            return data.csrfToken
+        })()
+        this.csrfTokenPromise = request
+        try {
+            return await request
+        } finally {
+            if (this.csrfTokenPromise === request) this.csrfTokenPromise = null
         }
-
-        const data = await response.json()
-
-        if (!data.success || !data.csrfToken) {
-            throw new Error('Failed to get CSRF token from response')
-        }
-
-        // Cache the token with expiration
-        this.csrfTokenCache = {
-            token: data.csrfToken,
-            expires: new Date(data.expiresAt).getTime() - 60000 // Expire 1 minute early for safety
-        }
-
-        return data.csrfToken
     }
 
     private async makeRequest<T>(action: string, data?: Record<string, unknown>): Promise<T> {
@@ -67,7 +77,7 @@ export class CloudflareApiClient {
 
         // If CSRF validation failed, clear cache and retry once
         if (!result.success && result.error?.includes('CSRF token validation failed')) {
-            this.csrfTokenCache = null // Clear cache
+            if (this.csrfTokenCache?.token === csrfToken) this.csrfTokenCache = null
 
             // Retry once with fresh token
             const freshToken = await this.getCSRFToken()

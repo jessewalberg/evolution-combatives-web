@@ -243,21 +243,15 @@ async function ownedSubscriptions(
     }
     if (eventCustomerId) await listCustomer(eventCustomerId)
 
-    const retrievedOwned = Boolean(retrieved.id) && (
-        metadataUserId(retrieved) === owner
-        || (metadataUserId(retrieved) === null && eventCustomerId != null && soleOwnerCustomerIds.has(eventCustomerId))
-    )
-    if (retrievedOwned) {
-        combined.set(retrieved.id, retrieved)
-    }
-
     const searched = await source.searchByUserId(owner)
     let searchComplete = true
+    let sawOwnerSubscription = false
     for (const sub of searched) {
         if (metadataUserId(sub) !== owner) {
             searchComplete = false
             continue
         }
+        sawOwnerSubscription = true
         const searchedCustomer = customerIdOf(sub)
         if (!sub.id || !searchedCustomer) {
             searchComplete = false
@@ -269,9 +263,7 @@ async function ownedSubscriptions(
         if (!listedIds.has(sub.id)) searchComplete = false
     }
 
-    if (retrievedOwned) combined.set(retrieved.id, retrieved)
-
-    return { subscriptions: [...combined.values()], searchComplete }
+    return { subscriptions: [...combined.values()], searchComplete: searchComplete && sawOwnerSubscription }
 }
 
 function mapApplyResult(result: string): ReconcileOutcome {
@@ -351,11 +343,11 @@ export async function reconcileStripeWebhookEvent(
             return outcome('search_lag', true)
         }
         const subscriptions = snapshot.subscriptions
-        if (!snapshot.searchComplete) {
+        const selected = selectCurrent(subscriptions)
+        if (!snapshot.searchComplete && (!selected || !isCurrent(selected) || !tierOf(selected))) {
             console.error(`Stripe event ${event.id} member ${owner} search did not match customer lists`)
             return outcome('search_lag', true)
         }
-        const selected = selectCurrent(subscriptions)
         if (!selected) {
             console.error(`Stripe event ${event.id} did not resolve a subscription owned by ${owner}`)
             return outcome('unresolved')

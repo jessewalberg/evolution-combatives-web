@@ -2,6 +2,7 @@ import { createCheckoutSession, getOrCreateCustomer } from '@/src/lib/stripe'
 import { readRequiredStripePriceId, STRIPE_PRICE_ENV } from '@/src/lib/stripe-price-config'
 import { validateMobileAppAuth } from '@/src/lib/mobile-auth'
 import { json } from '@/src/lib/http'
+import { recordStripeCustomer } from '@/src/server/stripe-customer'
 import { z } from 'zod'
 
 // Request validation schema
@@ -95,6 +96,7 @@ export async function POST({ request }: { request: Request }) {
         }
 
         const priceId = readRequiredStripePriceId(priceEnvName)
+        await recordStripeCustomer(customer.id, user.id)
 
         // Create Stripe checkout session
         const session = await createCheckoutSession({

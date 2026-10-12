@@ -9,6 +9,7 @@
 import { getStripe, validateWebhookSignature } from '@/src/lib/stripe'
 import { createAdminClient } from '@/src/lib/supabase'
 import { json } from '@/src/lib/http'
+import { recordStripeCustomer } from '@/src/server/stripe-customer'
 import type Stripe from 'stripe'
 import {
     reconcileStripeWebhookEvent,
@@ -160,11 +161,10 @@ export async function POST({ request }: { request: Request }) {
 
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object as Stripe.Checkout.Session
-            if (!session.metadata?.userId || !session.metadata?.tier) {
-                console.error(`Checkout session ${session.id} missing metadata`)
-            } else {
-                console.log(`Checkout completed for session ${session.id}`)
-            }
+            const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id
+            if (!session.metadata?.userId || !customerId) throw new Error(`Checkout session ${session.id} missing customer or user`)
+            await recordStripeCustomer(customerId, session.metadata.userId)
+            console.log(`Checkout completed for session ${session.id}`)
         } else if (RECONCILE_TYPES.has(event.type)) {
             const result = await reconcileStripeWebhookEvent(
                 event,
