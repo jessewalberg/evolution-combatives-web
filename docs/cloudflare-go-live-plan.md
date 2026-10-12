@@ -30,7 +30,7 @@ The two-phase deploy in `docs/GO-LIVE.md`, where the Worker goes up first and th
 |---|------|-----|----------------|
 | 1 | Independent review of PR #38. The scope is auth, the mobile API, the Stripe and Stream webhooks, CSRF, rate limiting and secret handling. Output is a list of findings. | Navi sprite (read-only) | Optionally, the private security-audit results. If he has none, the sprite review covers the launch paths. |
 | 2 | Release branch from the PR #38 head with these launch fixes (below), shipped through `no-mistakes`. The new PR supersedes #38. | Navi sprite | The three live-mode price IDs (not secret) |
-| 3 | Cloudflare and GitHub prerequisites (below) | Jesse | Dashboard access only. No values go to Navi. |
+| 3 | Cloudflare, GitHub and production Supabase prerequisites (below) | Jesse | Dashboard access only. No values go to Navi. |
 | 4 | Worker secrets on `evolution-combatives-admin` | Jesse | Secret names below. He enters the values himself. |
 | 5 | Stripe and Stream webhook checks (below). No new Stripe endpoint. | Jesse | Facts that are not secret: endpoint URL, API version, enabled state, earliest failed delivery |
 | 6 | DNS: delete the apex `A` record and the `www` CNAME that point at Vercel, right before step 7 | Jesse | Cloudflare DNS access for the zone |
@@ -43,9 +43,10 @@ The two-phase deploy in `docs/GO-LIVE.md`, where the Worker goes up first and th
 
 Each fix is small, and each one closes a problem that would hit a normal path at cutover.
 
-1. **Remove unit tests [J 2026-10-09].** Delete every `*.test.ts`, `*.test.tsx` and `*.test.cjs` file, plus `vitest.config.ts`, `vitest.setup.ts`, `test/`, the vitest and testing-library dev dependencies and the `test*` vitest scripts. Remove the `Test` job from `ci.yml`. Drop the vendored `.cursor/skills/` tree; it carries unit tests and is not app code. Keep Typecheck, Lint, Playwright E2E and Preview.
+1. **Remove unit tests [J 2026-10-09].** Delete every `*.test.ts`, `*.test.tsx` and `*.test.cjs` file, including the two tests under `.cursor/skills/security-audit/`, plus `vitest.config.ts`, `vitest.setup.ts`, `test/`, the vitest and testing-library dev dependencies and the `test*` vitest scripts. Remove the `Test` job from `ci.yml`. Keep the non-test `.cursor/skills/` reference material, Typecheck, Lint, Playwright E2E and Preview.
 2. **Make the Stripe webhook idempotent and order-independent** (`src/server/webhooks/stripe.ts`).
-   - For each `customer.subscription.*` event, re-read the subscription with `stripe.subscriptions.retrieve` and **upsert**, so the current state is written whatever order events arrive in. The upsert target is `(user_id, platform)` because of the unique key `subscriptions_user_id_platform_key`.
+   - Route every `customer.subscription.*` and `invoice.payment_*` event through one per-member reconciliation boundary. Re-read the event's subscription and the customer's subscriptions from Stripe; select the member's current subscription from Stripe's live state (active or trialing first, then the newest remaining subscription). Reconcile only that selected ID, never a historical event's ID. Atomically guard the `(user_id, platform)` upsert against a stale selection replacing a newer current subscription. A delayed event for an old canceled subscription must leave a newer subscription row untouched, even when that old event arrives last or concurrently.
+   - Derive status, tier and the `profiles.subscription_tier` write from the guarded current subscription, granting its tier only while active or trialing, including on invoice success/failure and cancellation. An invoice event must not set a historical subscription to `active` or `past_due`, and a cancellation must not clear the tier of a newer active subscription. If the guard rejects a stale event, neither table changes. The upsert target is `(user_id, platform)` because of the unique key `subscriptions_user_id_platform_key`.
    - Today `handleSubscriptionCreated` does a plain `insert`. That fails on any replay (unique `stripe_subscription_id`), and it fails for any member who subscribes again after cancelling (unique `user_id, platform`).
    - Read period fields from `items.data[0].current_period_*` when the top-level fields are missing. Read the invoice's subscription from `parent.subscription_details.subscription` when `invoice.subscription` is missing.
    - Never call `toISOString()` on `NaN`.
@@ -62,7 +63,7 @@ Each fix is small, and each one closes a problem that would hit a normal path at
 
 Verification: `pnpm build` (vite build + tsc), `pnpm lint`, Playwright E2E and the preview deploy in CI. Unit tests are not run [J 2026-10-09].
 
-### Step 3: Cloudflare and GitHub prerequisites (Jesse)
+### Step 3: Cloudflare, GitHub and production Supabase prerequisites (Jesse)
 
 - Confirm the `evolutioncombatives.com` zone is in the **same Cloudflare account** as the Worker (the `account_id` in `wrangler.jsonc`). Custom domains cannot attach to a zone in another account.
 - Confirm the **Stream library with the gym's videos is in that same account**. `CLOUDFLARE_ACCOUNT_ID` in `wrangler.jsonc` vars builds every Stream API URL, and `CLOUDFLARE_CUSTOMER_SUBDOMAIN` builds playback URLs. If Stream lives in another account, change those two vars in step 2. They are not secret.
@@ -70,6 +71,7 @@ Verification: `pnpm build` (vite build + tsc), `pnpm lint`, Playwright E2E and t
   - `CLOUDFLARE_ACCOUNT_ID`.
   - `CLOUDFLARE_API_TOKEN`: for this first deploy, a temporary account-owned token with **Workers Scripts: Edit** plus **Zone → Workers Routes: Edit** on the `evolutioncombatives.com` zone. A per-Worker token cannot attach custom domains.
 - Supabase production project → Authentication → URL Configuration: check that `https://evolutioncombatives.com/**` and `https://www.evolutioncombatives.com/**` are allowed redirect URLs.
+- Compare the production Supabase migration history with the checked-in `supabase/migrations/` files. Apply any pending production migrations in order before step 7, then verify that `public.subscriptions` has the Stripe columns and unique `stripe_subscription_id` index from `20260808000003_fix_stripe_subscription_columns.sql` and the `(user_id, platform)` constraint. PR #38's deploy workflow does not run migrations; do not approve cutover while this schema is missing.
 
 ### Step 4: Worker secrets (Jesse; names only)
 
@@ -116,7 +118,7 @@ The staging and preview secrets and the separate non-production Stream account a
    - Confirm the endpoint is still enabled.
    - Check that the Worker logs show no `signature verification failed`.
 5. **Stream webhooks:** upload a short clip in the admin and watch `processing_status` reach `ready`. Then run "sync all" on the processing page to recover notifications missed during the outage.
-6. **Reconcile:** run the read-only subscription query from `docs/GO-LIVE.md` §8. Compare active Stripe subscriptions against the `subscriptions` table.
+6. **Reconcile:** in Stripe live mode, list all active and trialing subscriptions (paginate through the full result), map each subscription ID and customer to its member and tier, and compare them with all `platform = 'stripe'` rows and the members' `profiles.subscription_tier` values. Flag missing rows, wrong subscription IDs, stale status or tier, database active rows without a matching active Stripe subscription, and profile mismatches; replay or repair each mismatch and compare again before declaring reconciliation complete. The read-only query in `docs/GO-LIVE.md` §8 finds only one subset of mismatches and cannot detect a missing subscription row.
 
 ### Step 10: clean-up and Vercel shut-off
 
@@ -141,7 +143,7 @@ Everything else waits until after launch: staging and preview secrets, the separ
 
 1. **Stripe webhook backlog (time-critical).** In live mode Stripe retries a failed delivery for up to three days ([Stripe docs](https://docs.stripe.com/webhooks/process-undelivered-events)). Events that first failed more than three days before cutover are no longer retried, so they must be resent by hand (step 9.4). An endpoint that keeps failing can also be disabled ([Stripe support](https://support.stripe.com/questions/why-is-stripe-trying-to-reach-my-webhook-endpoints)). The outage start date is unmeasured: the earliest failure observed was on 2026-10-12. If that is the start, the oldest events stop retrying around 2026-10-15.
 2. **Stripe payload shape.** API version `2025-03-31.basil` and later removed the subscription-level `current_period_start` and `current_period_end` ([Stripe changelog](https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-subscription-current-period-start-and-end)) and moved `invoice.subscription` under `parent` ([Stripe changelog](https://docs.stripe.com/changelog/basil/2025-03-31/adds-new-parent-field-to-invoicing-objects)). If the endpoint is on Basil or later, the current handler throws on every subscription create and update. Fix 2 removes that dependency. The endpoint's API version is unknown until Jesse reads it (step 5).
-3. **Replays and re-subscribers.** A plain `insert` hits the unique keys, and updates that arrive out of order write stale status. Fix 2 handles both. Without it, the reconcile in step 9.6 is mandatory.
+3. **Replays and re-subscribers.** A plain `insert` hits the unique keys, and delayed subscription or invoice events can replace a newer entitlement. Fix 2 guards every subscription and profile write; step 9.6 checks for missed or stale rows after replay.
 4. **Mobile video ID mismatch (unconfirmed).**
    - The mobile `useSignedVideoUrl` passes `cloudflare_video_id`, which is what the Worker expects (a 32-character hex ID).
    - Before calling the API, though, `getSignedVideoUrl` queries `videos.id = <that id>`. `videos.id` is a `uuid`, so that query errors.
