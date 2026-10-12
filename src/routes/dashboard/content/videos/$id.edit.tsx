@@ -195,19 +195,8 @@ function VideoEditPage() {
                 tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
             }
 
-            // Handle thumbnail upload if provided
-            if (data.customThumbnail && videoQuery.data?.cloudflare_video_id) {
-                try {
-                    const thumbnailUrl = await cloudflareApi.generateThumbnailUrl(
-                        videoQuery.data.cloudflare_video_id,
-                        { time: 5, width: 640, height: 360 }
-                    )
-                    updateData.thumbnail_url = thumbnailUrl
-                } catch (error) {
-                    console.error('Failed to update thumbnail:', error)
-                }
-            }
-
+            // A signed thumbnail is a bearer token. Admins fetch one when they
+            // open the preview; it is not stored on the public video row.
             return clientContentService.updateVideo(videoId, updateData)
         },
         onMutate: async (newData) => {

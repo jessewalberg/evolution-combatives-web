@@ -424,6 +424,69 @@ export const uploadFunctions = {
     }
 }
 
+/** JWT replaces the video id. https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/ */
+function signedStreamResourceUrl(
+    host: string,
+    token: string,
+    resource: 'hls' | 'mp4' | 'thumbnail',
+    query = ''
+): string {
+    if (resource === 'mp4') {
+        return `https://${host}/${token}/downloads/default.mp4`
+    }
+    if (resource === 'thumbnail') {
+        const path = `https://${host}/${token}/thumbnails/thumbnail.jpg`
+        return query ? `${path}?${query}` : path
+    }
+    return `https://${host}/${token}/manifest/video.m3u8`
+}
+
+/** Admin iframe. The token stands where the bare video id used to. */
+function signedIframeUrl(token: string): string {
+    return `https://iframe.videodelivery.net/${token}`
+}
+
+function assertStreamSigningKeys(videoId: string): void {
+    const hasSigningKeys = process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID && process.env.CLOUDFLARE_STREAM_SIGNING_KEY
+    if (!hasSigningKeys) {
+        throw new CloudflareStreamError(
+            'Video signing keys not configured. Contact support.',
+            503,
+            { videoId, reason: 'MISSING_SIGNING_KEYS' }
+        )
+    }
+}
+
+async function requestStreamToken(
+    videoId: string,
+    payload: {
+        exp: number
+        nbf: number
+        downloadable: boolean
+        accessRules: NonNullable<SignedUrlOptions['accessRules']>
+    }
+): Promise<string> {
+    const response = await fetch(`${getStreamApiBase()}/${videoId}/token`, {
+        method: 'POST',
+        headers: getStreamHeaders(),
+        body: JSON.stringify({
+            sub: videoId,
+            kid: process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID,
+            exp: payload.exp,
+            nbf: payload.nbf,
+            downloadable: payload.downloadable,
+            accessRules: payload.accessRules,
+        }),
+    })
+
+    const data = await handleStreamResponse<{ result: { token: string } }>(response)
+    const token = data.result.token
+    if (!token) {
+        throw new CloudflareStreamError('Cloudflare Stream did not return a signing token')
+    }
+    return token
+}
+
 // Video Management Functions
 export const videoManagement = {
     /**
@@ -473,7 +536,8 @@ export const videoManagement = {
     },
 
     /**
-     * Generate signed URL for video access
+     * Generate signed URL for video access.
+     * The JWT replaces the video id in the path.
      */
     async generateSignedUrl(
         videoId: string,
@@ -482,20 +546,9 @@ export const videoManagement = {
         format: 'hls' | 'mp4' = 'hls'
     ): Promise<string> {
         validateStreamVideoId(videoId)
-        // Check if we have signing keys configured for secure JWT generation
-        const hasSigningKeys = process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID && process.env.CLOUDFLARE_STREAM_SIGNING_KEY;
+        assertStreamSigningKeys(videoId)
+        await this.updateVideoSettings(videoId, { requireSignedURLs: true })
 
-        if (!hasSigningKeys) {
-            throw new CloudflareStreamError(
-                'Video signing keys not configured. Contact support.',
-                503,
-                { videoId, reason: 'MISSING_SIGNING_KEYS' }
-            );
-        }
-
-        await this.updateVideoSettings(videoId, { requireSignedURLs: true });
-
-        // Set expiration based on subscription tier
         const now = Math.floor(Date.now() / 1000)
         let expiration = now + (24 * 60 * 60) // 24 hours default
 
@@ -514,57 +567,30 @@ export const videoManagement = {
                 break
         }
 
-        // Use proper JWT signing with RSA keys when available
-        if (hasSigningKeys) {
-            const payload = {
-                sub: videoId, // Video ID
-                kid: process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID!, // Key ID
+        try {
+            const token = await requestStreamToken(videoId, {
                 exp: options.exp || expiration,
                 nbf: options.nbf || now,
                 downloadable: options.downloadable || false,
-                accessRules: options.accessRules || []
+                accessRules: options.accessRules || [],
+            })
+            const host = getStreamEnv().customerSubdomain
+            if (format === 'mp4') {
+                return signedStreamResourceUrl(host, token, 'mp4')
             }
-
-            // TODO: Implement proper RSA JWT signing here
-            // For now, we'll use Cloudflare's token generation API as fallback
-            // In production, you should use a JWT library like 'jsonwebtoken' with RSA signing
-
-            try {
-                const response = await fetch(`${getStreamApiBase()}/${videoId}/token`, {
-                    method: 'POST',
-                    headers: getStreamHeaders(),
-                    body: JSON.stringify(payload)
-                })
-
-                const data = await handleStreamResponse<{ result: { token: string } }>(response)
-
-                const token = data.result.token
-                if (!token) {
-                    throw new CloudflareStreamError('Cloudflare Stream did not return a signing token')
-                }
-
-                // Signed playback puts the JWT where the video id would be.
-                // https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/
-                const host = getStreamEnv().customerSubdomain
-                if (format === 'mp4') {
-                    return `https://${host}/${token}/downloads/default.mp4`
-                }
-                return `https://${host}/${token}/manifest/video.m3u8`
-            } catch (error) {
-                throw new CloudflareStreamError(
-                    `Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                    undefined,
-                    error
-                )
-            }
+            return signedStreamResourceUrl(host, token, 'hls')
+        } catch (error) {
+            throw new CloudflareStreamError(
+                `Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                undefined,
+                error
+            )
         }
-
-        // Fallback: should never reach here
-        throw new CloudflareStreamError('Unable to generate video URL - configuration error');
     },
 
     /**
-     * Get video thumbnail URL
+     * Signed thumbnail for an admin. The JWT replaces the video id.
+     * Do not store the result: it expires, and it is a bearer token.
      */
     async generateThumbnailUrl(
         videoId: string,
@@ -576,17 +602,45 @@ export const videoManagement = {
         } = {}
     ): Promise<string> {
         validateStreamVideoId(videoId)
-        const params = new URLSearchParams()
+        assertStreamSigningKeys(videoId)
+        await this.updateVideoSettings(videoId, { requireSignedURLs: true })
 
+        const params = new URLSearchParams()
         if (options.time) params.set('time', options.time.toString())
         if (options.width) params.set('width', options.width.toString())
         if (options.height) params.set('height', options.height.toString())
         if (options.fit) params.set('fit', options.fit)
 
-        const queryString = params.toString()
-        const baseUrl = `https://${getStreamEnv().customerSubdomain}/${videoId}/thumbnails/thumbnail.jpg`
+        const now = Math.floor(Date.now() / 1000)
+        const token = await requestStreamToken(videoId, {
+            exp: now + (60 * 60),
+            nbf: now,
+            downloadable: false,
+            accessRules: [],
+        })
+        return signedStreamResourceUrl(
+            getStreamEnv().customerSubdomain,
+            token,
+            'thumbnail',
+            params.toString()
+        )
+    },
 
-        return queryString ? `${baseUrl}?${queryString}` : baseUrl
+    /**
+     * Signed admin iframe. The JWT replaces the video id.
+     */
+    async generateSignedIframeUrl(videoId: string): Promise<string> {
+        validateStreamVideoId(videoId)
+        assertStreamSigningKeys(videoId)
+        await this.updateVideoSettings(videoId, { requireSignedURLs: true })
+        const now = Math.floor(Date.now() / 1000)
+        const token = await requestStreamToken(videoId, {
+            exp: now + (60 * 60),
+            nbf: now,
+            downloadable: false,
+            accessRules: [],
+        })
+        return signedIframeUrl(token)
     },
 
     /**
@@ -738,11 +792,6 @@ export const webhookHandling = {
                 updates.duration_seconds = Math.round(payload.duration)
             }
 
-            // Generate thumbnail URL if video is ready
-            if (payload.readyToStream) {
-                updates.thumbnail_url = await videoManagement.generateThumbnailUrl(videoId)
-            }
-
             const { error } = await supabase
                 .from('videos')
                 .update(updates)
@@ -791,7 +840,6 @@ export const webhookHandling = {
                 processing_status: 'ready',
                 is_published: false, // Keep unpublished until admin approval
                 duration_seconds: payload.duration ? Math.round(payload.duration) : video.duration_seconds,
-                thumbnail_url: await videoManagement.generateThumbnailUrl(videoId),
                 updated_at: new Date().toISOString()
             }
 
@@ -824,7 +872,10 @@ export const securityFunctions = {
     /**
      * Generate admin preview URL (no subscription restrictions)
      */
-    async generateAdminPreviewUrl(videoId: string): Promise<string> {
+    async generateAdminPreviewUrl(videoId: string, format: 'hls' | 'iframe' = 'hls'): Promise<string> {
+        if (format === 'iframe') {
+            return videoManagement.generateSignedIframeUrl(videoId)
+        }
         return videoManagement.generateSignedUrl(videoId, 'tier3', {
             exp: Math.floor(Date.now() / 1000) + (60 * 60), // 1 hour
             downloadable: false

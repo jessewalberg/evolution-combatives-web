@@ -17,6 +17,7 @@ import { Card } from '@/src/components/ui/card'
 import { Badge } from '@/src/components/ui/badge'
 import { Spinner } from '@/src/components/ui/loading'
 import { clientContentService } from '@/src/services/content-client'
+import { cloudflareApi } from '@/src/lib/cloudflare-api'
 import { queryKeys } from '@/src/lib/query-client'
 import type { VideoWithRelations } from 'shared/types/database'
 
@@ -31,6 +32,11 @@ import {
     TagIcon,
     ArrowPathIcon
 } from '@heroicons/react/24/outline'
+
+/** Reject a URL that still addresses the video by its bare id. */
+function signedUrlReplacesVideoId(url: string, videoId: string): boolean {
+    return !url.includes(`/${videoId}/`) && !url.endsWith(`/${videoId}`)
+}
 
 function VideoPreviewPage() {
     const navigate = useNavigate()
@@ -61,6 +67,8 @@ function VideoPreviewPage() {
     })
 
     const video = videoQuery.data
+    const [signedPreviewUrl, setSignedPreviewUrl] = React.useState<string | null>(null)
+    const [signedThumbnailUrl, setSignedThumbnailUrl] = React.useState<string | null>(null)
 
     // Auto-sync mutation to check video status with Cloudflare
     const syncVideoMutation = useMutation({
@@ -120,6 +128,43 @@ function VideoPreviewPage() {
             }
         }
     }, [video?.processing_status, syncVideoMutation])
+
+    const streamId = video?.cloudflare_video_id
+    const processingStatus = video?.processing_status
+
+    React.useEffect(() => {
+        if (!streamId) {
+            setSignedPreviewUrl(null)
+            setSignedThumbnailUrl(null)
+            return
+        }
+
+        let cancelled = false
+        setSignedPreviewUrl(null)
+        setSignedThumbnailUrl(null)
+
+        const loadSignedUrls = async () => {
+            try {
+                if (processingStatus === 'ready') {
+                    const previewUrl = await cloudflareApi.generateAdminPreviewUrl(streamId, 'iframe')
+                    if (!cancelled && previewUrl && signedUrlReplacesVideoId(previewUrl, streamId)) {
+                        setSignedPreviewUrl(previewUrl)
+                    }
+                }
+                const thumbnailUrl = await cloudflareApi.generateThumbnailUrl(streamId)
+                if (!cancelled && thumbnailUrl && signedUrlReplacesVideoId(thumbnailUrl, streamId)) {
+                    setSignedThumbnailUrl(thumbnailUrl)
+                }
+            } catch (error) {
+                console.error('Failed to sign admin video preview:', error)
+            }
+        }
+
+        void loadSignedUrls()
+        return () => {
+            cancelled = true
+        }
+    }, [streamId, processingStatus])
 
 
 
@@ -307,9 +352,9 @@ function VideoPreviewPage() {
                     <div className="lg:col-span-2">
                         <Card className="p-0 overflow-hidden">
                             <div className="relative aspect-video bg-black">
-                                {video?.cloudflare_video_id && video?.processing_status === 'ready' ? (
+                                {video?.processing_status === 'ready' && signedPreviewUrl ? (
                                     <iframe
-                                        src={`https://iframe.videodelivery.net/${video.cloudflare_video_id}`}
+                                        src={signedPreviewUrl}
                                         className="w-full h-full"
                                         allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
                                         allowFullScreen
@@ -337,10 +382,10 @@ function VideoPreviewPage() {
                                             There was an error processing your video. Please try re-uploading.
                                         </p>
                                     </div>
-                                ) : video?.thumbnail_url ? (
+                                ) : signedThumbnailUrl ? (
                                     <div className="w-full h-full flex items-center justify-center bg-neutral-900 dark:bg-neutral-800">
                                         <Image
-                                            src={video.thumbnail_url}
+                                            src={signedThumbnailUrl}
                                             alt={video.title}
                                             fill
                                             className="object-contain"

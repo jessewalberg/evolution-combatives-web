@@ -167,8 +167,8 @@ export class CloudflareApiClient {
         return this.makeRequest('checkUploadStatus', { streamId })
     }
 
-    async generateAdminPreviewUrl(videoId: string): Promise<string> {
-        const result = await this.makeRequest<{ previewUrl: string }>('generateAdminPreviewUrl', { videoId })
+    async generateAdminPreviewUrl(videoId: string, format: 'hls' | 'iframe' = 'hls'): Promise<string> {
+        const result = await this.makeRequest<{ previewUrl: string }>('generateAdminPreviewUrl', { videoId, format })
         return result.previewUrl
     }
 

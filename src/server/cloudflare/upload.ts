@@ -59,9 +59,17 @@ export async function POST({ request }: { request: Request }) {
                 const status = await cloudflareStreamService.upload.checkUploadStatus(data.streamId)
                 return json({ success: true, data: status })
 
-            case 'generateAdminPreviewUrl':
-                const previewUrl = await cloudflareStreamService.security.generateAdminPreviewUrl(data.videoId)
+            case 'generateAdminPreviewUrl': {
+                if (!isValidStreamVideoId(data.videoId)) {
+                    return json(
+                        { success: false, error: 'Invalid video ID format' },
+                        { status: 400 }
+                    )
+                }
+                const previewFormat = data.format === 'iframe' ? 'iframe' : 'hls'
+                const previewUrl = await cloudflareStreamService.security.generateAdminPreviewUrl(data.videoId, previewFormat)
                 return json({ success: true, data: { previewUrl } })
+            }
 
             case 'generateThumbnailUrl':
                 if (!isValidStreamVideoId(data.videoId)) {

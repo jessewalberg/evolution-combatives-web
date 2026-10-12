@@ -2,21 +2,19 @@
  * One reconciliation path for Stripe subscription and invoice events.
  *
  * The event payload is not the source of truth. We re-read the subscription,
- * include subscriptions owned by metadata or a recorded customer, and choose
- * the highest active tier. That fresh snapshot is what we write, not the
- * event order. Member-wide Stripe search can omit a paid subscription for
- * STRIPE_SEARCH_LAG_SECONDS; a denial inside that window is retryable instead
- * of a final success. The database write updates the subscription and
- * effective profile tier in one transaction.
+ * list every recorded customer, and choose the highest active tier. That
+ * fresh snapshot is what we write, not the event order. Stripe search is
+ * discovery only: a hit counts after per-customer list confirms it. A denial
+ * that would rely on search for a customer list did not confirm is retryable
+ * and is not written. A genuine cancellation whose customers were listed
+ * still commits. The database write updates the subscription and effective
+ * profile tier in one transaction.
  */
 
 import { tierForConfiguredPriceId } from '@/src/lib/stripe-price-config'
 import { SUBSCRIPTION_TIER_HIERARCHY, type SubscriptionTier } from '@/src/lib/shared/constants/subscriptionTiers'
 
 const RECONCILE_ATTEMPTS = 5
-
-/** Stripe Search can omit a subscription for about a minute after it changes. */
-export const STRIPE_SEARCH_LAG_SECONDS = 60
 
 const SUBSCRIPTION_EVENTS = new Set([
     'customer.subscription.created',
@@ -220,27 +218,76 @@ async function ownedSubscriptions(
     owner: string,
     recordedCustomerIds: string[],
     soleOwnerCustomerIds: Set<string>,
-): Promise<StripeSubscriptionLike[]> {
-    const customerId = customerIdOf(retrieved)
-    const customers = new Set([...recordedCustomerIds, ...(customerId ? [customerId] : [])])
-    const searched = await source.searchByUserId(owner)
+): Promise<{ subscriptions: StripeSubscriptionLike[]; denialDependsOnSearch: boolean }> {
+    const eventCustomerId = customerIdOf(retrieved)
+    const listedCustomers = new Set<string>()
+    const listedIds = new Set<string>()
     const combined = new Map<string, StripeSubscriptionLike>()
-    for (const sub of searched) {
-        if (metadataUserId(sub) === owner) combined.set(sub.id, sub)
+
+    const accepts = (customerId: string, sub: StripeSubscriptionLike): boolean => {
+        const metadataOwner = metadataUserId(sub)
+        return metadataOwner === owner || (metadataOwner === null && soleOwnerCustomerIds.has(customerId))
     }
-    for (const id of customers) {
-        for (const sub of await source.listByCustomer(id)) {
-            const metadataOwner = metadataUserId(sub)
-            if (metadataOwner === owner || (metadataOwner === null && soleOwnerCustomerIds.has(id))) {
-                combined.set(sub.id, sub)
-            }
+
+    const listCustomer = async (customerId: string): Promise<void> => {
+        if (listedCustomers.has(customerId)) return
+        const subs = await source.listByCustomer(customerId)
+        listedCustomers.add(customerId)
+        for (const sub of subs) {
+            if (!sub.id) continue
+            listedIds.add(sub.id)
+            if (accepts(customerId, sub)) combined.set(sub.id, sub)
         }
     }
-    if (metadataUserId(retrieved) === owner || (metadataUserId(retrieved) === null && customerId != null && soleOwnerCustomerIds.has(customerId))) {
-        // Retrieved object wins over a list copy of the same id.
+
+    for (const customerId of recordedCustomerIds) {
+        await listCustomer(customerId)
+    }
+    if (eventCustomerId) await listCustomer(eventCustomerId)
+
+    const retrievedOwned = Boolean(retrieved.id) && (
+        metadataUserId(retrieved) === owner
+        || (metadataUserId(retrieved) === null && eventCustomerId != null && soleOwnerCustomerIds.has(eventCustomerId))
+    )
+    if (retrievedOwned) {
+        // Retrieve is consistent, so this id does not depend on search.
+        listedIds.add(retrieved.id)
         combined.set(retrieved.id, retrieved)
     }
-    return [...combined.values()]
+
+    const searched = await source.searchByUserId(owner)
+    let denialDependsOnSearch = false
+    let sawOwnerSubscription = false
+    for (const sub of searched) {
+        if (!sub.id || metadataUserId(sub) !== owner) continue
+        sawOwnerSubscription = true
+        const searchedCustomer = customerIdOf(sub)
+        if (!searchedCustomer) {
+            denialDependsOnSearch = true
+            continue
+        }
+        if (!listedCustomers.has(searchedCustomer)) {
+            try {
+                await listCustomer(searchedCustomer)
+            } catch (error) {
+                console.error(`Stripe search customer ${searchedCustomer} could not be listed for ${owner}`, error)
+                denialDependsOnSearch = true
+                continue
+            }
+        }
+        // Search named a subscription the consistent list did not return.
+        if (!listedIds.has(sub.id)) denialDependsOnSearch = true
+    }
+    // An empty search is not proof that an unrecorded customer has no paid
+    // subscription. Denying here would trust that omission.
+    if (!sawOwnerSubscription) denialDependsOnSearch = true
+
+    if (retrievedOwned) combined.set(retrieved.id, retrieved)
+
+    return {
+        subscriptions: [...combined.values()],
+        denialDependsOnSearch,
+    }
 }
 
 function mapApplyResult(result: string): ReconcileOutcome {
@@ -312,7 +359,8 @@ export async function reconcileStripeWebhookEvent(
             return outcome('unresolved')
         }
 
-        const subscriptions = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds, soleOwnerCustomerIds)
+        const owned = await ownedSubscriptions(source, retrieved, owner, recordedCustomerIds, soleOwnerCustomerIds)
+        const subscriptions = owned.subscriptions
         const selected = selectCurrent(subscriptions)
         if (!selected) {
             console.error(`Stripe event ${event.id} did not resolve a subscription owned by ${owner}`)
@@ -326,13 +374,13 @@ export async function reconcileStripeWebhookEvent(
             return outcome('unresolved')
         }
 
-        // Search is the only member-wide lookup. Inside the lag window it can
-        // omit a paid subscription on a customer we have not recorded yet, so
-        // committing a denial would stick. A cancellation older than the
-        // window is trustworthy and commits.
+        // List and retrieve are the consistent read. Search only discovers
+        // customers to list. Never write a denial from search alone: if this
+        // denial still depends on a hit list did not confirm, or search
+        // returned no subscription for the member, retry instead. A
+        // cancellation whose search hits were all listed still commits.
         const grantsPaid = isCurrent(selected) && tier != null
-        const eventAgeSeconds = Math.floor(Date.now() / 1000) - event.created
-        if (!grantsPaid && eventAgeSeconds < STRIPE_SEARCH_LAG_SECONDS) {
+        if (!grantsPaid && owned.denialDependsOnSearch) {
             console.error(`Stripe event ${event.id} member ${owner} search may omit a paid subscription; retrying without committing`)
             return outcome('search_lag', true)
         }
