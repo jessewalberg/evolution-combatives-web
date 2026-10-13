@@ -10,7 +10,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 - **User Administration**: Manage user accounts, subscriptions, and access permissions
 - **Analytics & Insights**: Track engagement metrics, subscription analytics, and content performance
 - **Q&A Management**: Moderate community questions and provide expert answers
-- **Multi-tier Access Control**: Support for Beginner, Intermediate, and Advanced subscription tiers
+- **Multi-tier Access Control**: Support for three paid subscription tiers
 
 ## 🚀 Features
 
@@ -23,7 +23,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### User & Subscription Management
 - **User Administration**: Comprehensive user account management
-- **Subscription Tiers**: Beginner ($9/mo), Intermediate ($19/mo), Advanced ($49/mo)
+- **Subscription Tiers**: Three paid access levels
 - **Stripe Integration**: Complete payment processing and subscription management
 - **Access Control**: Role-based permissions (Super Admin, Content Admin, Support Admin)
 
@@ -127,9 +127,8 @@ The application will be available at `http://localhost:3000`
 - **questions/answers**: Q&A system for community support
 
 ### Subscription Tiers
-- **Beginner** ($9/month): Basic content access
-- **Intermediate** ($19/month): Advanced techniques and Q&A access
-- **Advanced** ($49/month): Full platform access including law enforcement content
+
+The current tier and feature definitions live in `src/lib/shared/constants/subscriptionTiers.ts`. Stripe price IDs are configured per Worker environment.
 
 ## 🎨 UI Components
 
@@ -149,17 +148,12 @@ Key UI features:
 
 ### Admin Roles
 - **Super Admin**: Full system access
-- **Content Admin**: Content management and analytics
-- **Support Admin**: User management and Q&A moderation
+- **Content Admin**: Content management and user read access
+- **Support Admin**: User read access and Q&A moderation
 
 ### Permissions System
-```typescript
-export const ADMIN_PERMISSIONS = {
-    super_admin: ['manage_users', 'manage_content', 'manage_subscriptions', 'manage_admins', 'view_analytics', 'system_settings'],
-    content_admin: ['manage_content', 'view_analytics', 'moderate_questions'],
-    support_admin: ['manage_users', 'manage_subscriptions', 'moderate_questions']
-}
-```
+
+The Worker enforces role permissions defined in `src/lib/api-auth.ts`. See [the release runbook](docs/GO-LIVE.md) for signed video and Q&A still-image access.
 
 ## 🚀 Deployment
 
@@ -189,7 +183,7 @@ export const ADMIN_PERMISSIONS = {
 
 ## 🛡️ Security Features
 
-- **JWT Authentication**: Secure token-based auth
+- **Supabase Authentication**: Cookie-based admin sessions
 - **CSRF Protection**: Built-in CSRF token validation
 - **Role-based Access Control**: Granular permission system
 - **Input Validation**: Zod schema validation
