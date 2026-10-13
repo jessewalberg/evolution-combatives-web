@@ -8,7 +8,6 @@
 
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { SignedStreamThumbnail } from '@/src/components/video/signed-stream-thumbnail'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/src/hooks/useAuth'
@@ -65,7 +64,6 @@ interface QuestionWithRelations {
     video?: {
         id: string
         title: string
-        cloudflare_video_id?: string | null
         duration: number
         category?: {
             name: string
@@ -242,7 +240,6 @@ export function QAManagementPage() {
                     video:videos(
                         id,
                         title,
-                        cloudflare_video_id,
                         duration:duration_seconds,
                         category:categories!videos_category_id_fkey(
                             name,
@@ -933,13 +930,12 @@ export function QAManagementPage() {
                                         {question.video ? (
                                             <div className="flex items-center gap-3">
                                                 <div className="relative">
-                                                    <SignedStreamThumbnail
-                                                        videoId={question.video.cloudflare_video_id}
+                                                    <img
+                                                        src={`/api/qa-video-thumbnail?videoId=${encodeURIComponent(question.video.id)}`}
                                                         alt={question.video.title}
                                                         width={64}
                                                         height={36}
                                                         className="w-16 h-9 object-cover rounded"
-                                                        fallback={<img src="/placeholder-video.jpg" alt="" className="w-16 h-9 object-cover rounded" />}
                                                     />
                                                     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded">
                                                         <VideoCameraIcon className="h-4 w-4 text-white" />

@@ -18,7 +18,6 @@ import { Avatar } from '@/src/components/ui/avatar'
 import { LoadingOverlay } from '@/src/components/ui/loading'
 import { createClientComponentClient } from '@/src/lib/supabase-browser'
 import { queryKeys } from '@/src/lib/query-client'
-import { useSignedStreamThumbnail } from '@/src/components/video/signed-stream-thumbnail'
 
 // Icons
 import {
@@ -66,8 +65,6 @@ interface QuestionDetail {
         id: string
         title: string
         description?: string
-        cloudflare_video_id?: string | null
-        stream_url?: string
         duration: number
         category: {
             name: string
@@ -126,7 +123,6 @@ export function QuestionDetailPage() {
     const [showTemplates, setShowTemplates] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [startTime] = useState(new Date())
-    const [, setVideoCurrentTime] = useState(0)
     const [showRelated, setShowRelated] = useState(false)
     const [notificationSettings, setNotificationSettings] = useState({
         email: true,
@@ -158,7 +154,6 @@ export function QuestionDetailPage() {
                         id,
                         title,
                         description,
-                        cloudflare_video_id,
                         duration:duration_seconds,
                         category:categories!videos_category_id_fkey(
                             name,
@@ -388,7 +383,6 @@ export function QuestionDetailPage() {
     }
 
     const question = questionQuery.data
-    const signedThumbnailUrl = useSignedStreamThumbnail(question?.video?.cloudflare_video_id)
 
     if (authLoading) {
         return (
@@ -538,37 +532,16 @@ export function QuestionDetailPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-4">
                                     <div className="aspect-video bg-neutral-800 rounded-lg overflow-hidden">
-                                        {question.video.stream_url ? (
-                                            <video
-                                                src={question.video.stream_url}
-                                                poster={signedThumbnailUrl || undefined}
-                                                controls
-                                                className="w-full h-full object-cover"
-                                                onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
-                                            />
-                                        ) : (
-                                            <div className="flex items-center justify-center h-full">
-                                                <div className="text-center">
-                                                    <VideoCameraIcon className="h-12 w-12 text-neutral-400 mx-auto mb-2" />
-                                                    <p className="text-neutral-400">Video processing...</p>
-                                                </div>
-                                            </div>
-                                        )}
+                                        <img
+                                            src={`/api/qa-video-thumbnail?videoId=${encodeURIComponent(question.video.id)}`}
+                                            alt={question.video.title}
+                                            className="w-full h-full object-cover"
+                                        />
                                     </div>
                                     {question.video_timestamp && (
                                         <div className="flex items-center gap-2 text-sm">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => {
-                                                    const video = document.querySelector('video')
-                                                    if (video) video.currentTime = question.video_timestamp!
-                                                }}
-                                            >
-                                                Jump to {formatTimestamp(question.video_timestamp)}
-                                            </Button>
                                             <span className="text-neutral-400">
-                                                Question timestamp
+                                                Question timestamp: {formatTimestamp(question.video_timestamp)}
                                             </span>
                                         </div>
                                     )}

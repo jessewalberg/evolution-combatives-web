@@ -1,6 +1,5 @@
 import { json } from '@/src/lib/http'
 import { hasPermission, validateApiAuthWithSession } from '@/src/lib/api-auth'
-import { createAdminClient } from '@/src/lib/supabase'
 import { CloudflareStreamError, isValidStreamVideoId } from '@/src/services/cloudflare-stream'
 
 export async function POST({ request }: { request: Request }) {
@@ -9,6 +8,10 @@ export async function POST({ request }: { request: Request }) {
 
     try {
         const { action, ...data } = await request.json()
+        if ((action === 'generateAdminPreviewUrl' || action === 'generateThumbnailUrl') &&
+            !hasPermission(authResult.user.role, 'content.read')) {
+            return json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
+        }
         if (action !== 'generateThumbnailUrl' && !hasPermission(authResult.user.role, 'content.write')) {
             return json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
         }
@@ -80,23 +83,6 @@ export async function POST({ request }: { request: Request }) {
                         { success: false, error: 'Invalid video ID format' },
                         { status: 400 }
                     )
-                }
-                if (authResult.user.role === 'support_admin') {
-                    const admin = createAdminClient()
-                    const { data: video, error: videoError } = await admin
-                        .from('videos')
-                        .select('id')
-                        .eq('cloudflare_video_id', data.videoId)
-                        .maybeSingle()
-                    if (videoError) throw videoError
-                    if (!video) return json({ success: false, error: 'Video not available' }, { status: 403 })
-                    const { data: questions, error: questionError } = await admin
-                        .from('questions')
-                        .select('id')
-                        .eq('video_id', video.id)
-                        .limit(1)
-                    if (questionError) throw questionError
-                    if (!questions?.length) return json({ success: false, error: 'Video not available' }, { status: 403 })
                 }
                 const thumbnailUrl = await cloudflareStreamService.video.generateThumbnailUrl(data.videoId, data.options)
                 return json({ success: true, data: { thumbnailUrl } })
