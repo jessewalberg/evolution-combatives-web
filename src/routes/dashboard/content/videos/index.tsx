@@ -21,6 +21,7 @@ import { Input } from '@/src/components/ui/input'
 import { Spinner } from '@/src/components/ui/loading'
 import { VideoTable } from '@/src/components/video/video-table'
 import { clientContentService } from '@/src/services/content-client'
+import { fetchWithCSRF } from '@/src/lib/csrf-client'
 import { queryKeys } from '@/src/lib/query-client'
 import type {
     ContentFilters,
@@ -176,19 +177,8 @@ export function VideoLibraryPage() {
 
     const syncProcessingMutation = useMutation({
         mutationFn: async () => {
-            // Get CSRF token first
-            const csrfResponse = await fetch('/api/csrf-token', {
-                credentials: 'include'
-            })
-            const { csrfToken } = await csrfResponse.json()
-
-            const response = await fetch('/api/video-processing/sync-all', {
+            const response = await fetchWithCSRF('/api/video-processing/sync-all', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken
-                },
-                credentials: 'include'
             })
             const result = await response.json()
             if (!result.success) {

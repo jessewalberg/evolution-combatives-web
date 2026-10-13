@@ -18,6 +18,7 @@ import { Badge } from '@/src/components/ui/badge'
 import { Spinner } from '@/src/components/ui/loading'
 import { clientContentService } from '@/src/services/content-client'
 import { cloudflareApi } from '@/src/lib/cloudflare-api'
+import { fetchWithCSRF } from '@/src/lib/csrf-client'
 import { queryKeys } from '@/src/lib/query-client'
 import type { VideoWithRelations } from 'shared/types/database'
 
@@ -73,19 +74,8 @@ function VideoPreviewPage() {
     // Auto-sync mutation to check video status with Cloudflare
     const syncVideoMutation = useMutation({
         mutationFn: async () => {
-            // Get CSRF token first
-            const csrfResponse = await fetch('/api/csrf-token', {
-                credentials: 'include'
-            })
-            const { csrfToken } = await csrfResponse.json()
-
-            const response = await fetch('/api/video-processing/sync-single', {
+            const response = await fetchWithCSRF('/api/video-processing/sync-single', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken
-                },
-                credentials: 'include',
                 body: JSON.stringify({ videoId })
             })
             const result = await response.json()

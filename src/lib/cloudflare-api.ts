@@ -1,3 +1,5 @@
+import { fetchWithCSRF } from '@/src/lib/csrf-client'
+
 /**
  * Client-side helper functions for Cloudflare Stream API
  * These functions make secure API calls to server-side endpoints
@@ -10,57 +12,9 @@ interface CloudflareApiResponse<T = unknown> {
 }
 
 export class CloudflareApiClient {
-    private csrfTokenCache: { token: string; expires: number } | null = null
-    private csrfTokenPromise: Promise<string> | null = null
-
-    private async getCSRFToken(): Promise<string> {
-        // Check if we have a cached token that hasn't expired
-        if (this.csrfTokenCache && Date.now() < this.csrfTokenCache.expires) {
-            return this.csrfTokenCache.token
-        }
-        if (this.csrfTokenPromise) return this.csrfTokenPromise
-
-        const request = (async () => {
-            const response = await fetch('/api/csrf-token', {
-                credentials: 'include' // Ensure cookies are included
-            })
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch CSRF token: ${response.status} ${response.statusText}`)
-            }
-
-            const data = await response.json()
-
-            if (!data.success || !data.csrfToken) {
-                throw new Error('Failed to get CSRF token from response')
-            }
-
-            // Cache the token with expiration
-            this.csrfTokenCache = {
-                token: data.csrfToken,
-                expires: new Date(data.expiresAt).getTime() - 60000 // Expire 1 minute early for safety
-            }
-
-            return data.csrfToken
-        })()
-        this.csrfTokenPromise = request
-        try {
-            return await request
-        } finally {
-            if (this.csrfTokenPromise === request) this.csrfTokenPromise = null
-        }
-    }
-
     private async makeRequest<T>(action: string, data?: Record<string, unknown>): Promise<T> {
-        const csrfToken = await this.getCSRFToken()
-
-        const response = await fetch('/api/cloudflare/upload', {
+        const response = await fetchWithCSRF('/api/cloudflare/upload', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken,
-            },
-            credentials: 'include', // Ensure cookies are included
             body: JSON.stringify({
                 action,
                 ...data
@@ -73,33 +27,6 @@ export class CloudflareApiClient {
             result = JSON.parse(responseText)
         } catch (parseError) {
             throw new Error(`Cloudflare API returned non-JSON response: ${responseText.substring(0, 200)}`)
-        }
-
-        // If CSRF validation failed, clear cache and retry once
-        if (!result.success && result.error?.includes('CSRF token validation failed')) {
-            if (this.csrfTokenCache?.token === csrfToken) this.csrfTokenCache = null
-
-            // Retry once with fresh token
-            const freshToken = await this.getCSRFToken()
-            const retryResponse = await fetch('/api/cloudflare/upload', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': freshToken,
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    action,
-                    ...data
-                })
-            })
-
-            const retryResponseText = await retryResponse.text()
-            try {
-                result = JSON.parse(retryResponseText)
-            } catch (parseError) {
-                throw new Error(`Cloudflare API returned non-JSON response on retry: ${retryResponseText.substring(0, 200)}`)
-            }
         }
 
         if (!result.success) {
