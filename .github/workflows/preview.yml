@@ -1,0 +1,57 @@
+# PR preview deploys (trunk-based flow: main = production, every PR gets
+# an ephemeral preview).
+#
+# The Worker bundle is uploaded as a *version* of
+# evolution-combatives-admin-preview via `wrangler versions upload`, which
+# returns a unique preview URL (preview_urls is enabled in wrangler.jsonc
+# env.preview) without touching production traffic. The preview Worker
+# points at the same Supabase project as staging.
+#
+# GitHub *Environment* secrets required (preview env):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+
+name: Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Deploy PR preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: preview
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ENV: preview
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (preview env)
+        run: pnpm exec vite build
+
+      - name: Upload preview version to Cloudflare Workers
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        # wrangler reads dist/server/wrangler.json written by vite build;
+        # CLOUDFLARE_ENV=preview flattened env.preview into it, so this
+        # targets evolution-combatives-admin-preview.
+        run: pnpm exec wrangler versions upload

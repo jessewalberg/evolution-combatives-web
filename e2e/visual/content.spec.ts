@@ -1,4 +1,4 @@
-import { test } from '@playwright/test'
+import { test } from '../test'
 import { FIXTURE_IDS } from './fixtures'
 import { prepareVisualPage } from './helpers/prepare'
 import { expectVisualScreenshot } from './helpers/screenshot'
@@ -102,7 +102,9 @@ test.describe('@visual content', () => {
       state: 'visible',
       timeout: 30_000,
     })
-    await expectVisualScreenshot(page, `processing-populated-${vp}`)
+    await expectVisualScreenshot(page, `processing-populated-${vp}`, {
+      mask: [page.getByText('System Load').locator('..').locator('..')],
+    })
   })
 
   test('processing empty @visual', async ({ page }, testInfo) => {
@@ -113,7 +115,9 @@ test.describe('@visual content', () => {
       state: 'visible',
       timeout: 30_000,
     })
-    await expectVisualScreenshot(page, `processing-empty-${vp}`)
+    await expectVisualScreenshot(page, `processing-empty-${vp}`, {
+      mask: [page.getByText('System Load').locator('..').locator('..')],
+    })
   })
 
   test('video upload @visual', async ({ page }, testInfo) => {

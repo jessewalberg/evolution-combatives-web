@@ -1,6 +1,6 @@
 # Evolution Combatives - Admin Dashboard
 
-A comprehensive admin dashboard for managing tactical training content, built with Next.js 15, TypeScript, and Supabase. This standalone application provides content administrators with powerful tools to manage video libraries, user subscriptions, and training analytics for law enforcement and tactical professionals.
+A comprehensive admin dashboard for managing tactical training content, built with TanStack Start, TypeScript, and Supabase, deployed on Cloudflare Workers. This standalone application provides content administrators with powerful tools to manage video libraries, user subscriptions, and training analytics for law enforcement and tactical professionals.
 
 ## 🎯 Overview
 
@@ -10,7 +10,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 - **User Administration**: Manage user accounts, subscriptions, and access permissions
 - **Analytics & Insights**: Track engagement metrics, subscription analytics, and content performance
 - **Q&A Management**: Moderate community questions and provide expert answers
-- **Multi-tier Access Control**: Support for Beginner, Intermediate, and Advanced subscription tiers
+- **Multi-tier Access Control**: Support for three paid subscription tiers
 
 ## 🚀 Features
 
@@ -23,7 +23,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### User & Subscription Management
 - **User Administration**: Comprehensive user account management
-- **Subscription Tiers**: Beginner ($9/mo), Intermediate ($19/mo), Advanced ($49/mo)
+- **Subscription Tiers**: Three paid access levels
 - **Stripe Integration**: Complete payment processing and subscription management
 - **Access Control**: Role-based permissions (Super Admin, Content Admin, Support Admin)
 
@@ -34,7 +34,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 - **Content Performance**: Video views, popularity, and user feedback
 
 ### Technical Features
-- **Modern Tech Stack**: Next.js 15, React 19, TypeScript, Tailwind CSS
+- **Modern Tech Stack**: TanStack Start (Router + Query), React 19, TypeScript, Tailwind CSS v4
 - **Database**: Supabase with PostgreSQL
 - **Real-time Updates**: Live data synchronization
 - **Responsive Design**: Mobile-friendly admin interface
@@ -42,21 +42,21 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript
+- **Frontend**: TanStack Start (file-based routing, SSR on Cloudflare Workers), React 19, TypeScript
 - **Styling**: Tailwind CSS, Radix UI components
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth
 - **Video Storage**: Cloudflare Stream
 - **Payments**: Stripe
-- **State Management**: TanStack Query, Zustand
+- **State Management**: TanStack Query
 - **Analytics**: PostHog
-- **Deployment**: Vercel-ready
+- **Deployment**: Cloudflare Workers via @cloudflare/vite-plugin + wrangler (production/staging/preview envs in wrangler.jsonc; GitHub Actions ci/deploy/preview workflows)
 
 ## 📦 Installation
 
 ### Prerequisites
 - Node.js 22.22.2+ (or 24.15.0+, or 26+); see `package.json` `engines.node` 
-- pnpm 7+
+- pnpm 9+ (see `package.json` for the pinned package manager version)
 - Supabase account
 - Cloudflare Stream account
 - Stripe account
@@ -75,42 +75,36 @@ pnpm install
 ```
 
 3. **Configure environment variables**
-```bash
-cp .env.example .env.local
-```
 
-Edit `.env.local` with your configuration:
+Two files, both gitignored (secrets live in 1Password via secretkit — see
+`secrets.manifest.json`):
+
+```bash
+cp .env.example .env.local        # client-side VITE_* vars (Vite build/dev)
+cp .dev.vars.example .dev.vars    # server-side Worker vars for local dev
+```
 
 ```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# Stripe Configuration
-STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key_here
-STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key_here
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
-STRIPE_BEGINNER_PRICE_ID=price_your_beginner_price_id_here
-STRIPE_INTERMEDIATE_PRICE_ID=price_your_intermediate_price_id_here
-STRIPE_ADVANCED_PRICE_ID=price_your_advanced_price_id_here
-
-# App Configuration
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_ADMIN_URL=http://localhost:3000
-NEXT_PUBLIC_MOBILE_APP_SCHEME=evolutioncombatives
+# .env.local — client (inlined at build)
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_anon_key
+VITE_APP_URL=http://localhost:3000
+VITE_MOBILE_APP_SCHEME=evolutioncombatives
 
 # PostHog Analytics
-NEXT_PUBLIC_POSTHOG_KEY=phc_your_posthog_project_api_key_here
-NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
-
-# Development Mode
-NODE_ENV=development
+VITE_POSTHOG_KEY=phc_your_posthog_project_api_key_here
+VITE_POSTHOG_HOST=https://us.i.posthog.com
 ```
+
+`.dev.vars` carries the server-side values (SUPABASE_SERVICE_ROLE_KEY,
+STRIPE_*, CLOUDFLARE_* Stream credentials) — see `.dev.vars.example` for the
+full list. In deployed environments these are wrangler.jsonc `vars` plus
+`wrangler secret put` secrets per Worker.
 
 4. **Set up database**
 ```bash
-# Run the database migrations
-psql -h your-supabase-host -U postgres -d your-database -f migrations/setup-content-corrected.sql
+# Apply migrations to a local or staging Supabase project; see docs/GO-LIVE.md for production cutover
+supabase db push   # migrations live in supabase/migrations/
 ```
 
 5. **Start development server**
@@ -133,9 +127,8 @@ The application will be available at `http://localhost:3000`
 - **questions/answers**: Q&A system for community support
 
 ### Subscription Tiers
-- **Beginner** ($9/month): Basic content access
-- **Intermediate** ($19/month): Advanced techniques and Q&A access
-- **Advanced** ($49/month): Full platform access including law enforcement content
+
+The current tier and feature definitions live in `src/lib/shared/constants/subscriptionTiers.ts`. Stripe price IDs are configured per Worker environment.
 
 ## 🎨 UI Components
 
@@ -155,33 +148,18 @@ Key UI features:
 
 ### Admin Roles
 - **Super Admin**: Full system access
-- **Content Admin**: Content management and analytics
-- **Support Admin**: User management and Q&A moderation
+- **Content Admin**: Content management and user read access
+- **Support Admin**: User read access and Q&A moderation
 
 ### Permissions System
-```typescript
-export const ADMIN_PERMISSIONS = {
-    super_admin: ['manage_users', 'manage_content', 'manage_subscriptions', 'manage_admins', 'view_analytics', 'system_settings'],
-    content_admin: ['manage_content', 'view_analytics', 'moderate_questions'],
-    support_admin: ['manage_users', 'manage_subscriptions', 'moderate_questions']
-}
-```
+
+The Worker enforces role permissions defined in `src/lib/api-auth.ts`. See [the release runbook](docs/GO-LIVE.md) for signed video and Q&A still-image access.
 
 ## 🚀 Deployment
 
-### Vercel Deployment
-1. Connect your repository to Vercel
-2. Configure environment variables in Vercel dashboard
-3. Deploy with automatic CI/CD
-
-### Manual Deployment
-```bash
-# Build the application
-pnpm build
-
-# Start production server
-pnpm start
-```
+### Cloudflare Workers Deployment
+1. Follow [docs/GO-LIVE.md](docs/GO-LIVE.md). Replace the three `PLACEHOLDER_STRIPE_*` price ids and set Worker secrets before the production deploy.
+2. The deploy workflow deploys `main` to production; the preview workflow uploads a preview version for pull requests. See [docs/GO-LIVE.md](docs/GO-LIVE.md) for the release procedure.
 
 ## 📊 Key Features Deep Dive
 
@@ -205,7 +183,7 @@ pnpm start
 
 ## 🛡️ Security Features
 
-- **JWT Authentication**: Secure token-based auth
+- **Supabase Authentication**: Cookie-based admin sessions
 - **CSRF Protection**: Built-in CSRF token validation
 - **Role-based Access Control**: Granular permission system
 - **Input Validation**: Zod schema validation
@@ -222,25 +200,21 @@ The admin dashboard integrates with the Evolution Combatives mobile app through:
 
 ### Available Scripts
 ```bash
-pnpm dev          # Start development server with Turbopack
+pnpm dev          # Start Vite dev server (Workers runtime via @cloudflare/vite-plugin)
 pnpm build        # Build for production
-pnpm start        # Start production server
 pnpm lint         # Run ESLint
 pnpm lint:fix     # Fix ESLint issues
-pnpm type-check   # Run TypeScript type checking
+pnpm typecheck    # Run TypeScript type checking
+pnpm test:e2e     # Run Playwright end-to-end tests
 ```
 
 ### Code Quality
 - **TypeScript**: Full type safety
-- **ESLint**: Code linting with Next.js rules
-- **Prettier**: Code formatting
-- **Husky**: Git hooks for quality checks
+- **ESLint**: Code linting (eslint 9 flat config + typescript-eslint)
 
 ### Testing Strategy
-- Component testing with React Testing Library
-- API endpoint testing
-- Database integration testing
-- End-to-end testing with Playwright
+
+Release verification is build, typecheck, lint, and Playwright end-to-end tests. Unit tests are not part of this project.
 
 ## 📚 API Documentation
 
@@ -250,19 +224,18 @@ pnpm type-check   # Run TypeScript type checking
 - `PUT /api/content/videos/[id]` - Update video
 - `DELETE /api/content/videos/[id]` - Delete video
 
-### User Management API
-- `GET /api/users` - List users with pagination
-- `PUT /api/users/[id]` - Update user profile
-- `POST /api/subscriptions/create-checkout` - Create Stripe checkout
+### User Administration
+User administration is available in the dashboard under `/users`.
 
-### Video Processing API
-- `POST /api/video/signed-url` - Get signed upload URL
+### Video API
+- `POST /api/video/signed-url` - Get a signed playback URL
+- `POST /api/mobile/video/signed-url` - Get a signed playback URL for the mobile app
+- Both endpoints return a Stream playback URL with the signed token in place of the video ID.
 - `GET /api/video-processing/get-processing` - Check processing status
 - `POST /api/video-processing/sync-all` - Sync with Cloudflare
 
 ### Development Guidelines
 - Follow TypeScript best practices
-- Write comprehensive tests
 - Use conventional commit messages
 - Maintain backwards compatibility
 - Document API changes

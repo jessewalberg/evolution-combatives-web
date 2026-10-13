@@ -377,6 +377,98 @@ export function generateInitials(
 // ============================================================================
 
 /**
+ * Accepts only app-relative paths
+ * 
+ * @param url - URL to validate (may be user-provided)
+ * @param fallback - Fallback path if URL is invalid (default: '/dashboard')
+ * @returns Safe redirect path
+ * 
+ * @example
+ * ```tsx
+ * getSafeRedirectUrl('/dashboard/users') // '/dashboard/users'
+ * getSafeRedirectUrl('https://example.invalid') // '/dashboard'
+ * getSafeRedirectUrl('//example.invalid') // '/dashboard'
+ * getSafeRedirectUrl('/login', '/home') // '/login'
+ * getSafeRedirectUrl(undefined) // '/dashboard'
+ * ```
+ */
+export function getSafeRedirectUrl(
+    url: string | undefined | null,
+    fallback: string = '/dashboard'
+): string {
+    if (!url || typeof url !== 'string') {
+        return fallback
+    }
+
+    const trimmed = url.trim()
+
+    // Reject empty strings
+    if (!trimmed) {
+        return fallback
+    }
+
+    // Reject backslash - browsers interpret \ as / in URLs
+    if (trimmed.includes('\\')) {
+        return fallback
+    }
+
+    // Reject control characters (ASCII 0-31 and 127)
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(trimmed)) {
+        return fallback
+    }
+
+    // Reject embedded whitespace (spaces, tabs, newlines inside the URL)
+    if (/\s/.test(trimmed)) {
+        return fallback
+    }
+
+    // Reject protocol-relative URLs (//example.com)
+    if (trimmed.startsWith('//')) {
+        return fallback
+    }
+
+    // Reject absolute URLs with protocols (http:, https:, javascript:, etc.)
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+        return fallback
+    }
+
+    // Only accept paths that start with /
+    if (!trimmed.startsWith('/')) {
+        return fallback
+    }
+
+    // Re-check decoded value
+    try {
+        const decoded = decodeURIComponent(trimmed)
+        if (decoded !== trimmed) {
+            // Re-validate decoded version
+            if (decoded.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(decoded)) {
+                return fallback
+            }
+            // Check decoded value for backslash
+            if (decoded.includes('\\')) {
+                return fallback
+            }
+            // Check decoded value for control characters (ASCII 0-31 and 127)
+            // eslint-disable-next-line no-control-regex
+            if (/[\x00-\x1f\x7f]/.test(decoded)) {
+                return fallback
+            }
+            // Check decoded value for embedded whitespace
+            if (/\s/.test(decoded)) {
+                return fallback
+            }
+        }
+    } catch {
+        // Invalid encoding, reject
+        return fallback
+    }
+
+    return trimmed
+}
+
+/**
  * Validates email address format
  * Uses comprehensive regex pattern for email validation
  * 

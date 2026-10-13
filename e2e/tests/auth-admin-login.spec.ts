@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../test'
 
 /**
  * Real shared admin secret is typed into the form via page.fill().

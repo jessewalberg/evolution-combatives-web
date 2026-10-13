@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import tailwindcssAnimate from 'tailwindcss-animate'
 import { colors } from './src/theme/colors'
 import { spacing } from './src/theme/spacing'
 import { typography } from './src/theme/typography'
@@ -14,6 +15,7 @@ const config: Config = {
     darkMode: 'class',
     content: [
         './app/**/*.{js,ts,jsx,tsx}',
+        './src/routes/**/*.{js,ts,jsx,tsx}',
         './src/components/**/*.{js,ts,jsx,tsx}',
         './src/app/**/*.{js,ts,jsx,tsx}',
     ],
@@ -35,7 +37,7 @@ const config: Config = {
             },
         },
     },
-    plugins: [require('tailwindcss-animate')],
+    plugins: [tailwindcssAnimate],
 }
 
 export default config 

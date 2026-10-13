@@ -8,7 +8,7 @@
  */
 
 import * as React from 'react'
-import Image from 'next/image'
+import Image from '@/src/components/compat/image'
 import { Menu, Transition } from '@headlessui/react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
