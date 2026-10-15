@@ -95,12 +95,14 @@ test.describe('Stripe Reconciliation with non-super_admin', () => {
 
       // Try to access reconcile endpoint via fetch
       const result = await page.evaluate(async () => {
-        await fetch('/api/csrf-token')
+        // First fetch CSRF token with credentials
+        await fetch('/api/csrf-token', { credentials: 'include' })
         const csrfCookie = document.cookie.match(/(?:^|;\s*)(?:__Host-)?csrf-token=([^;]+)/)
         const csrfToken = csrfCookie ? csrfCookie[1] : ''
 
         const res = await fetch('/api/admin/stripe-reconcile', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
@@ -152,11 +154,14 @@ test.describe('Stripe Reconciliation with non-super_admin', () => {
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
 
       const result = await page.evaluate(async () => {
+        // First fetch CSRF token with credentials
+        await fetch('/api/csrf-token', { credentials: 'include' })
         const csrfCookie = document.cookie.match(/(?:^|;\s*)(?:__Host-)?csrf-token=([^;]+)/)
         const csrfToken = csrfCookie ? csrfCookie[1] : ''
 
         const res = await fetch('/api/admin/stripe-reconcile', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
@@ -210,11 +215,14 @@ test.describe('Stripe Reconciliation Endpoint Actions', () => {
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
 
       const result = await page.evaluate(async () => {
+        // First fetch CSRF token with credentials
+        await fetch('/api/csrf-token', { credentials: 'include' })
         const csrfCookie = document.cookie.match(/(?:^|;\s*)(?:__Host-)?csrf-token=([^;]+)/)
         const csrfToken = csrfCookie ? csrfCookie[1] : ''
 
         const res = await fetch('/api/admin/stripe-reconcile', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
@@ -265,13 +273,15 @@ test.describe('Stripe Reconciliation Endpoint Actions', () => {
       await page.getByRole('button', { name: /^sign in$/i }).click()
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
 
-      // First call
+      // First call - fetch CSRF token first
       const result1 = await page.evaluate(async () => {
+        await fetch('/api/csrf-token', { credentials: 'include' })
         const csrfCookie = document.cookie.match(/(?:^|;\s*)(?:__Host-)?csrf-token=([^;]+)/)
         const csrfToken = csrfCookie ? csrfCookie[1] : ''
 
         const res = await fetch('/api/admin/stripe-reconcile', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
@@ -281,13 +291,14 @@ test.describe('Stripe Reconciliation Endpoint Actions', () => {
         return { status: res.status, body: await res.json() }
       })
 
-      // Second call - should return same result
+      // Second call - should return same result (token already cached)
       const result2 = await page.evaluate(async () => {
         const csrfCookie = document.cookie.match(/(?:^|;\s*)(?:__Host-)?csrf-token=([^;]+)/)
         const csrfToken = csrfCookie ? csrfCookie[1] : ''
 
         const res = await fetch('/api/admin/stripe-reconcile', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
