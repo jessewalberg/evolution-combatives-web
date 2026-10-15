@@ -26,7 +26,8 @@ test.describe('Stripe Reconciliation Endpoint Authorization', () => {
     expect(body.actions).toEqual(['find-missing', 'reconcile'])
   })
 
-  test('POST without authentication returns 401', async ({ request }) => {
+  test('POST without CSRF token returns 403', async ({ request }) => {
+    // CSRF middleware runs before auth check, so missing CSRF token = 403
     const response = await request.post('/api/admin/stripe-reconcile', {
       headers: {
         ...appAccessHeaders('/api/admin/stripe-reconcile'),
@@ -36,13 +37,14 @@ test.describe('Stripe Reconciliation Endpoint Authorization', () => {
       maxRedirects: 0,
     })
 
-    expect(response.status()).toBe(401)
+    expect(response.status()).toBe(403)
     const body = await response.json()
     expect(body.success).toBe(false)
-    expect(body.error).toMatch(/authentication/i)
+    expect(body.error).toMatch(/csrf/i)
   })
 
-  test('POST with invalid JSON returns 400', async ({ request }) => {
+  test('POST with invalid JSON but no CSRF returns 403', async ({ request }) => {
+    // CSRF check happens before JSON parsing
     const response = await request.post('/api/admin/stripe-reconcile', {
       headers: {
         ...appAccessHeaders('/api/admin/stripe-reconcile'),
@@ -52,8 +54,8 @@ test.describe('Stripe Reconciliation Endpoint Authorization', () => {
       maxRedirects: 0,
     })
 
-    // Auth check happens first, so 401 expected for unauthenticated
-    expect(response.status()).toBe(401)
+    // CSRF check happens first, so 403 expected
+    expect(response.status()).toBe(403)
   })
 })
 
