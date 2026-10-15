@@ -4,10 +4,10 @@ import { appAccessHeaders } from '../helpers/access'
 /**
  * Stripe Webhook E2E Tests
  *
- * These tests verify the webhook endpoint behavior without actually
- * triggering Stripe webhooks. They test:
- * - Endpoint availability
- * - Error handling for missing configuration
+ * These tests verify the webhook endpoint behavior:
+ * - Endpoint availability (GET health check)
+ * - 503 for missing webhook secret configuration
+ * - 400 for missing or invalid signature
  */
 
 test.describe('Stripe Webhook Endpoint', () => {
@@ -23,37 +23,55 @@ test.describe('Stripe Webhook Endpoint', () => {
     expect(body.service).toBe('stripe-webhooks')
   })
 
-  test('POST /api/webhooks/stripe without proper configuration returns error', async ({ request }) => {
+  test('POST /api/webhooks/stripe without webhook secret returns 503', async ({ request }) => {
+    // When STRIPE_WEBHOOK_SECRET is not configured, the handler returns 503
+    // This test validates misconfiguration is surfaced as 503, not 500
     const response = await request.post('/api/webhooks/stripe', {
       headers: {
         ...appAccessHeaders('/api/webhooks/stripe'),
         'Content-Type': 'application/json',
-      },
-      data: JSON.stringify({ type: 'test.event' }),
-      maxRedirects: 0,
-    })
-
-    // Returns 500 if STRIPE_WEBHOOK_SECRET not configured, or 400 if signature missing
-    expect([400, 500]).toContain(response.status())
-    const body = await response.json()
-    expect(body.error).toBeTruthy()
-  })
-
-  test('POST /api/webhooks/stripe with invalid signature returns error', async ({ request }) => {
-    const response = await request.post('/api/webhooks/stripe', {
-      headers: {
-        ...appAccessHeaders('/api/webhooks/stripe'),
-        'Content-Type': 'application/json',
-        'stripe-signature': 't=1234567890,v1=invalid_signature',
+        'stripe-signature': 't=1234567890,v1=test_signature',
       },
       data: JSON.stringify({ type: 'test.event', id: 'evt_test' }),
       maxRedirects: 0,
     })
 
-    // Returns 500 if STRIPE_WEBHOOK_SECRET not configured, or 400 if signature invalid
-    expect([400, 500]).toContain(response.status())
+    // 503 = webhook secret not configured (misconfiguration)
+    // 400 = signature validation failed (secret is configured)
+    // Either is acceptable depending on environment configuration
+    const status = response.status()
+    expect([400, 503]).toContain(status)
+
     const body = await response.json()
-    expect(body.error).toBeTruthy()
+    if (status === 503) {
+      expect(body.error).toMatch(/not configured/i)
+    } else {
+      expect(body.error).toMatch(/invalid signature/i)
+    }
+  })
+
+  test('POST /api/webhooks/stripe without signature returns 400 when configured', async ({ request }) => {
+    // This test verifies that when webhook secret IS configured,
+    // missing signature returns 400 (not 503 or 500)
+    const response = await request.post('/api/webhooks/stripe', {
+      headers: {
+        ...appAccessHeaders('/api/webhooks/stripe'),
+        'Content-Type': 'application/json',
+        // No stripe-signature header
+      },
+      data: JSON.stringify({ type: 'test.event' }),
+      maxRedirects: 0,
+    })
+
+    const status = response.status()
+    // 503 = secret not configured (skip signature check)
+    // 400 = missing signature (secret is configured)
+    expect([400, 503]).toContain(status)
+
+    const body = await response.json()
+    if (status === 400) {
+      expect(body.error).toMatch(/missing signature/i)
+    }
   })
 })
 
@@ -72,7 +90,8 @@ test.describe('Stripe Reconciliation Endpoint', () => {
     expect(body.actions).toContain('reconcile')
   })
 
-  test('POST /api/admin/stripe-reconcile requires authentication', async ({ request }) => {
+  test('POST /api/admin/stripe-reconcile requires authentication (returns 401)', async ({ request }) => {
+    // Clear any session state - unauthenticated request
     const response = await request.post('/api/admin/stripe-reconcile', {
       headers: {
         ...appAccessHeaders('/api/admin/stripe-reconcile'),
@@ -83,9 +102,12 @@ test.describe('Stripe Reconciliation Endpoint', () => {
     })
 
     expect(response.status()).toBe(401)
+    const body = await response.json()
+    expect(body.success).toBe(false)
+    expect(body.error).toMatch(/authentication/i)
   })
 
-  test('POST /api/admin/stripe-reconcile with invalid action returns 400', async ({ request }) => {
+  test('POST /api/admin/stripe-reconcile with invalid action returns error', async ({ request }) => {
     const response = await request.post('/api/admin/stripe-reconcile', {
       headers: {
         ...appAccessHeaders('/api/admin/stripe-reconcile'),
@@ -95,7 +117,7 @@ test.describe('Stripe Reconciliation Endpoint', () => {
       maxRedirects: 0,
     })
 
-    // Returns 401 for unauthenticated (auth check comes before action validation)
+    // 401 for unauthenticated (auth check comes first)
     expect(response.status()).toBe(401)
   })
 })
