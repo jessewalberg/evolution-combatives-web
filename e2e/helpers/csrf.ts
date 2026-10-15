@@ -1,4 +1,5 @@
 import type { APIRequestContext, Page } from '@playwright/test'
+import { appAccessHeaders } from './access'
 
 const CSRF_HEADER = 'X-CSRF-Token'
 
@@ -9,7 +10,10 @@ const CSRF_HEADER = 'X-CSRF-Token'
 export async function fetchCsrfHeaders(
   request: APIRequestContext
 ): Promise<Record<string, string>> {
-  const response = await request.get('/api/csrf-token')
+  const response = await request.get('/api/csrf-token', {
+    headers: appAccessHeaders('/api/csrf-token'),
+    maxRedirects: 0,
+  })
   if (!response.ok()) {
     throw new Error(`Failed to fetch CSRF token: ${response.status()}`)
   }

@@ -9,7 +9,7 @@
 
 import * as React from 'react'
 import { useState, useCallback, useMemo } from 'react'
-import Image from 'next/image'
+import { SignedStreamThumbnail } from '@/src/components/video/signed-stream-thumbnail'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -46,7 +46,6 @@ interface Video {
     slug?: string
     title: string
     description: string
-    thumbnailUrl?: string
     duration: number // in seconds
     fileSize: number // in bytes
     status: VideoStatus
@@ -467,17 +466,14 @@ const VideoTable = React.forwardRef<HTMLDivElement, VideoTableProps>(
                                         <div className="flex items-center gap-3">
                                             {/* Thumbnail */}
                                             <div className="relative w-16 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0">
-                                                {video.thumbnailUrl ? (
-                                                    <Image
-                                                        src={video.thumbnailUrl}
-                                                        alt={video.title}
-                                                        width={64}
-                                                        height={48}
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <PlayIcon className="h-6 w-6 text-muted-foreground" />
-                                                )}
+                                                <SignedStreamThumbnail
+                                                    videoId={video.streamId}
+                                                    alt={video.title}
+                                                    width={64}
+                                                    height={48}
+                                                    className="w-full h-full object-cover"
+                                                    fallback={<PlayIcon className="h-6 w-6 text-muted-foreground" />}
+                                                />
                                                 {/* Duration overlay */}
                                                 <div className="absolute bottom-1 right-1 px-1 py-0.5 bg-black/80 text-xs text-white rounded">
                                                     {formatDuration(video.duration)}
@@ -564,4 +560,4 @@ VideoTable.displayName = 'VideoTable'
 
 export default VideoTable
 export { VideoTable }
-export type { VideoTableProps, Video, VideoStatus } 
+export type { VideoTableProps, Video, VideoStatus }

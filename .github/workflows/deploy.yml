@@ -1,0 +1,58 @@
+# Deploys to Cloudflare Workers on pushes to main.
+#
+# Workers Builds (Cloudflare's native Git integration) assumes a single
+# Worker per repo connection; this repo has three (production/staging/
+# preview) behind a shared wrangler.jsonc with CLOUDFLARE_ENV deciding
+# which env block the vite build flattens — so GitHub Actions it is.
+#
+# GitHub *Environment* secrets required (sourced from 1Password via
+# secretkit — see secrets.manifest.json):
+#   production env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+#
+# Supabase schema migrations are NOT applied here — apply them via
+# `supabase db push` as part of the release checklist.
+
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    name: Deploy to evolution-combatives-admin (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build for production env
+        run: pnpm exec vite build
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler reads dist/server/wrangler.json via the redirect file
+          # the Cloudflare vite plugin writes to .wrangler/deploy/config.json
+          command: deploy

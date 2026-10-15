@@ -192,16 +192,36 @@ export async function installVisualMocks(
     })
   })
 
-  await page.route('**/api/subscriptions/create-checkout', (route) =>
-    json(route, { url: 'https://checkout.stripe.com/test/visual-session' })
-  )
-
-  await page.route('**/api/cloudflare/**', (route) =>
-    json(route, {
+  await page.route('**/api/cloudflare/**', (route) => {
+    let action = ''
+    let format = ''
+    try {
+      const body = route.request().postDataJSON() as { action?: string; format?: string }
+      action = body?.action ?? ''
+      format = body?.format ?? ''
+    } catch {
+      // Upload stubs and non-JSON calls keep the empty payload below.
+    }
+    if (action === 'generateAdminPreviewUrl' && format === 'iframe') {
+      return json(route, {
+        success: true,
+        data: { previewUrl: 'https://iframe.videodelivery.net/eyJhbGciOiJub25lIn0.e30.sig' },
+      })
+    }
+    if (action === 'generateThumbnailUrl') {
+      return json(route, {
+        success: true,
+        data: {
+          thumbnailUrl:
+            'https://customer.example.cloudflarestream.com/eyJhbGciOiJub25lIn0.e30.sig/thumbnails/thumbnail.jpg',
+        },
+      })
+    }
+    return json(route, {
       success: true,
       data: { previewUrl: null, uploadURL: null },
     })
-  )
+  })
 
   await page.route('**/api/video-processing/**', (route) =>
     json(route, { success: true, data: { synced: true } })

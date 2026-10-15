@@ -8,30 +8,44 @@
 
 import Stripe from 'stripe';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error('STRIPE_SECRET_KEY environment variable is required');
+let stripeInstance: Stripe | null = null;
+
+/**
+ * Lazily construct the server-side Stripe client. On Cloudflare Workers,
+ * env vars are only guaranteed present at request time, so the client must
+ * not be built at module scope.
+ */
+export function getStripe(): Stripe {
+    if (!stripeInstance) {
+        const secretKey = process.env.STRIPE_SECRET_KEY;
+        if (!secretKey) {
+            throw new Error('STRIPE_SECRET_KEY environment variable is required');
+        }
+        // Workers has no Node http agent; use the SDK's fetch client (guarded
+        // because unit tests mock the module without the static factory).
+        const httpClient =
+            typeof Stripe.createFetchHttpClient === 'function' ? Stripe.createFetchHttpClient() : undefined;
+        stripeInstance = new Stripe(secretKey, {
+            // Uses the API version pinned by the installed SDK
+            typescript: true,
+            ...(httpClient ? { httpClient } : {}),
+        });
+    }
+    return stripeInstance;
 }
 
 /**
- * Server-side Stripe client instance
- * Used for creating checkout sessions, handling webhooks, and managing subscriptions
- */
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2025-07-30.basil', // Use latest stable API version
-    typescript: true,
-});
-
-/**
  * Stripe webhook signature validation
- * Ensures webhooks are coming from Stripe
+ * Ensures webhooks are coming from Stripe. Async because Workers only
+ * supports the WebCrypto-based constructEventAsync.
  */
-export const validateWebhookSignature = (
-    payload: string | Buffer,
+export const validateWebhookSignature = async (
+    payload: string,
     signature: string,
     secret: string
-): Stripe.Event => {
+): Promise<Stripe.Event> => {
     try {
-        return stripe.webhooks.constructEvent(payload, signature, secret);
+        return await getStripe().webhooks.constructEventAsync(payload, signature, secret);
     } catch (err) {
         const error = err as Error;
         throw new Error(`Webhook signature verification failed: ${error.message}`);
@@ -86,7 +100,7 @@ export const createCheckoutSession = async ({
         sessionParams.customer_creation = 'always';
     }
 
-    return await stripe.checkout.sessions.create(sessionParams);
+    return await getStripe().checkout.sessions.create(sessionParams);
 };
 
 /**
@@ -94,7 +108,7 @@ export const createCheckoutSession = async ({
  */
 export const getOrCreateCustomer = async (email: string, userId: string): Promise<Stripe.Customer> => {
     // First, try to find existing customer by email
-    const existingCustomers = await stripe.customers.list({
+    const existingCustomers = await getStripe().customers.list({
         email,
         limit: 1,
     });
@@ -104,7 +118,7 @@ export const getOrCreateCustomer = async (email: string, userId: string): Promis
     }
 
     // Create new customer
-    return await stripe.customers.create({
+    return await getStripe().customers.create({
         email,
         metadata: {
             userId,
@@ -116,14 +130,14 @@ export const getOrCreateCustomer = async (email: string, userId: string): Promis
  * Get subscription details
  */
 export const getSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> => {
-    return await stripe.subscriptions.retrieve(subscriptionId);
+    return await getStripe().subscriptions.retrieve(subscriptionId);
 };
 
 /**
  * Cancel subscription at period end
  */
 export const cancelSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> => {
-    return await stripe.subscriptions.update(subscriptionId, {
+    return await getStripe().subscriptions.update(subscriptionId, {
         cancel_at_period_end: true,
     });
 };
@@ -132,7 +146,7 @@ export const cancelSubscription = async (subscriptionId: string): Promise<Stripe
  * Reactivate a subscription that was set to cancel at period end
  */
 export const reactivateSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> => {
-    return await stripe.subscriptions.update(subscriptionId, {
+    return await getStripe().subscriptions.update(subscriptionId, {
         cancel_at_period_end: false,
     });
 };
@@ -145,9 +159,9 @@ export const updateSubscription = async (
     newPriceId: string,
     tier: string
 ): Promise<Stripe.Subscription> => {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
 
-    return await stripe.subscriptions.update(subscriptionId, {
+    return await getStripe().subscriptions.update(subscriptionId, {
         items: [
             {
                 id: subscription.items.data[0].id,

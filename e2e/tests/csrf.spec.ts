@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test'
-import { NextRequest } from 'next/server'
+import { test, expect } from '../test'
 import { fetchCsrfHeaders } from '../helpers/csrf'
+import { appAccessHeaders } from '../helpers/access'
 import { getCSRFCookieName, isSecureRequest } from '../../src/lib/csrf-protection'
 
 /**
@@ -11,19 +11,30 @@ test.describe('CSRF protection', () => {
   // These tests intentionally do not need a browser session cookie for the negative case.
   test.use({ storageState: { cookies: [], origins: [] } })
 
-  test('GET /api/csrf-token uses a cookie compatible with HTTP CI', async ({
+  test('GET /api/csrf-token uses a protocol-appropriate cookie', async ({
     request,
+    baseURL,
   }) => {
-    const response = await request.get('/api/csrf-token')
+    const response = await request.get('/api/csrf-token', {
+      headers: appAccessHeaders('/api/csrf-token'),
+      maxRedirects: 0,
+    })
     expect(response.ok()).toBeTruthy()
 
     const setCookie = response.headers()['set-cookie']
-    expect(setCookie).toMatch(/^csrf-token=/)
-    expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
+    if (baseURL?.startsWith('https:')) {
+      // HTTPS (staging/production): host-only Secure cookie
+      expect(setCookie).toMatch(/^__Host-csrf-token=/)
+      expect(setCookie).toMatch(/;\s*Secure(?:;|$)/i)
+    } else {
+      // HTTP (local dev/CI): plain cookie without Secure
+      expect(setCookie).toMatch(/^csrf-token=/)
+      expect(setCookie).not.toMatch(/;\s*Secure(?:;|$)/i)
+    }
   })
 
   test('HTTPS requests retain the host-only Secure cookie name', () => {
-    const request = new NextRequest('https://admin.example.com/api/csrf-token')
+    const request = new Request('https://admin.example.com/api/csrf-token')
 
     expect(isSecureRequest(request)).toBe(true)
     expect(getCSRFCookieName(request)).toBe('__Host-csrf-token')
@@ -37,7 +48,8 @@ test.describe('CSRF protection', () => {
         name: 'Should Not Create',
         slug: 'should-not-create',
       },
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...appAccessHeaders('/api/content/disciplines'), 'Content-Type': 'application/json' },
+      maxRedirects: 0,
     })
 
     expect(response.status()).toBe(403)
@@ -49,7 +61,8 @@ test.describe('CSRF protection', () => {
   test('POST /api/admin/content without CSRF token is rejected', async ({ request }) => {
     const response = await request.post('/api/admin/content', {
       data: { action: 'fetchContentStats' },
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...appAccessHeaders('/api/admin/content'), 'Content-Type': 'application/json' },
+      maxRedirects: 0,
     })
 
     expect(response.status()).toBe(403)
@@ -68,7 +81,8 @@ test.describe('CSRF protection', () => {
         name: 'CSRF Control Should Not Persist',
         slug: 'csrf-control-no-persist',
       },
-      headers,
+      headers: { ...headers, ...appAccessHeaders('/api/content/disciplines') },
+      maxRedirects: 0,
     })
 
     // CSRF middleware returns 403 + "CSRF token validation failed".

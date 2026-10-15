@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../test'
 import { uniqueEmail, uniqueSuffix } from '../helpers/unique'
 import { createServiceRoleClient } from '../helpers/supabase-admin'
 import { deleteAuthUser } from '../helpers/api'
@@ -207,6 +207,7 @@ test.describe('Auth - session timeout', () => {
         )
       }
       if (failures.length) {
+        // eslint-disable-next-line no-unsafe-finally -- teardown failures must surface
         throw new Error(
           `Session timeout teardown failed: ${failures.join('; ')}`
         )

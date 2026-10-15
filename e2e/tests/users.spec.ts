@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../test'
 import { uniqueEmail, uniqueSuffix, uniqueTitle } from '../helpers/unique'
 import { createServiceRoleClient } from '../helpers/supabase-admin'
 import { deleteAuthUser } from '../helpers/api'

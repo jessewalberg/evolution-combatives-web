@@ -7,6 +7,7 @@ lerna-debug.log*
 
 # Dependency directories
 node_modules/
+.pnpm-store/
 jspm_packages/
 
 # Expo files
@@ -90,3 +91,10 @@ e2e/.auth/*.json
 
 # Supabase CLI local state (pooler-url contains a live DB password)
 supabase/.temp/
+src/routeTree.gen.ts
+.claude/
+.dev.vars
+.wrangler/
+dist/
+.vercel
+artifacts/
