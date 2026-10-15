@@ -9,50 +9,28 @@ import { deleteAuthUser } from '../helpers/api'
  * These tests verify the reconciliation system's correctness:
  * 1. Idempotency: same event delivered twice produces same result
  * 2. Order independence: older event after newer one doesn't overwrite
+ * 3. Version conflict detection
+ * 4. Manual tier preservation
  *
  * REQUIREMENT: The staging Supabase project must have the migration
  * `20261012000000_reconcile_stripe_entitlement.sql` applied.
- *
- * If the RPC function doesn't exist, these tests will fail with:
- * "Could not find the function public.reconcile_stripe_entitlement"
  */
 
-// Check if the RPC function exists before running tests
-async function checkRpcExists(): Promise<boolean> {
+async function cleanupTestData(supabase: ReturnType<typeof createServiceRoleClient>, userId: string) {
+  // Clean up subscriptions
+  await supabase.from('subscriptions').delete().eq('user_id', userId)
+  // Clean up stripe_customers
+  await supabase.from('stripe_customers').delete().eq('user_id', userId)
+  // Clean up stripe_events (table may not exist, ignore errors)
   try {
-    const supabase = createServiceRoleClient()
-    // Try calling with invalid params - will error but differently if function exists
-    const { error } = await supabase.rpc('reconcile_stripe_entitlement', {
-      p_user_id: '00000000-0000-0000-0000-000000000000',
-      p_expected_version: 0,
-      p_event_id: 'test',
-      p_event_created: 0,
-      p_stripe_subscription_id: 'test',
-      p_stripe_customer_id: 'test',
-      p_customer_ids: [],
-      p_subscription_created: 0,
-      p_tier: 'tier1',
-      p_status: 'active',
-      p_current_period_start: new Date().toISOString(),
-      p_current_period_end: new Date().toISOString(),
-      p_cancel_at_period_end: false,
-      p_canceled_at: null,
-    })
-    // If we get here without PGRST202, the function exists
-    // It may return an error for invalid data, but not "function not found"
-    if (error?.code === 'PGRST202') {
-      return false
-    }
-    return true
+    await supabase.from('stripe_events').delete().eq('user_id', userId)
   } catch {
-    return false
+    // Table may not exist
   }
 }
 
 test.describe('Stripe Entitlement Reconciliation Logic', () => {
   test('duplicate event ID is ignored (idempotency)', async () => {
-    const exists = await checkRpcExists()
-    test.skip(!exists, 'Requires migration 20261012000000_reconcile_stripe_entitlement.sql to be applied to staging Supabase')
     const supabase = createServiceRoleClient()
     const email = uniqueEmail('idempotent')
     const testSuffix = uniqueSuffix()
@@ -136,14 +114,12 @@ test.describe('Stripe Entitlement Reconciliation Logic', () => {
       expect(sub2!.tier).toBe('tier2') // Still tier2, not tier3
 
     } finally {
+      await cleanupTestData(supabase, userId)
       await deleteAuthUser(userId)
     }
   })
 
   test('older event after newer preserves newer state', async () => {
-    const exists = await checkRpcExists()
-    test.skip(!exists, 'Requires migration 20261012000000_reconcile_stripe_entitlement.sql to be applied to staging Supabase')
-
     const supabase = createServiceRoleClient()
     const email = uniqueEmail('order-test')
     const testSuffix = uniqueSuffix()
@@ -228,14 +204,12 @@ test.describe('Stripe Entitlement Reconciliation Logic', () => {
       expect(profileFinal!.subscription_tier).toBe('tier3')
 
     } finally {
+      await cleanupTestData(supabase, userId)
       await deleteAuthUser(userId)
     }
   })
 
   test('version conflict returns retry', async () => {
-    const exists = await checkRpcExists()
-    test.skip(!exists, 'Requires migration 20261012000000_reconcile_stripe_entitlement.sql to be applied to staging Supabase')
-
     const supabase = createServiceRoleClient()
     const email = uniqueEmail('version-test')
     const testSuffix = uniqueSuffix()
@@ -288,14 +262,12 @@ test.describe('Stripe Entitlement Reconciliation Logic', () => {
       expect(parsed.version).toBe(5)
 
     } finally {
+      await cleanupTestData(supabase, userId)
       await deleteAuthUser(userId)
     }
   })
 
   test('manual_tier preserved when Stripe tier is lower', async () => {
-    const exists = await checkRpcExists()
-    test.skip(!exists, 'Requires migration 20261012000000_reconcile_stripe_entitlement.sql to be applied to staging Supabase')
-
     const supabase = createServiceRoleClient()
     const email = uniqueEmail('manual-tier')
     const testSuffix = uniqueSuffix()
@@ -364,6 +336,7 @@ test.describe('Stripe Entitlement Reconciliation Logic', () => {
       expect(profile!.subscription_tier).toBe('tier3')
 
     } finally {
+      await cleanupTestData(supabase, userId)
       await deleteAuthUser(userId)
     }
   })
