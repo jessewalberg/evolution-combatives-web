@@ -63,29 +63,21 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
     const userId = created.user!.id
 
     try {
-      // Wait for trigger to create profile, then update with our role
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait for trigger to create profile
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // Force update the admin_role (profile may be created by trigger)
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          admin_role: 'content_admin',
-          last_login_at: new Date().toISOString(),
-        })
-        .eq('id', userId)
-
-      // If update fails (no row), try insert
-      if (updateError) {
-        const { error: insertError } = await supabase.from('profiles').insert({
-          id: userId,
-          email,
-          full_name: 'E2E Content Admin Auth Test',
-          admin_role: 'content_admin',
-          last_login_at: new Date().toISOString(),
-        })
-        expect(insertError).toBeNull()
-      }
+      // Delete any existing profile and create with specific role
+      await supabase.from('profiles').delete().eq('id', userId)
+      
+      const { error: insertError } = await supabase.from('profiles').insert({
+        id: userId,
+        email,
+        full_name: 'E2E Content Admin Auth Test',
+        admin_role: 'content_admin',
+        subscription_tier: 'none',
+        last_login_at: new Date().toISOString(),
+      })
+      expect(insertError).toBeNull()
 
       // Verify the profile has the correct role
       const { data: profile } = await supabase
@@ -103,6 +95,15 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
       await page.getByLabel(/^password$/i).fill(password)
       await page.getByRole('button', { name: /^sign in$/i }).click()
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
+
+      // Verify profile AFTER login to ensure nothing changed it
+      const { data: profileAfterLogin } = await supabase
+        .from('profiles')
+        .select('admin_role')
+        .eq('id', userId)
+        .single()
+      console.log('Profile after login:', profileAfterLogin?.admin_role)
+      expect(profileAfterLogin?.admin_role).toBe('content_admin')
 
       const result = await page.evaluate(async () => {
         const csrfRes = await fetch('/api/csrf-token', { credentials: 'include' })
@@ -122,9 +123,9 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
       })
 
       // content_admin should get 403 insufficient permissions
-      // Log details if assertion fails
       if (result.status !== 403) {
         console.error('Unexpected response:', JSON.stringify(result, null, 2))
+        console.error('Expected 403, got:', result.status)
       }
       expect(result.status).toBe(403)
       expect(result.body.error).toMatch(/insufficient permissions/i)
@@ -152,27 +153,21 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
     const userId = created.user!.id
 
     try {
-      // Wait for trigger to create profile, then update with our role
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait for trigger to create profile
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          admin_role: 'support_admin',
-          last_login_at: new Date().toISOString(),
-        })
-        .eq('id', userId)
-
-      if (updateError) {
-        const { error: insertError } = await supabase.from('profiles').insert({
-          id: userId,
-          email,
-          full_name: 'E2E Support Admin Auth Test',
-          admin_role: 'support_admin',
-          last_login_at: new Date().toISOString(),
-        })
-        expect(insertError).toBeNull()
-      }
+      // Delete any existing profile and create with specific role
+      await supabase.from('profiles').delete().eq('id', userId)
+      
+      const { error: insertError } = await supabase.from('profiles').insert({
+        id: userId,
+        email,
+        full_name: 'E2E Support Admin Auth Test',
+        admin_role: 'support_admin',
+        subscription_tier: 'none',
+        last_login_at: new Date().toISOString(),
+      })
+      expect(insertError).toBeNull()
 
       // Verify the profile has the correct role
       const { data: profile } = await supabase
@@ -190,6 +185,15 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
       await page.getByLabel(/^password$/i).fill(password)
       await page.getByRole('button', { name: /^sign in$/i }).click()
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
+
+      // Verify profile AFTER login to ensure nothing changed it
+      const { data: profileAfterLogin } = await supabase
+        .from('profiles')
+        .select('admin_role')
+        .eq('id', userId)
+        .single()
+      console.log('Profile after login:', profileAfterLogin?.admin_role)
+      expect(profileAfterLogin?.admin_role).toBe('support_admin')
 
       const result = await page.evaluate(async () => {
         const csrfRes = await fetch('/api/csrf-token', { credentials: 'include' })
@@ -210,6 +214,7 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
 
       if (result.status !== 403) {
         console.error('Unexpected response:', JSON.stringify(result, null, 2))
+        console.error('Expected 403, got:', result.status)
       }
       expect(result.status).toBe(403)
       expect(result.body.error).toMatch(/insufficient permissions/i)
@@ -235,27 +240,21 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
     const userId = created.user!.id
 
     try {
-      // Wait for trigger to create profile, then update with our role
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait for trigger to create profile
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          admin_role: 'super_admin',
-          last_login_at: new Date().toISOString(),
-        })
-        .eq('id', userId)
-
-      if (updateError) {
-        const { error: insertError } = await supabase.from('profiles').insert({
-          id: userId,
-          email,
-          full_name: 'E2E Super Admin Auth Test',
-          admin_role: 'super_admin',
-          last_login_at: new Date().toISOString(),
-        })
-        expect(insertError).toBeNull()
-      }
+      // Delete any existing profile and create with specific role
+      await supabase.from('profiles').delete().eq('id', userId)
+      
+      const { error: insertError } = await supabase.from('profiles').insert({
+        id: userId,
+        email,
+        full_name: 'E2E Super Admin Auth Test',
+        admin_role: 'super_admin',
+        subscription_tier: 'none',
+        last_login_at: new Date().toISOString(),
+      })
+      expect(insertError).toBeNull()
 
       // Verify the profile has the correct role
       const { data: profile } = await supabase
