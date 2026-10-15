@@ -63,27 +63,47 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
     const userId = created.user!.id
 
     try {
-      // Set up content_admin profile
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: userId,
-        email,
-        full_name: 'E2E Content Admin Auth Test',
-        admin_role: 'content_admin',
-        last_login_at: new Date().toISOString(),
-      })
-      expect(profileError).toBeNull()
+      // Wait for trigger to create profile, then update with our role
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Force update the admin_role (profile may be created by trigger)
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          admin_role: 'content_admin',
+          last_login_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+
+      // If update fails (no row), try insert
+      if (updateError) {
+        const { error: insertError } = await supabase.from('profiles').insert({
+          id: userId,
+          email,
+          full_name: 'E2E Content Admin Auth Test',
+          admin_role: 'content_admin',
+          last_login_at: new Date().toISOString(),
+        })
+        expect(insertError).toBeNull()
+      }
+
+      // Verify the profile has the correct role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('admin_role')
+        .eq('id', userId)
+        .single()
+      expect(profile?.admin_role).toBe('content_admin')
 
       const context = await browser.newContext()
       const page = await context.newPage()
 
-      // Log in
       await page.goto('/login')
       await page.getByLabel(/email address/i).fill(email)
       await page.getByLabel(/^password$/i).fill(password)
       await page.getByRole('button', { name: /^sign in$/i }).click()
       await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
 
-      // Make authenticated request with CSRF token
       const result = await page.evaluate(async () => {
         const csrfRes = await fetch('/api/csrf-token', { credentials: 'include' })
         const csrfData = await csrfRes.json() as { csrfToken?: string }
@@ -102,6 +122,10 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
       })
 
       // content_admin should get 403 insufficient permissions
+      // Log details if assertion fails
+      if (result.status !== 403) {
+        console.error('Unexpected response:', JSON.stringify(result, null, 2))
+      }
       expect(result.status).toBe(403)
       expect(result.body.error).toMatch(/insufficient permissions/i)
 
@@ -128,14 +152,35 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
     const userId = created.user!.id
 
     try {
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: userId,
-        email,
-        full_name: 'E2E Support Admin Auth Test',
-        admin_role: 'support_admin',
-        last_login_at: new Date().toISOString(),
-      })
-      expect(profileError).toBeNull()
+      // Wait for trigger to create profile, then update with our role
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          admin_role: 'support_admin',
+          last_login_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+
+      if (updateError) {
+        const { error: insertError } = await supabase.from('profiles').insert({
+          id: userId,
+          email,
+          full_name: 'E2E Support Admin Auth Test',
+          admin_role: 'support_admin',
+          last_login_at: new Date().toISOString(),
+        })
+        expect(insertError).toBeNull()
+      }
+
+      // Verify the profile has the correct role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('admin_role')
+        .eq('id', userId)
+        .single()
+      expect(profile?.admin_role).toBe('support_admin')
 
       const context = await browser.newContext()
       const page = await context.newPage()
@@ -163,6 +208,9 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
         return { status: res.status, body: await res.json() }
       })
 
+      if (result.status !== 403) {
+        console.error('Unexpected response:', JSON.stringify(result, null, 2))
+      }
       expect(result.status).toBe(403)
       expect(result.body.error).toMatch(/insufficient permissions/i)
 
@@ -187,14 +235,35 @@ test.describe('Stripe Reconciliation Endpoint - Authorization', () => {
     const userId = created.user!.id
 
     try {
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: userId,
-        email,
-        full_name: 'E2E Super Admin Auth Test',
-        admin_role: 'super_admin',
-        last_login_at: new Date().toISOString(),
-      })
-      expect(profileError).toBeNull()
+      // Wait for trigger to create profile, then update with our role
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          admin_role: 'super_admin',
+          last_login_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+
+      if (updateError) {
+        const { error: insertError } = await supabase.from('profiles').insert({
+          id: userId,
+          email,
+          full_name: 'E2E Super Admin Auth Test',
+          admin_role: 'super_admin',
+          last_login_at: new Date().toISOString(),
+        })
+        expect(insertError).toBeNull()
+      }
+
+      // Verify the profile has the correct role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('admin_role')
+        .eq('id', userId)
+        .single()
+      expect(profile?.admin_role).toBe('super_admin')
 
       const context = await browser.newContext()
       const page = await context.newPage()
