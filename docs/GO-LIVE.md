@@ -309,6 +309,45 @@ The current item price determines the Stripe tier; unknown prices grant none. Am
 
 The read-only query that looks for active rows with a null profile tier does not find a paid member who has no subscription row. After deliveries are 2xx, in Stripe live mode list every active and trialing subscription (paginate the full result). Resolve ownership from `metadata.userId`, or from `stripe_customers` only when that metadata is empty and the customer has one recorded owner; flag missing or conflicting ownership. Map tiers from current item prices, then compare the selected subscription with each member's `platform = 'stripe'` row. Flag missing rows, wrong subscription ids, stale status or tier, and database rows that are active without a matching active Stripe subscription. Review `profiles.manual_tier` grants separately from the derived `profiles.subscription_tier`; the migration does not infer manual grants from old profile tiers. Replay or repair each mismatch and compare again before calling reconciliation done.
 
+### Automated Reconciliation Endpoint
+
+An admin endpoint exists for automated reconciliation of missing subscription rows:
+
+**Endpoint**: `POST /api/admin/stripe-reconcile`
+
+**Authentication**: Requires `super_admin` role.
+
+**Actions**:
+
+1. **Find missing rows** (read-only):
+   ```bash
+   curl -X POST https://evolutioncombatives.com/api/admin/stripe-reconcile \
+     -H "Content-Type: application/json" \
+     -H "Cookie: <admin-session-cookie>" \
+     -d '{"action": "find-missing"}'
+   ```
+   Returns a list of active Stripe subscriptions without corresponding database rows.
+
+2. **Dry run reconciliation**:
+   ```bash
+   curl -X POST https://evolutioncombatives.com/api/admin/stripe-reconcile \
+     -H "Content-Type: application/json" \
+     -H "Cookie: <admin-session-cookie>" \
+     -d '{"action": "reconcile", "dryRun": true}'
+   ```
+   Shows what would be reconciled without making changes.
+
+3. **Execute reconciliation**:
+   ```bash
+   curl -X POST https://evolutioncombatives.com/api/admin/stripe-reconcile \
+     -H "Content-Type: application/json" \
+     -H "Cookie: <admin-session-cookie>" \
+     -d '{"action": "reconcile", "dryRun": false}'
+   ```
+   Creates missing subscription rows from current Stripe state.
+
+The reconciliation uses the same idempotent logic as the webhook handler — it re-reads from Stripe API and applies the current state, not cached data.
+
 ---
 
 ## 9. Cloudflare Stream Webhook Configuration
