@@ -158,7 +158,7 @@ The Worker enforces role permissions defined in `src/lib/api-auth.ts`. See [the 
 ## 🚀 Deployment
 
 ### Cloudflare Workers Deployment
-1. Follow [docs/GO-LIVE.md](docs/GO-LIVE.md). Replace the three `PLACEHOLDER_STRIPE_*` price ids and set Worker secrets before the production deploy.
+1. Follow [docs/GO-LIVE.md](docs/GO-LIVE.md) for production prerequisites, including Stripe price verification and Worker secrets.
 2. The deploy workflow deploys `main` to production; the preview workflow uploads a preview version for pull requests. See [docs/GO-LIVE.md](docs/GO-LIVE.md) for the release procedure.
 
 ## 📊 Key Features Deep Dive

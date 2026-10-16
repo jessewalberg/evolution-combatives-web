@@ -1,8 +1,3 @@
-/**
- * Live Stripe price ids. Production wrangler vars ship as named placeholders.
- * Requests to the production hostnames fail until Jesse replaces them.
- */
-
 export const STRIPE_PRICE_ENV = {
     tier1: 'STRIPE_BEGINNER_PRICE_ID',
     tier2: 'STRIPE_INTERMEDIATE_PRICE_ID',
@@ -37,8 +32,7 @@ export function assertStripePriceIdsConfigured(hostname?: string): void {
     const host = hostname?.toLowerCase()
     const productionHost = host != null && PRODUCTION_HOSTS.has(host)
     // Unset fails everywhere. Placeholders fail on the production hostnames,
-    // and when no host is given, so a deploy cannot serve the site until
-    // Jesse replaces them. Local and preview hosts keep booting.
+    // and when no host is given. Local and preview hosts keep booting.
     const blocking = host == null || productionHost
         ? problems
         : problems.filter((problem) => problem.endsWith('is unset'))

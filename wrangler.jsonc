@@ -54,9 +54,6 @@
         "logs": { "enabled": true },
         "traces": { "enabled": true, "head_sampling_rate": 0.01 }
     },
-    // TODO(deploy): replace the three PLACEHOLDER_STRIPE_* price ids before
-    // the production deploy. Requests to evolutioncombatives.com and www
-    // return 500 while any of them is unset or still a placeholder.
     // STRIPE_PUBLISHABLE_KEY is unused (web checkout was removed) and is not
     // a launch blocker.
     // VITE_* vars are injected by vite.config.ts `define` from this file at
