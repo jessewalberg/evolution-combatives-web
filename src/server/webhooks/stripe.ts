@@ -138,7 +138,7 @@ export async function POST({ request }: { request: Request }) {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
     if (!webhookSecret) {
         console.error('STRIPE_WEBHOOK_SECRET environment variable is required')
-        return json({ error: 'Webhook not configured' }, { status: 500 })
+        return json({ error: 'Webhook not configured' }, { status: 503 })
     }
 
     const body = await request.text()
