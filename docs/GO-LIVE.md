@@ -25,17 +25,9 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 
 ## Pre-Deployment Prerequisites
 
-### 0. Update Production Stripe Values in wrangler.jsonc (LAUNCH BLOCKER)
+### 0. Verify Production Stripe Prices
 
-**⚠️ REQUIRED BEFORE FIRST PRODUCTION DEPLOY**: The production environment in `wrangler.jsonc` has placeholder values for Stripe:
-
-```jsonc
-"STRIPE_BEGINNER_PRICE_ID": "PLACEHOLDER_STRIPE_BEGINNER_PRICE_ID",
-"STRIPE_INTERMEDIATE_PRICE_ID": "PLACEHOLDER_STRIPE_INTERMEDIATE_PRICE_ID",
-"STRIPE_ADVANCED_PRICE_ID": "PLACEHOLDER_STRIPE_ADVANCED_PRICE_ID"
-```
-
-Replace those three placeholders in `wrangler.jsonc` with the live-mode price ids before the production deploy. Requests to `evolutioncombatives.com` and `www.evolutioncombatives.com`, including `/api/health`, return HTTP 500 while any of them is unset or still a `PLACEHOLDER_` value. They are config vars, not secrets.
+The production environment in `wrangler.jsonc` has live-mode price IDs for Beginner, Intermediate, and Advanced. Before the production deploy, confirm that each ID belongs to the intended live Stripe product. Requests to `evolutioncombatives.com` and `www.evolutioncombatives.com`, including `/api/health`, return HTTP 500 if any price ID is unset or still a `PLACEHOLDER_` value. These are config vars, not secrets.
 
 `STRIPE_PUBLISHABLE_KEY` is still `"update"` and is unused. Web checkout was removed. It is not a launch blocker.
 
@@ -251,7 +243,7 @@ Staging and preview set `routes: []` and do not inherit them. `www` is served di
 
 ### Before approving the deploy
 
-1. Replace the three `PLACEHOLDER_STRIPE_*` price ids in `wrangler.jsonc` (section 0).
+1. Verify the production Stripe prices in section 0.
 2. Apply pending production Supabase migrations in order, including `20260808000003_fix_stripe_subscription_columns.sql`, `20261012000000_reconcile_stripe_entitlement.sql`, `20261012100000_protect_manual_tier.sql`, and `20261012110000_record_stripe_customer.sql`. Confirm `subscriptions.stripe_subscription_id` is unique, `(user_id, platform)` is unique, members cannot update `profiles.manual_tier`, and only `service_role` can execute `record_stripe_customer`. `deploy.yml` does not apply migrations. Do not approve the deploy while this schema is missing.
 3. Set the Worker secrets in section 3.
 4. Delete the apex `A` record and the `www` CNAME that point at Vercel, immediately before approving the deploy. Cloudflare cannot create a custom domain on a hostname that still has a CNAME. DNS is already on Cloudflare (`anita`/`matias.ns.cloudflare.com`); custom domain attachment writes the replacement records. Do not point the names at `workers.dev` by hand.
@@ -482,7 +474,7 @@ Run these checks after the production deploy. Neither host should redirect to th
 
 | Step | Estimated Time |
 |------|----------------|
-| Update production Stripe values in wrangler.jsonc | 5 minutes |
+| Verify production Stripe prices | 5 minutes |
 | Set Worker secrets | 10 minutes |
 | Set GitHub secrets | 5 minutes |
 | Configure Stream signing keys | 10 minutes |

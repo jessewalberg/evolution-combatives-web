@@ -54,9 +54,6 @@
         "logs": { "enabled": true },
         "traces": { "enabled": true, "head_sampling_rate": 0.01 }
     },
-    // TODO(deploy): replace the three PLACEHOLDER_STRIPE_* price ids before
-    // the production deploy. Requests to evolutioncombatives.com and www
-    // return 500 while any of them is unset or still a placeholder.
     // STRIPE_PUBLISHABLE_KEY is unused (web checkout was removed) and is not
     // a launch blocker.
     // VITE_* vars are injected by vite.config.ts `define` from this file at
@@ -84,9 +81,9 @@
         "CLOUDFLARE_ACCOUNT_ID": "6b13f76a2d42fd29437154c35fa8a0c9",
         "CLOUDFLARE_CUSTOMER_SUBDOMAIN": "customer-235te0s698xfdejs.cloudflarestream.com",
         "STRIPE_PUBLISHABLE_KEY": "update",
-        "STRIPE_BEGINNER_PRICE_ID": "PLACEHOLDER_STRIPE_BEGINNER_PRICE_ID",
-        "STRIPE_INTERMEDIATE_PRICE_ID": "PLACEHOLDER_STRIPE_INTERMEDIATE_PRICE_ID",
-        "STRIPE_ADVANCED_PRICE_ID": "PLACEHOLDER_STRIPE_ADVANCED_PRICE_ID"
+        "STRIPE_BEGINNER_PRICE_ID": "price_1URIS8B4l3YB9CPJHJapgUgk",
+        "STRIPE_INTERMEDIATE_PRICE_ID": "price_1URISGB4l3YB9CPJBQ7i6BTf",
+        "STRIPE_ADVANCED_PRICE_ID": "price_1URISLB4l3YB9CPJdNCpOOWb"
     },
     "env": {
         "staging": {
