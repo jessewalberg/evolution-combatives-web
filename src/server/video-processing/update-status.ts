@@ -20,13 +20,13 @@ function isValidProcessingStatus(value: unknown): value is ProcessingStatus {
 }
 
 export async function POST({ request }: { request: Request }) {
-    let cloudflareVideoId: string | undefined
-    let updateData: unknown
+    const authResult = await validateApiAuthWithSession('content.write')
+    if ('error' in authResult) {
+        return authResult.error
+    }
 
     try {
-        const body = await request.json()
-        cloudflareVideoId = body.cloudflareVideoId
-        updateData = body.updateData
+        const { cloudflareVideoId, updateData } = await request.json()
 
         if (!cloudflareVideoId) {
             return json(
@@ -53,28 +53,11 @@ export async function POST({ request }: { request: Request }) {
                 {
                     success: false,
                     error: 'Invalid processing_status',
-                    allowed: Array.from(VALID_PROCESSING_STATUSES),
                 },
                 { status: 400 }
             )
         }
-    } catch (error) {
-        console.error('Video processing update API error:', error)
-        return json(
-            {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
-            },
-            { status: 500 }
-        )
-    }
 
-    const authResult = await validateApiAuthWithSession('content.write')
-    if ('error' in authResult) {
-        return authResult.error
-    }
-
-    try {
         const supabase = createAdminClient()
 
         // Find video by Cloudflare video ID
