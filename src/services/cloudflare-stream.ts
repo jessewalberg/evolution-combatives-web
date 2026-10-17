@@ -6,10 +6,7 @@
  * @author Evolution Combatives
  */
 
-import { createAdminClient } from '../lib/supabase'
-import { handleSupabaseError } from '../lib/shared/utils/supabase-errors'
 import type {
-    VideoUpdate,
     ProcessingStatus,
     SubscriptionTier
 } from 'shared/types/database'
@@ -134,26 +131,6 @@ export interface UploadProgress {
     progress: number
     status: ProcessingStatus
     error?: string
-}
-
-export interface WebhookPayload {
-    uid: string
-    readyToStream: boolean
-    status: {
-        state: string
-        pctComplete: string
-        errorReasonCode?: string
-        errorReasonText?: string
-    }
-    meta: Record<string, unknown>
-    created: string
-    modified: string
-    size?: number
-    duration?: number
-    input?: {
-        width: number
-        height: number
-    }
 }
 
 // Custom Error Classes
@@ -742,132 +719,6 @@ export const videoManagement = {
     }
 }
 
-// Webhook Handling Functions
-export const webhookHandling = {
-    /**
-     * Process webhook payload from Cloudflare Stream
-     */
-    async processWebhook(payload: WebhookPayload): Promise<void> {
-        try {
-            // Validate webhook payload
-            if (!payload.uid) {
-                throw new Error('Invalid webhook payload: missing uid')
-            }
-
-            // Update video status in database
-            await webhookHandling.updateVideoStatus(payload.uid, payload)
-
-            // Handle processing complete
-            if (payload.readyToStream && payload.status.state === 'ready') {
-                await webhookHandling.handleProcessingComplete(payload.uid, payload)
-            }
-        } catch (error) {
-            if (process.env.NODE_ENV === 'development') {
-                 
-                console.error('Webhook processing error:', error)
-            }
-            throw new CloudflareStreamError(
-                `Failed to process webhook: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                undefined,
-                error
-            )
-        }
-    },
-
-    /**
-     * Update video status in database
-     */
-    async updateVideoStatus(videoId: string, payload: WebhookPayload): Promise<void> {
-        const supabase = createAdminClient()
-
-        try {
-            const processingStatus = mapStreamStatusToProcessingStatus(payload.status.state)
-
-            const updates: VideoUpdate = {
-                processing_status: processingStatus,
-                updated_at: new Date().toISOString()
-            }
-
-            // Add duration if available
-            if (payload.duration) {
-                updates.duration_seconds = Math.round(payload.duration)
-            }
-
-            const { error } = await supabase
-                .from('videos')
-                .update(updates)
-                .eq('cloudflare_video_id', videoId)
-
-            if (error) {
-                throw handleSupabaseError(error)
-            }
-        } catch (error) {
-            throw new CloudflareStreamError(
-                `Failed to update video status in database: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                undefined,
-                error
-            )
-        }
-    },
-
-    /**
-     * Handle processing complete event
-     */
-    async handleProcessingComplete(videoId: string, payload: WebhookPayload): Promise<void> {
-        const supabase = createAdminClient()
-
-        try {
-            // Get video from database
-            const { data: video, error: fetchError } = await supabase
-                .from('videos')
-                .select('*')
-                .eq('cloudflare_video_id', videoId)
-                .single()
-
-            if (fetchError) {
-                throw handleSupabaseError(fetchError)
-            }
-
-            if (!video) {
-                if (process.env.NODE_ENV === 'development') {
-                     
-                    console.warn(`Video with cloudflare_video_id ${videoId} not found in database`)
-                }
-                return
-            }
-
-            // Update final metadata
-            const updates: VideoUpdate = {
-                processing_status: 'ready',
-                is_published: false, // Keep unpublished until admin approval
-                duration_seconds: payload.duration ? Math.round(payload.duration) : video.duration_seconds,
-                updated_at: new Date().toISOString()
-            }
-
-            const { error: updateError } = await supabase
-                .from('videos')
-                .update(updates)
-                .eq('id', video.id)
-
-            if (updateError) {
-                throw handleSupabaseError(updateError)
-            }
-
-            // TODO: Send notification to admin about completed processing
-            if (process.env.NODE_ENV === 'development') {
-                 
-                console.log(`Video processing completed for ${video.title} (${videoId})`)
-            }
-        } catch (error) {
-            throw new CloudflareStreamError(
-                `Failed to handle processing complete: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                undefined,
-                error
-            )
-        }
-    }
-}
-
 // Security Functions
 export const securityFunctions = {
     /**
@@ -909,7 +760,6 @@ export const securityFunctions = {
 export const cloudflareStreamService = {
     upload: uploadFunctions,
     video: videoManagement,
-    webhook: webhookHandling,
     security: securityFunctions
 }
 

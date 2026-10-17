@@ -232,6 +232,7 @@ User administration is available in the dashboard under `/users`.
 - `POST /api/mobile/video/signed-url` - Get a signed playback URL for the mobile app
 - Both endpoints return a Stream playback URL with the signed token in place of the video ID.
 - `GET /api/video-processing/get-processing` - Check processing status
+- `POST /api/video-processing/update-status` - Update a video's processing status; values outside `VIDEO_PROCESSING_FLOW` in `src/lib/shared/types/database.ts` return HTTP 400
 - `POST /api/video-processing/sync-all` - Sync with Cloudflare
 
 ### Development Guidelines

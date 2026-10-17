@@ -6,6 +6,18 @@ import {
     filterAllowedFields,
 } from '@/src/lib/video-field-allowlists'
 import { isValidStreamVideoId } from '@/src/services/cloudflare-stream'
+import {
+    VIDEO_PROCESSING_FLOW,
+    type ProcessingStatus,
+} from 'shared/types/database'
+
+const VALID_PROCESSING_STATUSES = new Set<string>(
+    Object.keys(VIDEO_PROCESSING_FLOW)
+)
+
+function isValidProcessingStatus(value: unknown): value is ProcessingStatus {
+    return typeof value === 'string' && VALID_PROCESSING_STATUSES.has(value)
+}
 
 export async function POST({ request }: { request: Request }) {
     const authResult = await validateApiAuthWithSession('content.write')
@@ -26,6 +38,22 @@ export async function POST({ request }: { request: Request }) {
         if (!isValidStreamVideoId(cloudflareVideoId)) {
             return json(
                 { success: false, error: 'Invalid video ID format' },
+                { status: 400 }
+            )
+        }
+
+        if (
+            updateData &&
+            typeof updateData === 'object' &&
+            'processing_status' in updateData &&
+            updateData.processing_status !== undefined &&
+            !isValidProcessingStatus(updateData.processing_status)
+        ) {
+            return json(
+                {
+                    success: false,
+                    error: 'Invalid processing_status',
+                },
                 { status: 400 }
             )
         }
