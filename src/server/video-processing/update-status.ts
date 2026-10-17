@@ -6,15 +6,27 @@ import {
     filterAllowedFields,
 } from '@/src/lib/video-field-allowlists'
 import { isValidStreamVideoId } from '@/src/services/cloudflare-stream'
+import {
+    VIDEO_PROCESSING_FLOW,
+    type ProcessingStatus,
+} from 'shared/types/database'
+
+const VALID_PROCESSING_STATUSES = new Set<string>(
+    Object.keys(VIDEO_PROCESSING_FLOW)
+)
+
+function isValidProcessingStatus(value: unknown): value is ProcessingStatus {
+    return typeof value === 'string' && VALID_PROCESSING_STATUSES.has(value)
+}
 
 export async function POST({ request }: { request: Request }) {
-    const authResult = await validateApiAuthWithSession('content.write')
-    if ('error' in authResult) {
-        return authResult.error
-    }
+    let cloudflareVideoId: string | undefined
+    let updateData: unknown
 
     try {
-        const { cloudflareVideoId, updateData } = await request.json()
+        const body = await request.json()
+        cloudflareVideoId = body.cloudflareVideoId
+        updateData = body.updateData
 
         if (!cloudflareVideoId) {
             return json(
@@ -30,6 +42,39 @@ export async function POST({ request }: { request: Request }) {
             )
         }
 
+        if (
+            updateData &&
+            typeof updateData === 'object' &&
+            'processing_status' in updateData &&
+            updateData.processing_status !== undefined &&
+            !isValidProcessingStatus(updateData.processing_status)
+        ) {
+            return json(
+                {
+                    success: false,
+                    error: 'Invalid processing_status',
+                    allowed: Array.from(VALID_PROCESSING_STATUSES),
+                },
+                { status: 400 }
+            )
+        }
+    } catch (error) {
+        console.error('Video processing update API error:', error)
+        return json(
+            {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            },
+            { status: 500 }
+        )
+    }
+
+    const authResult = await validateApiAuthWithSession('content.write')
+    if ('error' in authResult) {
+        return authResult.error
+    }
+
+    try {
         const supabase = createAdminClient()
 
         // Find video by Cloudflare video ID
