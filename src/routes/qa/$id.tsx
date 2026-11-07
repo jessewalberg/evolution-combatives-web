@@ -15,7 +15,6 @@ import { Card } from '@/src/components/ui/card'
 import { Button } from '@/src/components/ui/button'
 import { Badge } from '@/src/components/ui/badge'
 import { Avatar } from '@/src/components/ui/avatar'
-import { QaVideoThumbnail } from '@/src/components/video/qa-video-thumbnail'
 import { LoadingOverlay } from '@/src/components/ui/loading'
 import { createClientComponentClient } from '@/src/lib/supabase-browser'
 import { queryKeys } from '@/src/lib/query-client'
@@ -533,8 +532,8 @@ export function QuestionDetailPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-4">
                                     <div className="aspect-video bg-neutral-800 rounded-lg overflow-hidden">
-                                        <QaVideoThumbnail
-                                            videoId={question.video.id}
+                                        <img
+                                            src={`/api/qa-video-thumbnail?videoId=${encodeURIComponent(question.video.id)}`}
                                             alt={question.video.title}
                                             className="w-full h-full object-cover"
                                         />

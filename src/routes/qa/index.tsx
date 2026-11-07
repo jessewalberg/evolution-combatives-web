@@ -930,7 +930,7 @@ export function QAManagementPage() {
                                     <TableCell>
                                         {question.video ? (
                                             <div className="flex items-center gap-3">
-                                                <div className="relative">
+                                                <div className="relative w-16 h-9 shrink-0">
                                                     <QaVideoThumbnail
                                                         videoId={question.video.id}
                                                         alt={question.video.title}
