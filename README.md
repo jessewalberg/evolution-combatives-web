@@ -20,6 +20,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 - **Instructor Profiles**: Manage instructor information and credentials
 - **Cloudflare Stream Integration**: Professional video hosting and streaming
 - **Processing Status Tracking**: Real-time video processing monitoring
+- **Thumbnail loading**: Dashboard and Q&A thumbnail requests are paced to leave capacity for other API requests; large lists load progressively.
 
 ### User & Subscription Management
 - **User Administration**: Comprehensive user account management

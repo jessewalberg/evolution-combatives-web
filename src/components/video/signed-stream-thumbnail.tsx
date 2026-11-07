@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import Image from '@/src/components/compat/image'
 import { cloudflareApi } from '@/src/lib/cloudflare-api'
+import { queueThumbnailRequest } from '@/src/lib/thumbnail-request-queue'
 
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000
 const REFRESH_MS = 50 * 60 * 1000
@@ -10,8 +11,8 @@ const RETRY_MS = 60 * 1000
 export function useSignedStreamThumbnail(videoId: string | null | undefined): string | null {
     const { data, dataUpdatedAt } = useQuery({
         queryKey: ['signed-stream-thumbnail', videoId],
-        queryFn: () => cloudflareApi.generateThumbnailUrl(videoId!),
-        enabled: !!videoId,
+        queryFn: ({ signal }) => queueThumbnailRequest(signal, () => cloudflareApi.generateThumbnailUrl(videoId!)),
+        enabled: typeof window !== 'undefined' && !!videoId,
         staleTime: REFRESH_MS,
         retry: false,
         refetchInterval: (query) => {
