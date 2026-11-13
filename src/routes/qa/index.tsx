@@ -16,6 +16,7 @@ import { Button } from '@/src/components/ui/button'
 import { Input } from '@/src/components/ui/input'
 import { Badge } from '@/src/components/ui/badge'
 import { Avatar } from '@/src/components/ui/avatar'
+import { QaVideoThumbnail } from '@/src/components/video/qa-video-thumbnail'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/src/components/ui/table'
 import { LoadingOverlay } from '@/src/components/ui/loading'
 import { createClientComponentClient } from '@/src/lib/supabase-browser'
@@ -929,9 +930,9 @@ export function QAManagementPage() {
                                     <TableCell>
                                         {question.video ? (
                                             <div className="flex items-center gap-3">
-                                                <div className="relative">
-                                                    <img
-                                                        src={`/api/qa-video-thumbnail?videoId=${encodeURIComponent(question.video.id)}`}
+                                                <div className="relative w-16 h-9 shrink-0">
+                                                    <QaVideoThumbnail
+                                                        videoId={question.video.id}
                                                         alt={question.video.title}
                                                         width={64}
                                                         height={36}
