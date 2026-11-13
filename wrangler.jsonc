@@ -40,12 +40,12 @@
     "compatibility_flags": ["nodejs_compat"],
     "main": "@tanstack/react-start/server-entry",
     // Production has no workers.dev route and no preview URLs (staging/preview
-    // re-enable workers_dev for themselves). www is served directly, not
-    // redirected: the mobile app POSTs to www.
+    // re-enable workers_dev for themselves). www is a second custom domain,
+    // not a redirect: the mobile app POSTs to www.
     "workers_dev": false,
     "routes": [
-        { "pattern": "evolutioncombatives.com/*", "zone_name": "evolutioncombatives.com" },
-        { "pattern": "www.evolutioncombatives.com/*", "zone_name": "evolutioncombatives.com" }
+        { "pattern": "evolutioncombatives.com", "custom_domain": true },
+        { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
     ],
     "preview_urls": false,
     "observability": {
