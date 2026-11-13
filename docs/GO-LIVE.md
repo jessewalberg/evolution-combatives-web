@@ -247,7 +247,7 @@ Staging and preview set `routes: []` and do not inherit them. `www` is served di
 2. Apply pending production Supabase migrations in order, including `20260808000003_fix_stripe_subscription_columns.sql`, `20261012000000_reconcile_stripe_entitlement.sql`, `20261012100000_protect_manual_tier.sql`, and `20261012110000_record_stripe_customer.sql`. Confirm `subscriptions.stripe_subscription_id` is unique, `(user_id, platform)` is unique, members cannot update `profiles.manual_tier`, and only `service_role` can execute `record_stripe_customer`. `deploy.yml` does not apply migrations. Do not approve the deploy while this schema is missing.
 3. Set the Worker secrets in section 3.
 4. DNS for the apex and `www` was set up by the 2026-11-13 production deploy, which attached both custom domains. No DNS changes are needed for these existing attachments.
-5. Put the temporary deploy token below in the Production GitHub environment.
+5. Ensure the production deploy token in the Production GitHub environment keeps **Zone** → **Workers Routes** → **Read** for the `evolutioncombatives.com` zone, including after restoring the per-Worker token.
 
 Then merge and approve the deploy. After it succeeds, restore the per-Worker production token from section 1 and delete the temporary token.
 
@@ -483,7 +483,7 @@ Run these checks after the production deploy. Neither host should redirect to th
 | Verify/create Stream webhook | 5 minutes |
 | Production deploy | 5 minutes |
 | Stream signed playback verification | 10 minutes |
-| Delete the two Vercel DNS records, then approve the deploy | 10 minutes |
+| Approve the production deploy (no DNS changes) | 10 minutes |
 | Smoke testing | 15 minutes |
 | **Total** | ~1.5 hours |
 
