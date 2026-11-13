@@ -19,7 +19,7 @@ This checklist documents all steps required to deploy the Evolution Combatives a
 - **Apex**: `evolutioncombatives.com`
 - **WWW**: `www.evolutioncombatives.com`
 - **Public access**: The production domain is the customer-facing site and is publicly accessible. Cloudflare Access is not applied to production.
-- Production uses Worker routes on both hostnames and their existing proxied DNS records. `www` is served directly. Do not add a www→apex redirect: the mobile app POSTs to `https://www.evolutioncombatives.com/api/mobile/*`, and Stripe treats a redirect as a failed delivery.
+- Production uses Worker custom domains on both hostnames. `www` is served directly. Do not add a www→apex redirect: the mobile app POSTs to `https://www.evolutioncombatives.com/api/mobile/*`, and Stripe treats a redirect as a failed delivery.
 
 ---
 
@@ -53,7 +53,7 @@ Create two account-owned API tokens, each limited to one Worker:
 3. Store as GitHub Environment secret `CLOUDFLARE_API_TOKEN` in the **Production** environment
 4. Store `CLOUDFLARE_ACCOUNT_ID` in the **Production** environment
 
-**Note**: These tokens have Workers > Specified Workers > Editor scope. The production deploy also needs Workers Routes edit permission for the zone; see section 6. If a deploy fails on an account-level lookup, add **Workers** → **All Workers** → **Metadata Read-Only** to the token rather than widening Editor scope.
+**Note**: These tokens have Workers > Specified Workers > Editor scope and cannot attach custom domains. The production deploy that attached the apex and www custom domains used the temporary token in section 6. If a deploy fails on an account-level lookup, add **Workers** → **All Workers** → **Metadata Read-Only** to the token rather than widening Editor scope.
 
 #### Account ID
 - **Value**: `6b13f76a2d42fd29437154c35fa8a0c9` (already configured)
@@ -234,8 +234,8 @@ Vercel stays disabled. This release is the cutover: squash-merge once, approve t
 
 ```jsonc
 "routes": [
-    { "pattern": "evolutioncombatives.com/*", "zone_name": "evolutioncombatives.com" },
-    { "pattern": "www.evolutioncombatives.com/*", "zone_name": "evolutioncombatives.com" }
+    { "pattern": "evolutioncombatives.com", "custom_domain": true },
+    { "pattern": "www.evolutioncombatives.com", "custom_domain": true }
 ]
 ```
 
@@ -246,14 +246,14 @@ Staging and preview set `routes: []` and do not inherit them. `www` is served di
 1. Verify the production Stripe prices in section 0.
 2. Apply pending production Supabase migrations in order, including `20260808000003_fix_stripe_subscription_columns.sql`, `20261012000000_reconcile_stripe_entitlement.sql`, `20261012100000_protect_manual_tier.sql`, and `20261012110000_record_stripe_customer.sql`. Confirm `subscriptions.stripe_subscription_id` is unique, `(user_id, platform)` is unique, members cannot update `profiles.manual_tier`, and only `service_role` can execute `record_stripe_customer`. `deploy.yml` does not apply migrations. Do not approve the deploy while this schema is missing.
 3. Set the Worker secrets in section 3.
-4. Keep the existing proxied DNS records for the apex and `www`. The Worker routes use those records; deploying does not create custom domains.
-5. Put the temporary deploy token below in the Production GitHub environment.
+4. DNS for the apex and `www` was set up by the 2026-11-13 production deploy, which attached both custom domains. No DNS changes are needed for these existing attachments.
+5. Ensure the production deploy token in the Production GitHub environment keeps **Zone** → **Workers Routes** → **Read** for the `evolutioncombatives.com` zone, including after restoring the per-Worker token.
 
 Then merge and approve the deploy. After it succeeds, restore the per-Worker production token from section 1 and delete the temporary token.
 
 ### Deploy token
 
-For this deploy, the token needs permission to update Worker routes in the zone. An account-owned token can be created via Manage Account → Account API Tokens with:
+The per-Worker token from section 1 cannot attach custom domains. For the deploy that attached them, a temporary account-owned token could be created via Manage Account → Account API Tokens with:
 
 - **Workers** → **All Workers** → **Editor**
 - **Zone** → **Workers Routes** → **Edit** limited to the `evolutioncombatives.com` zone
@@ -483,7 +483,7 @@ Run these checks after the production deploy. Neither host should redirect to th
 | Verify/create Stream webhook | 5 minutes |
 | Production deploy | 5 minutes |
 | Stream signed playback verification | 10 minutes |
-| Delete the two Vercel DNS records, then approve the deploy | 10 minutes |
+| Approve the production deploy (no DNS changes) | 10 minutes |
 | Smoke testing | 15 minutes |
 | **Total** | ~1.5 hours |
 
