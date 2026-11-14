@@ -25,6 +25,8 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
                 name: 'description',
                 content: 'Admin dashboard for the Evolution Combatives tactical training platform.',
             },
+            // Lets observers see which commit production serves.
+            ...(__COMMIT_SHA__ ? [{ name: 'commit', content: __COMMIT_SHA__ }] : []),
         ],
         links: [{ rel: 'stylesheet', href: appCss }],
     }),
