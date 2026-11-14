@@ -3,6 +3,7 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -38,7 +39,11 @@ export default defineConfig(({ mode }) => {
     // Fall back to wrangler.jsonc vars so CI/deploy builds still inline them.
     const existingEnv = loadEnv(mode, process.cwd(), 'VITE_')
     const wranglerVars = loadWranglerViteVars(process.env.CLOUDFLARE_ENV)
-    const define: Record<string, string> = {}
+    // CI supplies the checked-out commit; local builds resolve it from Git.
+    const commitSha = process.env.COMMIT_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+    const define: Record<string, string> = {
+        __COMMIT_SHA__: JSON.stringify(commitSha),
+    }
     for (const [key, value] of Object.entries(wranglerVars)) {
         if (existingEnv[key] !== undefined) continue
         define[`import.meta.env.${key}`] = JSON.stringify(value)

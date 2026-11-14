@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Git commit embedded by Vite at build time, not a runtime binding. */
+declare const __COMMIT_SHA__: string
+
 /**
  * Typed Vite env exposed via `import.meta.env.VITE_*`. Values come from
  * `.env.local` in dev and the wrangler.jsonc `vars` block at build time.

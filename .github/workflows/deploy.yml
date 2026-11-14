@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
+    env:
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -55,4 +57,4 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # wrangler reads dist/server/wrangler.json via the redirect file
           # the Cloudflare vite plugin writes to .wrangler/deploy/config.json
-          command: deploy
+          command: deploy --message "Commit ${{ env.COMMIT_SHA }}"

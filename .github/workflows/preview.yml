@@ -31,6 +31,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ENV: preview
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,4 +55,4 @@ jobs:
         # wrangler reads dist/server/wrangler.json written by vite build;
         # CLOUDFLARE_ENV=preview flattened env.preview into it, so this
         # targets evolution-combatives-admin-preview.
-        run: pnpm exec wrangler versions upload
+        run: pnpm exec wrangler versions upload --message "Commit $COMMIT_SHA"
