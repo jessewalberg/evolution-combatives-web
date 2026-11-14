@@ -219,6 +219,12 @@ Release verification is build, typecheck, lint, and Playwright end-to-end tests.
 
 ## 📚 API Documentation
 
+### Health and deployed commit
+- `GET /api/health` returns HTTP 200 with `status`, `timestamp`, `environment`, and `version` (the full Git commit SHA), plus the same SHA in `x-commit-sha`.
+- This is a cheap liveness/build-identity check, not a database or external-service check. Responses use `Cache-Control: no-store` so deploy checks do not reuse an old commit.
+- Vite embeds `COMMIT_SHA` at build time, falling back to `git rev-parse HEAD` for local builds. Production and PR-preview workflows set it to the checked-out `github.sha` and label the uploaded Worker version with `Commit <SHA>` via Wrangler's [`--message`](https://developers.cloudflare.com/workers/wrangler/commands/workers/#deploy). PR previews identify the tested merge commit, matching Actions checkout.
+- To check locally using staging configuration: `CLOUDFLARE_ENV=staging pnpm build`, then `pnpm preview --host 127.0.0.1` (the build already selected staging), and `curl -i http://127.0.0.1:4173/api/health`. No secrets are needed for this endpoint.
+
 ### Content API
 - `GET /api/content/videos` - List videos with filtering
 - `POST /api/content/videos` - Create new video
