@@ -1,0 +1,5 @@
+[install]
+# Carries over pnpm 11's default supply-chain delay (minimumReleaseAge 1440 minutes):
+# do not resolve npm versions published less than one day ago.
+# https://bun.com/docs/runtime/bunfig (install.minimumReleaseAge, in seconds)
+minimumReleaseAge = 86400

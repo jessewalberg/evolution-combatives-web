@@ -35,26 +35,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0, reads packageManager
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Build for production env
-        run: pnpm exec vite build
+        run: bunx vite build
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Run the lockfile's wrangler through Bun (input documented in
+          # https://github.com/cloudflare/wrangler-action/blob/v3/action.yml).
+          packageManager: bun
           # wrangler reads dist/server/wrangler.json via the redirect file
           # the Cloudflare vite plugin writes to .wrangler/deploy/config.json
           command: deploy --message "Commit ${{ env.COMMIT_SHA }}"

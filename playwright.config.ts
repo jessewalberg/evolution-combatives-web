@@ -13,11 +13,11 @@ const baseURL = process.env.VITE_APP_URL || 'http://localhost:3000'
 const isCI = !!process.env.CI
 
 /**
- * Local override: set E2E_WEB_SERVER_COMMAND="pnpm dev" for faster iteration.
+ * Local override: set E2E_WEB_SERVER_COMMAND="bun run dev" for faster iteration.
  * Default (and CI) uses a production build served by workerd via vite preview.
  */
 const webServerCommand =
-  process.env.E2E_WEB_SERVER_COMMAND || 'pnpm exec vite build && pnpm exec vite preview --port 3000'
+  process.env.E2E_WEB_SERVER_COMMAND || 'bunx vite build && bunx vite preview --port 3000'
 
 /**
  * Snapshot paths omit {platform} so committed Linux baselines are the single
