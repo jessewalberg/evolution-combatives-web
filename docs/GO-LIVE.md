@@ -391,12 +391,12 @@ Update allowed domains if Sentry integration exists.
 
 ### Deploy to Production
 ```bash
-pnpm deploy:production
+bun run deploy:production
 ```
 
 ### Deploy to Staging
 ```bash
-pnpm deploy:staging
+bun run deploy:staging
 ```
 
 ### Verify Deployment
@@ -427,7 +427,7 @@ Vercel is disabled, so there is no DNS fallback. `wrangler rollback` restores an
 ### Option 3: Quick Fix Deploy
 ```bash
 git revert HEAD
-pnpm deploy:production
+bun run deploy:production
 ```
 
 ---

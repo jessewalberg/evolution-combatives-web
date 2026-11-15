@@ -30,9 +30,9 @@ Cloudflare APIs change, so retrieve current docs (Cloudflare docs MCP or develop
 10. **Stay in scope.** Note anything else you find under "Found, not fixed".
 
 ## CLI rules
-- This repo has `wrangler.jsonc`, so use the **project's own Wrangler** (`pnpm wrangler ...`) for dev, types, and Previews.
+- This repo has `wrangler.jsonc`, so use the **project's own Wrangler** (`bunx wrangler ...`) for dev, types, and Previews.
 - Use **`cf`** (Cloudflare CLI, beta) only for read-only lookups and account/resource questions: `cf cli search "<task>"`, then `cf schema ...`, then `--dry-run`. **Never run `cf dev`, `cf build`, `cf deploy`, or `cf migrate` here.**
-- After any config or binding change, run `pnpm wrangler types` and `pnpm wrangler deploy --dry-run` (a packaging check only; it deploys nothing).
+- After any config or binding change, run `bunx wrangler types` and `bunx wrangler deploy --dry-run` (a packaging check only; it deploys nothing).
 
 ## Stack notes (this product differs from all-Cloudflare standard)
 - **Runtime:** Workers + TanStack Start SSR via `@cloudflare/vite-plugin`
@@ -41,13 +41,13 @@ Cloudflare APIs change, so retrieve current docs (Cloudflare docs MCP or develop
 - **Video:** Cloudflare Stream with signed URLs. Signing keys required; playback fails closed (503) without them.
 - **Payments:** Stripe Checkout. Test keys in staging/preview; live keys in production (configured via wrangler secrets).
 - **Access:** Cloudflare Access already protects staging (`evolution-combatives-admin-staging.jesse-6b1.workers.dev`) and preview (`*evolution-combatives-admin-preview.jesse-6b1.workers.dev`) Workers. CI uses service token `evolution-combatives-ci`.
-- **Package manager:** pnpm only; never edit the lockfile by hand.
+- **Package manager:** Bun only (`packageManager` in `package.json`; text lockfile `bun.lock`); never edit the lockfile by hand. Install scripts run only for `trustedDependencies`.
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm dev                 # local dev
-pnpm typecheck && pnpm lint && pnpm build   # all must pass
-pnpm test:e2e            # Playwright. No unit tests [J 2026-10-09].
+bun install --frozen-lockfile
+bun run dev                 # local dev
+bun run typecheck && bun run lint && bun run build   # all must pass
+bun run test:e2e            # Playwright. No unit tests [J 2026-10-09].
 ```
 
 ## Workers rules (from workers-best-practices; flag violations in review)

@@ -57,7 +57,7 @@ Evolution Combatives Admin Dashboard is a professional-grade content management 
 
 ### Prerequisites
 - Node.js 22.22.2+ (or 24.15.0+, or 26+); see `package.json` `engines.node` 
-- pnpm 9+ (see `package.json` for the pinned package manager version)
+- Bun (see `package.json` `packageManager` for the pinned version); Node.js is still needed for the Vite, TypeScript and Wrangler binaries
 - Supabase account
 - Cloudflare Stream account
 - Stripe account
@@ -72,7 +72,7 @@ cd evolution-combatives-admin-standalone
 
 2. **Install dependencies**
 ```bash
-pnpm install
+bun install
 ```
 
 3. **Configure environment variables**
@@ -110,7 +110,7 @@ supabase db push   # migrations live in supabase/migrations/
 
 5. **Start development server**
 ```bash
-pnpm dev
+bun run dev
 ```
 
 The application will be available at `http://localhost:3000`
@@ -201,12 +201,12 @@ The admin dashboard integrates with the Evolution Combatives mobile app through:
 
 ### Available Scripts
 ```bash
-pnpm dev          # Start Vite dev server (Workers runtime via @cloudflare/vite-plugin)
-pnpm build        # Build for production
-pnpm lint         # Run ESLint
-pnpm lint:fix     # Fix ESLint issues
-pnpm typecheck    # Run TypeScript type checking
-pnpm test:e2e     # Run Playwright end-to-end tests
+bun run dev          # Start Vite dev server (Workers runtime via @cloudflare/vite-plugin)
+bun run build        # Build for production
+bun run lint         # Run ESLint
+bun run lint:fix     # Fix ESLint issues
+bun run typecheck    # Run TypeScript type checking
+bun run test:e2e     # Run Playwright end-to-end tests
 ```
 
 ### Code Quality
@@ -223,7 +223,7 @@ Release verification is build, typecheck, lint, and Playwright end-to-end tests.
 - `GET /api/health` returns HTTP 200 with `status`, `timestamp`, `environment`, and `version` (the full Git commit SHA), plus the same SHA in `x-commit-sha`.
 - This is a cheap liveness/build-identity check, not a database or external-service check. Responses use `Cache-Control: no-store` so deploy checks do not reuse an old commit.
 - Vite embeds `COMMIT_SHA` at build time, falling back to `git rev-parse HEAD` for local builds. Production and PR-preview workflows set it to the checked-out `github.sha` and label the uploaded Worker version with `Commit <SHA>` via Wrangler's [`--message`](https://developers.cloudflare.com/workers/wrangler/commands/workers/#deploy). PR previews identify the tested merge commit, matching Actions checkout.
-- To check locally using staging configuration: `CLOUDFLARE_ENV=staging pnpm build`, then `pnpm preview --host 127.0.0.1` (the build already selected staging), and `curl -i http://127.0.0.1:4173/api/health`. No secrets are needed for this endpoint.
+- To check locally using staging configuration: `CLOUDFLARE_ENV=staging bun run build`, then `bun run preview --host 127.0.0.1` (the build already selected staging), and `curl -i http://127.0.0.1:4173/api/health`. No secrets are needed for this endpoint.
 
 ### Content API
 - `GET /api/content/videos` - List videos with filtering

@@ -23,8 +23,8 @@ Every visual test title includes `@visual`.
 Discover or run with:
 
 ```bash
-pnpm exec playwright test --grep @visual --list
-pnpm test:e2e:visual
+bunx playwright test --grep @visual --list
+bun run test:e2e:visual
 ```
 
 Public pages use the `visual-public-*` projects (empty storageState).
@@ -48,13 +48,13 @@ Screenshot baselines are **Linux CI / Playwright Docker only**.
 Font rendering differs by OS.
 Baselines generated on macOS will fail on the GitHub Actions `ubuntu-latest` runner as noisy diffs.
 
-**Never** run `pnpm test:e2e:visual:update` on macOS (or any non-matching platform) and commit the result.
+**Never** run `bun run test:e2e:visual:update` on macOS (or any non-matching platform) and commit the result.
 
 ## Scripts
 
 ```bash
-pnpm test:e2e:visual          # compare against committed baselines
-pnpm test:e2e:visual:update   # rewrite baselines - Linux only
+bun run test:e2e:visual          # compare against committed baselines
+bun run test:e2e:visual:update   # rewrite baselines - Linux only
 ```
 
 ## Regenerating baselines (preferred: Docker)
@@ -64,7 +64,7 @@ Docker must match the resolved `@playwright/test` version in this repo.
 1. Confirm the version:
 
 ```bash
-pnpm exec playwright --version
+bunx playwright --version
 # example: Version 1.62.1
 ```
 
@@ -76,7 +76,7 @@ pnpm exec playwright --version
 ./e2e/visual/scripts/update-baselines-docker.sh
 ```
 
-The container's `node_modules` is backed by a named Docker volume (`evolution-combatives-visual-node-modules`), not the live bind-mounted repo directory, so a Linux `pnpm install` inside the container never overwrites the host's macOS `node_modules`.
+The container's `node_modules` is backed by a named Docker volume (`evolution-combatives-visual-node-modules`), not the live bind-mounted repo directory, so a Linux `bun install` inside the container never overwrites the host's macOS `node_modules`.
 If the volume gets into a bad state, remove it with `docker volume rm evolution-combatives-visual-node-modules` and re-run the script.
 
 4. Review the updated `e2e/visual/**/*-snapshots/*.png` files and commit them.
