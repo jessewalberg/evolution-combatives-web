@@ -9,8 +9,8 @@ these rules exactly; the patterns are proven by the already-ported code.
 ## Setup in a fresh worktree
 
 ```bash
-CI=true pnpm install        # fast, shared store
-pnpm exec vite build        # generates src/routeTree.gen.ts (gitignored)
+bun install --frozen-lockfile   # fast, shared cache
+bunx vite build                 # generates src/routeTree.gen.ts (gitignored)
 ```
 
 ## Page ports (`app/<path>/page.tsx` → `src/routes/...`)
@@ -33,7 +33,7 @@ Transform the page component:
    })
    ```
    (Note: index routes under a layout use a trailing `/` in the id — follow
-   the generator error message if unsure; `pnpm exec vite build` regenerates
+   the generator error message if unsure; `bunx vite build` regenerates
    and validates.)
 3. Rewrite relative imports `../../src/...` → `@/src/...`.
 4. Import swaps (shims keep prop shapes identical):
@@ -94,14 +94,14 @@ Do not add, move, or keep unit tests. [J 2026-10-09] Delete a legacy
 
 Prove a port with the build, typecheck, lint, and end-to-end coverage:
 
-- `pnpm build`
-- `pnpm typecheck`
-- `pnpm lint`
-- `pnpm test:e2e`
+- `bun run build`
+- `bun run typecheck`
+- `bun run lint`
+- `bun run test:e2e`
 
 ## Type errors
 
-The full `pnpm typecheck` must pass after building the route tree. Where the
+The full `bun run typecheck` must pass after building the route tree. Where the
 typed Supabase browser client reports `never` rows (stale shared Database
 type), use a local `as` cast at the query site — do NOT edit
 `src/lib/shared/**` (that tree is shared with the mobile repo) unless the
@@ -120,9 +120,9 @@ change is type-only and unavoidable.
 
 ## Definition of done
 
-1. `pnpm build` passes (route tree valid).
-2. `pnpm typecheck` passes.
-3. `pnpm lint` passes.
-4. `pnpm test:e2e` passes.
+1. `bun run build` passes (route tree valid).
+2. `bun run typecheck` passes.
+3. `bun run lint` passes.
+4. `bun run test:e2e` passes.
 5. Legacy files deleted, including any unit test next to them. Do not recreate unit tests.
 6. All work committed on the current branch with a descriptive message.

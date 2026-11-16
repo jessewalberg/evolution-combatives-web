@@ -25,7 +25,7 @@ jobs:
 
     env:
       CI: true
-      # NODE_ENV must NOT be production at job scope: pnpm install would skip
+      # NODE_ENV must NOT be production at job scope: bun install would skip
       # devDependencies (including @playwright/test). Production mode for the
       # app server is set in playwright.config.ts webServer.env instead.
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -53,20 +53,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.22.2
-          cache: pnpm
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0, reads packageManager
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install chromium webkit --with-deps
+        run: bunx playwright install chromium webkit --with-deps
 
       - name: Write .dev.vars for workerd preview server
         # vite preview runs the app in workerd, which reads server env from
@@ -85,11 +84,11 @@ jobs:
           EOV
 
       - name: Run Playwright E2E
-        run: pnpm test:e2e
+        run: bun run test:e2e
 
       - name: Run Playwright visual regression
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_visual_baselines != true }}
-        run: pnpm test:e2e:visual
+        run: bun run test:e2e:visual
 
       - name: Upload Playwright report
         if: failure()
@@ -138,20 +137,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.22.2
-          cache: pnpm
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0, reads packageManager
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: pnpm exec playwright install chromium --with-deps
+        run: bunx playwright install chromium --with-deps
 
       - name: Write .dev.vars for workerd preview server
         # vite preview runs the app in workerd, which reads server env from
@@ -170,7 +168,7 @@ jobs:
           EOV
 
       - name: Update visual snapshots
-        run: pnpm test:e2e:visual:update
+        run: bun run test:e2e:visual:update
 
       - name: Upload visual baseline PNGs
         uses: actions/upload-artifact@v4

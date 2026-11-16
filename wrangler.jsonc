@@ -7,8 +7,8 @@
 //   CLOUDFLARE_ENV=preview     → env.preview     → evolution-combatives-admin-preview
 //
 // Package scripts:
-//   pnpm deploy:production → production
-//   pnpm deploy:staging    → staging
+//   bun run deploy:production → production
+//   bun run deploy:staging    → staging
 //
 // Secrets attach to the Worker by NAME (set per env with `wrangler secret put
 // <KEY>` / `wrangler secret put --env staging <KEY>`):

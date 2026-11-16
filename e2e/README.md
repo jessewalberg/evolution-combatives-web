@@ -4,9 +4,9 @@ Phase 3 of the testing initiative (GitHub issue #19). These tests run against th
 
 ## Prerequisites
 
-- Node 22.22.2+, 24.15.0+, or 26+; pnpm 9+
+- Node 22.22.2+, 24.15.0+, or 26+; Bun (version pinned in `package.json` `packageManager`)
 - 1Password CLI (`op`) signed in for local secret loading
-- Playwright browsers: `pnpm exec playwright install chromium webkit`
+- Playwright browsers: `bunx playwright install chromium webkit`
 
 ## Credentials (local)
 
@@ -67,10 +67,10 @@ Fork PRs are skipped (`head.repo.full_name == github.repository`) because secret
 ## Scripts
 
 ```bash
-pnpm test:e2e          # headless live-data suite (chromium + webkit)
-pnpm test:e2e:ui       # Playwright UI mode
-pnpm test:e2e:headed   # headed browsers
-pnpm test:e2e:visual   # visual regression suite (mocked routes, Chromium)
+bun run test:e2e          # headless live-data suite (chromium + webkit)
+bun run test:e2e:ui       # Playwright UI mode
+bun run test:e2e:headed   # headed browsers
+bun run test:e2e:visual   # visual regression suite (mocked routes, Chromium)
 ```
 
 Visual regression docs and Linux-only baseline workflow: [`e2e/visual/README.md`](./visual/README.md).
@@ -78,7 +78,7 @@ Visual regression docs and Linux-only baseline workflow: [`e2e/visual/README.md`
 Local faster iteration (dev server instead of production build):
 
 ```bash
-E2E_WEB_SERVER_COMMAND="pnpm dev" pnpm test:e2e
+E2E_WEB_SERVER_COMMAND="bun run dev" bun run test:e2e
 ```
 
 ## Data hygiene

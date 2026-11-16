@@ -11,14 +11,14 @@ if [[ ! -f .env.test.local ]]; then
   exit 1
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "pnpm is required on the host to resolve the Playwright version." >&2
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required on the host to resolve the Playwright version." >&2
   exit 1
 fi
 
-PW_VERSION="$(pnpm exec playwright --version | awk '{print $2}')"
+PW_VERSION="$(bunx playwright --version | awk '{print $2}')"
 if [[ -z "${PW_VERSION}" ]]; then
-  echo "Could not resolve Playwright version via pnpm exec playwright --version." >&2
+  echo "Could not resolve Playwright version via bunx playwright --version." >&2
   exit 1
 fi
 
@@ -38,15 +38,15 @@ fi
 # Isolate node_modules in a named Docker volume rather than the live bind-mount.
 # The repo directory is bind-mounted read-write for source + committed snapshot
 # output, but /work/node_modules is backed by a separate named volume so the
-# container's Linux-targeted `pnpm install` NEVER overwrites the host's
+# container's Linux-targeted `bun install` NEVER overwrites the host's
 # macOS node_modules (which would break local tsc/eslint/playwright until the
-# host re-runs `pnpm install`). The named volume persists across runs to speed
+# host re-runs `bun install`). The named volume persists across runs to speed
 # up repeat baseline updates; delete it with
 # `docker volume rm evolution-combatives-visual-node-modules` to force a clean install.
 NODE_MODULES_VOLUME="evolution-combatives-visual-node-modules"
 docker volume create "${NODE_MODULES_VOLUME}" >/dev/null
 
-# NODE_ENV from .env.test.local must not be production during pnpm install
+# NODE_ENV from .env.test.local must not be production during bun install
 # (would skip @playwright/test). Override after --env-file so install keeps
 # devDependencies; playwright.config webServer.env still sets production for
 # the app server process itself.
@@ -63,11 +63,12 @@ docker run --rm \
   /bin/bash -lc '
     set -euo pipefail
     unset NODE_ENV
-    corepack enable
-    corepack prepare pnpm@9.15.0 --activate
-    pnpm install --frozen-lockfile
-    pnpm exec playwright install chromium --with-deps
-    pnpm exec playwright test --grep @visual --update-snapshots --retries=0
+    # The Playwright image ships Node, not Bun; install the pinned Bun
+    # (https://bun.com/docs/installation, npm install -g bun).
+    npm install -g bun@1.4.4
+    bun install --frozen-lockfile
+    bunx playwright install chromium --with-deps
+    bunx playwright test --grep @visual --update-snapshots --retries=0
   '
 
 echo "Baselines updated under e2e/visual/**/*-snapshots/. Review and commit on Linux-generated PNGs only."
